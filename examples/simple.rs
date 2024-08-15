@@ -164,7 +164,7 @@ fn display_attribute(
                     mana.value.current_value, mana.value.base_value
                 );
             }
-            ui.sections[4].value = format!("\n{:?}", gec.effects);
+            ui.sections[4].value = format!("\n{:}", gec);
         }
     }
 }

@@ -1,9 +1,11 @@
-use crate::attributes::{GameAttribute, GameAttributeContext, GameAttributeMarker};
+use crate::attributes::{GameAttribute, GameAttributeContextMut, GameAttributeMarker};
 use crate::modifiers::{MetaModifier, Modifier, ModifierType, ScalarModifier};
 use bevy::prelude::*;
 use std::any::{TypeId};
+use std::fmt;
 use std::fmt::{Debug, Formatter};
 use std::ops::{Mul};
+use std::ptr::write;
 use std::sync::{Mutex};
 use std::time::Duration;
 
@@ -28,13 +30,23 @@ impl GameEffectContainer {
     }
 }
 
-pub fn apply_instant_effect(context: &GameAttributeContext, effect: &GameEffect) {
+impl fmt::Display for GameEffectContainer {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "Applied Modifiers: ")?;
+        for effect in self.effects.try_lock().unwrap().iter() {
+            write!(f, "\n   {}", effect)?;
+        }
+        Ok(())
+    }
+}
+
+pub fn apply_instant_effect(context: &GameAttributeContextMut, effect: &GameEffect) {
     for modifier in &effect.modifiers {
         apply_instant_modifier(context, modifier);
     }
 }
 
-pub fn apply_instant_modifier(context: &GameAttributeContext, modifier: &Modifier) {
+pub fn apply_instant_modifier(context: &GameAttributeContextMut, modifier: &Modifier) {
     let target_attribute_option = context.get_attribute_mut(modifier.get_attribute_id());
 
     if let Some(target_attribute) = target_attribute_option {
@@ -68,7 +80,7 @@ fn apply_scalar_modifier(attribute: &mut GameAttribute, scalar_mod: &ScalarModif
 }
 
 pub fn apply_realtime_effect(
-    context: &GameAttributeContext,
+    context: &GameAttributeContextMut,
     effect: &GameEffect,
     elapsed_time: f32,
 ) {
@@ -78,7 +90,7 @@ pub fn apply_realtime_effect(
 }
 
 pub fn apply_realtime_modifier(
-    context: &GameAttributeContext,
+    context: &GameAttributeContextMut,
     modifier: &Modifier,
     elapsed_time: f32,
 ) {
@@ -217,6 +229,16 @@ impl GameEffect {
 }
 
 impl Debug for GameEffect {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "GE M:[{:?}] D:{:?} A:{:?}",
+            self.modifiers, self.duration, self.periodic_application
+        )
+    }
+}
+
+impl fmt::Display for GameEffect {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
