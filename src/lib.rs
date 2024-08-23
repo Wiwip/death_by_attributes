@@ -9,6 +9,7 @@ use bevy::prelude::*;
 
 pub mod abilities;
 pub mod attributes;
+pub mod context;
 pub mod effect;
 pub mod events;
 pub mod modifiers;
@@ -45,4 +46,3 @@ pub struct BaseValueUpdate;
 
 #[derive(ScheduleLabel, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CurrentValueUpdate;
-

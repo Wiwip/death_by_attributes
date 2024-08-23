@@ -1,12 +1,13 @@
-use crate::attributes::{GameAttribute, GameAttributeContextMut, GameAttributeMarker};
+use crate::attributes::{GameAttribute, GameAttributeMarker};
+use crate::context::GameAttributeContextMut;
 use crate::modifiers::{MetaModifier, Modifier, ModifierType, ScalarModifier};
 use bevy::prelude::*;
-use std::any::{TypeId};
+use std::any::TypeId;
 use std::fmt;
 use std::fmt::{Debug, Formatter};
-use std::ops::{Mul};
+use std::ops::Mul;
 use std::ptr::write;
-use std::sync::{Mutex};
+use std::sync::Mutex;
 use std::time::Duration;
 
 #[derive(Default, Component)]
@@ -40,20 +41,29 @@ impl fmt::Display for GameEffectContainer {
     }
 }
 
-pub fn apply_instant_effect(context: &GameAttributeContextMut, effect: &GameEffect) {
+pub fn apply_instant_effect(
+    context: &GameAttributeContextMut,
+    entity_mut: &EntityMut,
+    effect: &GameEffect,
+) {
     for modifier in &effect.modifiers {
-        apply_instant_modifier(context, modifier);
+        apply_instant_modifier(context, entity_mut, modifier);
     }
 }
 
-pub fn apply_instant_modifier(context: &GameAttributeContextMut, modifier: &Modifier) {
-    let target_attribute_option = context.get_attribute_mut(modifier.get_attribute_id());
+pub fn apply_instant_modifier(
+    context: &GameAttributeContextMut,
+    entity_mut: &EntityMut,
+    modifier: &Modifier,
+) {
+    let target_attribute_option = context.get_mut_by_id(entity_mut, modifier.get_attribute_id());
 
     if let Some(target_attribute) = target_attribute_option {
         match modifier {
             Modifier::Scalar(scalar_mod) => apply_scalar_modifier(target_attribute, scalar_mod),
             Modifier::Meta(meta_mod) => {
-                let scalar_mod_option = context.convert_modifier(meta_mod);
+                let scalar_mod_option =
+                    context.convert_modifier(&entity_mut.as_readonly(), meta_mod);
                 if let Some(scalar_mod) = scalar_mod_option {
                     apply_scalar_modifier(target_attribute, &scalar_mod);
                 }
@@ -81,20 +91,22 @@ fn apply_scalar_modifier(attribute: &mut GameAttribute, scalar_mod: &ScalarModif
 
 pub fn apply_realtime_effect(
     context: &GameAttributeContextMut,
+    entity_mut: &EntityMut,
     effect: &GameEffect,
     elapsed_time: f32,
 ) {
     for modifier in &effect.modifiers {
-        apply_realtime_modifier(context, modifier, elapsed_time);
+        apply_realtime_modifier(context, entity_mut, modifier, elapsed_time);
     }
 }
 
 pub fn apply_realtime_modifier(
-    context: &GameAttributeContextMut,
+    mut context: &GameAttributeContextMut,
+    entity_mut: &EntityMut,
     modifier: &Modifier,
     elapsed_time: f32,
 ) {
-    let target_attribute_option = context.get_attribute_mut(modifier.get_attribute_id());
+    let target_attribute_option = context.get_mut_by_id(entity_mut, modifier.get_attribute_id());
 
     if let Some(target_attribute) = target_attribute_option {
         match modifier {
@@ -102,7 +114,8 @@ pub fn apply_realtime_modifier(
                 apply_scalar_realtime_modifier(target_attribute, scalar_mod, elapsed_time)
             }
             Modifier::Meta(meta_mod) => {
-                let scalar_mod_option = context.convert_modifier(meta_mod);
+                let scalar_mod_option =
+                    context.convert_modifier(&entity_mut.as_readonly(), meta_mod);
                 if let Some(scalar_mod) = scalar_mod_option {
                     apply_scalar_realtime_modifier(target_attribute, &scalar_mod, elapsed_time);
                 }
@@ -129,6 +142,44 @@ fn apply_scalar_realtime_modifier(
     }
 }
 
+///
+/// ```
+/// use attributes_macro::Attribute;
+/// use bevy::prelude::{Component, Deref, DerefMut, Reflect};
+/// use death_by_attributes::attributes::GameAttribute;
+/// use death_by_attributes::effect::GameEffectBuilder;
+/// use death_by_attributes::modifiers::ModifierType;
+///
+/// // Begin with creating an effect builder
+/// let effect = GameEffectBuilder::new()
+///
+/// .with_scalar_modifier::<MovementSpeed>(5.0, ModifierType::Additive) // adds 5 units to the movement speed
+/// .with_scalar_modifier::<MovementSpeed>(0.25, ModifierType::Multiplicative) // increases movement speed by 25%
+///
+/// // Attributes can be modified by another through meta attributes
+/// .with_meta_modifier::<MovementSpeed, BonusAttribute>(ModifierType::Additive) // Adds the bonus attribute to the movement speed
+///
+/// // Select a duration
+/// .with_duration(10.0) // with a duration in seconds
+/// .with_permanent_duration() // or a permanent duration
+///
+/// .with_periodic_application(3.0) // The effect magnitude is applied every defined period
+/// .with_realtime_application() // The effect is applied as a 'magnitude per seconds'
+///
+/// .build();
+///
+/// // Add the effect to a target
+///
+/// #[derive(Component, Attribute, Reflect, Deref, DerefMut)]
+/// pub struct MovementSpeed {
+///     pub value: GameAttribute,
+/// }
+///
+/// #[derive(Component, Attribute, Reflect, Deref, DerefMut)]
+/// pub struct BonusAttribute {
+///     pub value: GameAttribute,
+/// }
+/// ```
 #[derive(Default)]
 pub struct GameEffectBuilder {
     effect: GameEffect,
@@ -139,9 +190,29 @@ impl GameEffectBuilder {
         GameEffectBuilder::default()
     }
 
-    pub fn with_scalar_modifier(mut self, modifier: ScalarModifier) -> Self {
-        self.effect.modifiers.push(Modifier::Scalar(modifier));
-        return self;
+    pub fn with_scalar_modifier<T: Component + GameAttributeMarker>(
+        mut self,
+        value: f32,
+        modifier: ModifierType,
+    ) -> Self {
+        match modifier {
+            ModifierType::Additive => {
+                self.effect
+                    .modifiers
+                    .push(Modifier::Scalar(ScalarModifier::additive::<T>(value)));
+            }
+            ModifierType::Multiplicative => {
+                self.effect
+                    .modifiers
+                    .push(Modifier::Scalar(ScalarModifier::multi::<T>(value)));
+            }
+            ModifierType::Overrule => {
+                self.effect
+                    .modifiers
+                    .push(Modifier::Scalar(ScalarModifier::overrule::<T>(value)));
+            }
+        }
+        self
     }
 
     pub fn with_meta_modifier<
@@ -158,12 +229,12 @@ impl GameEffectBuilder {
                 mod_type: style,
             },
         });
-        return self;
+        self
     }
 
     pub fn with_realtime_application(mut self) -> Self {
         self.effect.periodic_application = Some(GameEffectPeriod::Realtime);
-        return self;
+        self
     }
 
     pub fn with_periodic_application(mut self, seconds: f32) -> Self {
@@ -171,18 +242,18 @@ impl GameEffectBuilder {
             seconds,
             TimerMode::Repeating,
         )));
-        return self;
+        self
     }
 
     pub fn with_duration(mut self, seconds: f32) -> Self {
         let timer = Timer::from_seconds(seconds, TimerMode::Once);
         self.effect.duration = GameEffectDuration::Duration(timer);
-        return self;
+        self
     }
 
     pub fn with_permanent_duration(mut self) -> Self {
         self.effect.duration = GameEffectDuration::Permanent;
-        return self;
+        self
     }
 
     pub fn build(self) -> GameEffect {

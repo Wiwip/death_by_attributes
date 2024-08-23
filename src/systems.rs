@@ -1,42 +1,37 @@
-use crate::attributes::{GameAttributeContextMut};
-use bevy::ecs::component::Components;
-use bevy::prelude::*;
-use bevy::utils::HashSet;
-
+use crate::context::GameAttributeContextMut;
 use crate::effect::{
     apply_instant_effect, apply_realtime_effect, GameEffectContainer, GameEffectDuration,
     GameEffectEvent, GameEffectPeriod,
 };
 use crate::events::CurrentValueUpdateTrigger;
 use crate::modifiers::{Modifier, ModifierAggregator};
+use bevy::ecs::component::Components;
+use bevy::prelude::*;
+use bevy::utils::HashSet;
+
+fn setup_context_resource() {}
 
 pub fn handle_apply_effect_events(
     mut query: Query<(EntityMut)>,
     mut event_reader: EventReader<GameEffectEvent>,
-    type_registry: Res<AppTypeRegistry>,
-    components: &Components,
+    mut context: GameAttributeContextMut,
 ) {
     for ev in event_reader.read() {
         if let Ok(entity_mut) = query.get_mut(ev.entity) {
             // The context having an entity_ref blocks us from having a mutable ref to the game effect container
             // thus the addition to the vector list
-            let context = GameAttributeContextMut {
-                entity_mut,
-                components,
-                type_registry: type_registry.0.clone(),
-            };
 
             match &ev.effect.duration {
                 GameEffectDuration::Instant => {
-                    apply_instant_effect(&context, &ev.effect);
+                    apply_instant_effect(&mut context, &entity_mut, &ev.effect);
                 }
                 GameEffectDuration::Duration(_) => {
-                    if let Some(gec) = context.get_game_effect_container() {
+                    if let Some(gec) = context.get_effect_container(&entity_mut) {
                         gec.add_effect(&ev.effect);
                     };
                 }
                 GameEffectDuration::Permanent => {
-                    if let Some(gec) = context.get_game_effect_container() {
+                    if let Some(gec) = context.get_effect_container(&entity_mut) {
                         gec.add_effect(&ev.effect);
                     };
                 }
@@ -62,28 +57,26 @@ pub fn tick_active_effects(mut query: Query<&mut GameEffectContainer>, time: Res
 pub fn update_attribute_base_value(
     mut query: Query<(EntityMut)>,
     time: Res<Time>,
-    type_registry: Res<AppTypeRegistry>,
-    components: &Components,
+    context: GameAttributeContextMut,
 ) {
     for entity_mut in query.iter_mut() {
-        let context = GameAttributeContextMut {
-            entity_mut,
-            components,
-            type_registry: type_registry.0.clone(),
-        };
-
-        if let Some(gec) = context.get_game_effect_container() {
+        if let Some(gec) = context.get_effect_container(&entity_mut) {
             let effect_lock = gec.effects.try_lock().unwrap();
             for effect in effect_lock.iter() {
                 if let Some(period) = &effect.periodic_application {
                     match period {
                         GameEffectPeriod::Periodic(timer) => {
                             if timer.just_finished() {
-                                apply_instant_effect(&context, effect);
+                                apply_instant_effect(&context, &entity_mut, effect);
                             }
                         }
                         GameEffectPeriod::Realtime => {
-                            apply_realtime_effect(&context, effect, time.delta_seconds());
+                            apply_realtime_effect(
+                                &context,
+                                &entity_mut,
+                                effect,
+                                time.delta_seconds(),
+                            );
                         }
                     }
                 }
@@ -94,21 +87,14 @@ pub fn update_attribute_base_value(
 
 pub fn update_attribute_current_value(
     mut commands: Commands,
-    mut query: Query<(Entity, EntityMut)>,
-    type_registry: Res<AppTypeRegistry>,
-    components: &Components,
+    mut query: Query<EntityMut>,
+    context: GameAttributeContextMut,
 ) {
-    for (entity, entity_mut) in query.iter_mut() {
+    for entity_mut in query.iter_mut() {
         let mut modifier_list = Vec::new();
         let mut attribute_list = HashSet::new();
 
-        let context = GameAttributeContextMut {
-            entity_mut,
-            components,
-            type_registry: type_registry.0.clone(),
-        };
-
-        let Some(gec) = context.get_game_effect_container() else {
+        let Some(gec) = context.get_effect_container(&entity_mut) else {
             continue;
         };
 
@@ -130,7 +116,8 @@ pub fn update_attribute_current_value(
                 .map(|&item| match item {
                     Modifier::Scalar(scalar_mod) => ModifierAggregator::from(scalar_mod),
                     Modifier::Meta(meta_mod) => {
-                        let scalar_mod_option = context.convert_modifier(meta_mod);
+                        let scalar_mod_option =
+                            context.convert_modifier(&entity_mut.as_readonly(), meta_mod);
                         if let Some(scalar_mod) = scalar_mod_option {
                             ModifierAggregator::from(&scalar_mod)
                         } else {
@@ -140,11 +127,10 @@ pub fn update_attribute_current_value(
                 })
                 .sum();
 
-            if let Some(attribute) = context.get_attribute_mut(attribute_id) {
+            if let Some(attribute) = context.get_mut_by_id(&entity_mut, attribute_id) {
                 attribute.current_value = aggregate.get_current_value(attribute.base_value);
-                commands.trigger_targets(CurrentValueUpdateTrigger, entity);
+                commands.trigger_targets(CurrentValueUpdateTrigger, entity_mut.id());
             }
         }
     }
 }
-

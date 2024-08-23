@@ -7,6 +7,7 @@ use bevy::time::common_conditions::on_timer;
 use death_by_attributes::abilities::{GameAbilityBuilder, GameAbilityComponent};
 use death_by_attributes::attributes::GameAttribute;
 use death_by_attributes::attributes::GameAttributeMarker;
+use death_by_attributes::context::GameAttributeContextMut;
 use death_by_attributes::effect::{GameEffectBuilder, GameEffectContainer, GameEffectEvent};
 use death_by_attributes::events::CurrentValueUpdateTrigger;
 use death_by_attributes::modifiers::{ModifierType, ScalarModifier};
@@ -14,9 +15,7 @@ use death_by_attributes::systems::{
     handle_apply_effect_events, tick_active_effects, update_attribute_base_value,
     update_attribute_current_value,
 };
-use death_by_attributes::{
-    BaseValueUpdate, CurrentValueUpdate, DeathByAttributesPlugin,
-};
+use death_by_attributes::{BaseValueUpdate, CurrentValueUpdate, DeathByAttributesPlugin};
 use std::time::Duration;
 
 fn main() {
@@ -28,14 +27,13 @@ fn main() {
             Update,
             display_attribute.run_if(on_timer(Duration::from_millis(16))),
         )
-        .add_systems(Update, inputs)
+        .add_systems(PreUpdate, inputs)
         .edit_schedule(Update, |schedule| {
             schedule.set_build_settings(ScheduleBuildSettings {
                 ambiguity_detection: LogLevel::Warn,
                 ..default()
             });
         })
-        //.add_systems(PostBaseValueUpdate, on_health_changed)
         .observe(clamp_health)
         .run();
 }
@@ -50,10 +48,26 @@ fn register_types(type_registry: ResMut<AppTypeRegistry>) {
 fn setup(mut commands: Commands, mut event_writer: EventWriter<GameEffectEvent>) {
     let mut ability_component = GameAbilityComponent::default();
     ability_component.grant_ability(
-        "test".to_string(),
+        "fireball".to_string(),
         GameAbilityBuilder::default()
-            .with_cooldown(1.0)
-            .with_cost::<Mana>(12.0)
+            .with_cooldown(6.0)
+            .with_cost::<Mana>(-12.0)
+            .with_activation(|| {
+                info!("fireball!");
+            })
+            .build(),
+    );
+
+    ability_component.grant_ability(
+        "sprint".to_string(),
+        GameAbilityBuilder::default()
+            .with_cooldown(2.0)
+            .with_effect(
+                GameEffectBuilder::new()
+                    .with_duration(4.0)
+                    .with_scalar_modifier::<Health>(0.40, ModifierType::Multiplicative)
+                    .build(),
+            )
             .build(),
     );
 
@@ -82,7 +96,7 @@ fn setup(mut commands: Commands, mut event_writer: EventWriter<GameEffectEvent>)
 
     let event_effect = GameEffectBuilder::new()
         .with_permanent_duration()
-        .with_scalar_modifier(ScalarModifier::additive::<HealthCap>(20.0))
+        .with_scalar_modifier::<HealthCap>(20.0, ModifierType::Additive)
         .build();
 
     event_writer.send(GameEffectEvent {
@@ -190,13 +204,16 @@ pub struct Mana {
 }
 
 pub fn inputs(
-    query: Query<(&GameAbilityComponent), With<Player>>,
+    mut query: Query<EntityMut, With<Player>>,
     keys: Res<ButtonInput<KeyCode>>,
+    context: GameAttributeContextMut,
 ) {
-    if let Ok(player) = query.get_single() {
+    if let Ok(player) = query.get_single_mut() {
         if keys.just_pressed(KeyCode::Space) {
             println!("try_activate");
-            player.try_activate("test".to_string());
+            let gec = context.get_ability_container(&player);
+            gec.unwrap()
+                .try_activate(&context, &player, "fireball".to_string());
         }
     }
 }

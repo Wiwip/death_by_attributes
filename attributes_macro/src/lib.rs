@@ -3,7 +3,7 @@ extern crate proc_macro;
 use proc_macro::TokenStream;
 
 use quote::quote;
-use syn::{DeriveInput, parse_macro_input};
+use syn::{parse_macro_input, DeriveInput};
 
 #[proc_macro_derive(Attribute)]
 pub fn derive_attribute_macro(input: TokenStream) -> TokenStream {
