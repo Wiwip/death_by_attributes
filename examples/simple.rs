@@ -4,7 +4,7 @@ use bevy::ecs::schedule::{LogLevel, ScheduleBuildSettings};
 use bevy::prelude::*;
 use bevy::text::Text;
 use bevy::time::common_conditions::on_timer;
-use death_by_attributes::abilities::{GameAbilityBuilder, GameAbilityComponent};
+use death_by_attributes::abilities::{AbilityActivationFn, GameAbilityBuilder, GameAbilityComponent};
 use death_by_attributes::attributes::GameAttribute;
 use death_by_attributes::attributes::GameAttributeMarker;
 use death_by_attributes::context::GameAttributeContextMut;
@@ -50,10 +50,11 @@ fn setup(mut commands: Commands, mut event_writer: EventWriter<GameEffectEvent>)
     ability_component.grant_ability(
         "fireball".to_string(),
         GameAbilityBuilder::default()
-            .with_cooldown(6.0)
+            .with_cooldown(0.250)
             .with_cost::<Mana>(-12.0)
-            .with_activation(|| {
+            .with_activation(|mut commands: Commands| {
                 info!("fireball!");
+                commands.spawn_empty();
             })
             .build(),
     );
@@ -206,14 +207,12 @@ pub struct Mana {
 pub fn inputs(
     mut query: Query<EntityMut, With<Player>>,
     keys: Res<ButtonInput<KeyCode>>,
-    context: GameAttributeContextMut,
+    mut context: GameAttributeContextMut,
+    commands: Commands
 ) {
     if let Ok(player) = query.get_single_mut() {
         if keys.just_pressed(KeyCode::Space) {
-            println!("try_activate");
-            let gec = context.get_ability_container(&player);
-            gec.unwrap()
-                .try_activate(&context, &player, "fireball".to_string());
+            context.try_activate(player, "fireball".to_string(), commands);
         }
     }
 }

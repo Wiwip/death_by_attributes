@@ -5,20 +5,19 @@ use crate::modifiers::{MetaModifier, ScalarModifier};
 use bevy::ecs::component::Components;
 use bevy::ecs::system::SystemParam;
 use bevy::log::warn_once;
-use bevy::prelude::{
-    AppTypeRegistry, Component, EntityMut, EntityRef, FromWorld, GetField, Res, Resource, World,
-};
+use bevy::prelude::{AppTypeRegistry, Commands, Component, EntityMut, EntityRef, FromWorld, GetField, Mut, Res, Resource, World};
 use bevy::reflect::{ReflectFromPtr, ReflectMut, ReflectRef, TypeRegistry, TypeRegistryArc};
 use std::any::TypeId;
 use std::sync::Arc;
 
 #[derive(SystemParam)]
-pub struct GameAttributeContextMut<'w> {
+pub struct GameAttributeContextMut<'w, 's> {
     pub components: &'w Components,
     pub type_registry: Res<'w, AppTypeRegistry>,
+    pub commands: Commands<'w, 's>,
 }
 
-impl GameAttributeContextMut<'_> {
+impl GameAttributeContextMut<'_, '_> {
     pub fn get_mut_by_id<'a>(
         &'a self,
         entity_mut: &'a EntityMut,
@@ -38,10 +37,8 @@ impl GameAttributeContextMut<'_> {
             .get(type_id)
             .unwrap_or_else(|| panic!("The type_id isn't registered."));
 
-        // Yes. This is evil. Should use entity_mut, but necessary due to a bevy engine bug.
         let reflect_from_ptr = reflect_data.data::<ReflectFromPtr>().unwrap();
         let data = unsafe { reflect_from_ptr.as_reflect_mut(ptr.assert_unique()) };
-        // Yes. This is evil. Should use entity_mut, but necessary due to a bevy engine bug.
 
         if let ReflectMut::Struct(value) = data.reflect_mut() {
             let attr = value.get_field_mut::<GameAttribute>("value").unwrap();
@@ -53,7 +50,7 @@ impl GameAttributeContextMut<'_> {
 
     pub fn get_by_id<'a>(
         &'a self,
-        entity_mut: &'a EntityRef,
+        entity_mut: &'a EntityMut,
         type_id: TypeId,
     ) -> Option<&GameAttribute> {
         let Some(component_id) = self.components.get_id(type_id) else {
@@ -95,6 +92,13 @@ impl GameAttributeContextMut<'_> {
         entity_mut.get::<GameAbilityComponent>()
     }
 
+    pub fn get_ability_container_mut<'a>(
+        &'a self,
+        entity_mut: &'a EntityMut<'_>,
+    ) -> Option<&GameAbilityComponent> {
+        entity_mut.get::<GameAbilityComponent>()
+    }
+
     pub fn get_mut<'a, T: Component + GameAttributeMarker>(
         &'a self,
         entity_mut: &'a EntityMut,
@@ -104,17 +108,17 @@ impl GameAttributeContextMut<'_> {
 
     pub fn get<'a, T: Component + GameAttributeMarker>(
         &'a self,
-        entity_mut: &'a EntityRef,
+        entity_mut: &'a EntityMut,
     ) -> Option<&GameAttribute> {
         self.get_by_id(entity_mut, TypeId::of::<T>())
     }
 
     pub fn convert_modifier(
         &self,
-        entity_ref: &EntityRef,
+        entity_mut: &EntityMut,
         meta: &MetaModifier,
     ) -> Option<ScalarModifier> {
-        if let Some(attribute) = self.get_by_id(entity_ref, meta.magnitude_attribute) {
+        if let Some(attribute) = self.get_by_id(entity_mut, meta.magnitude_attribute) {
             return Some(ScalarModifier {
                 target_attribute: meta.target_attribute,
                 magnitude: attribute.current_value,
@@ -122,6 +126,21 @@ impl GameAttributeContextMut<'_> {
             });
         }
         None
+    }
+
+    pub fn try_activate(
+        &self,
+        entity_mut: EntityMut,
+        name: String,
+        commands: Commands,
+    ) {
+        let Some(mut gec) = self.get_ability_container_mut(&entity_mut) else {
+            return;
+        };
+
+        if let Some(ability) = gec.abilities.get(&name) {
+            ability.try_activate(self, &entity_mut, commands);
+        }
     }
 }
 

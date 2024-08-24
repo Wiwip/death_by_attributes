@@ -1,7 +1,7 @@
 use crate::effect::GameEffectEvent;
 use crate::systems::{
-    handle_apply_effect_events, tick_active_effects, update_attribute_base_value,
-    update_attribute_current_value,
+    handle_apply_effect_events, tick_ability_cooldowns, tick_active_effects,
+    update_attribute_base_value, update_attribute_current_value,
 };
 use bevy::app::MainScheduleOrder;
 use bevy::ecs::schedule::ScheduleLabel;
@@ -30,7 +30,8 @@ impl Plugin for DeathByAttributesPlugin {
                 )
                     .chain(),
             )
-            .add_systems(CurrentValueUpdate, update_attribute_current_value);
+            .add_systems(CurrentValueUpdate, update_attribute_current_value)
+            .add_systems(BaseValueUpdate, tick_ability_cooldowns);
 
         app.world_mut()
             .resource_mut::<MainScheduleOrder>()
