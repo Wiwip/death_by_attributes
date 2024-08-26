@@ -1,5 +1,3 @@
-use std::cell::RefCell;
-use std::sync::RwLock;
 use crate::attributes::GameAttributeMarker;
 use crate::context::GameAttributeContextMut;
 use crate::effect::{apply_instant_modifier, GameEffect};
@@ -7,6 +5,7 @@ use crate::modifiers::Modifier::Scalar;
 use crate::modifiers::{Modifier, ScalarModifier};
 use bevy::prelude::*;
 use bevy::utils::HashMap;
+use std::sync::RwLock;
 
 pub type AbilityActivationFn = fn(Commands);
 
@@ -64,7 +63,12 @@ pub struct GameAbility {
 }
 
 impl GameAbility {
-    pub fn try_activate(&self, context: &GameAttributeContextMut, entity_mut: &EntityMut, commands: Commands) {
+    pub fn try_activate(
+        &self,
+        context: &GameAttributeContextMut,
+        entity_mut: &EntityMut,
+        commands: Commands,
+    ) {
         if self.can_activate(&context, entity_mut) {
             self.commit_cost(&context, entity_mut);
 
@@ -106,6 +110,5 @@ impl GameAbility {
         self.cooldown.write().unwrap().reset();
     }
 }
-
 
 pub trait AbilityTask {}

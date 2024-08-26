@@ -115,8 +115,7 @@ pub fn update_attribute_current_value(
                 .map(|&item| match item {
                     Modifier::Scalar(scalar_mod) => ModifierAggregator::from(scalar_mod),
                     Modifier::Meta(meta_mod) => {
-                        let scalar_mod_option =
-                            context.convert_modifier(&entity_mut, meta_mod);
+                        let scalar_mod_option = context.convert_modifier(&entity_mut, meta_mod);
                         if let Some(scalar_mod) = scalar_mod_option {
                             ModifierAggregator::from(&scalar_mod)
                         } else {

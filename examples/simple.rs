@@ -4,7 +4,9 @@ use bevy::ecs::schedule::{LogLevel, ScheduleBuildSettings};
 use bevy::prelude::*;
 use bevy::text::Text;
 use bevy::time::common_conditions::on_timer;
-use death_by_attributes::abilities::{AbilityActivationFn, GameAbilityBuilder, GameAbilityComponent};
+use death_by_attributes::abilities::{
+    AbilityActivationFn, GameAbilityBuilder, GameAbilityComponent,
+};
 use death_by_attributes::attributes::GameAttribute;
 use death_by_attributes::attributes::GameAttributeMarker;
 use death_by_attributes::context::GameAttributeContextMut;
@@ -45,6 +47,12 @@ fn register_types(type_registry: ResMut<AppTypeRegistry>) {
     type_registry.write().register::<Mana>();
 }
 
+#[derive(Component)]
+struct UiFireballText;
+
+#[derive(Component)]
+struct Fireball;
+
 fn setup(mut commands: Commands, mut event_writer: EventWriter<GameEffectEvent>) {
     let mut ability_component = GameAbilityComponent::default();
     ability_component.grant_ability(
@@ -54,7 +62,7 @@ fn setup(mut commands: Commands, mut event_writer: EventWriter<GameEffectEvent>)
             .with_cost::<Mana>(-12.0)
             .with_activation(|mut commands: Commands| {
                 info!("fireball!");
-                commands.spawn_empty();
+                commands.spawn(Fireball);
             })
             .build(),
     );
@@ -132,14 +140,44 @@ fn setup_ui(mut commands: Commands) {
         },
     );
 
-    let text_bundle = TextBundle::from_sections([
-        section.clone(),
-        section.clone(),
-        section.clone(),
-        section.clone(),
-        section.clone(),
-    ]);
-    commands.spawn((UiHealthText, text_bundle));
+    let root_uinode = commands
+        .spawn(NodeBundle {
+            style: Style {
+                width: Val::Percent(100.),
+                height: Val::Percent(100.),
+                justify_content: JustifyContent::SpaceBetween,
+                ..default()
+            },
+            ..default()
+        })
+        .id();
+
+    let left_column = commands
+        .spawn(NodeBundle {
+            style: Style {
+                flex_direction: FlexDirection::Column,
+                justify_content: JustifyContent::SpaceBetween,
+                align_items: AlignItems::Start,
+                flex_grow: 1.,
+                margin: UiRect::axes(Val::Px(15.), Val::Px(5.)),
+                ..default()
+            },
+            background_color: BackgroundColor(Color::BLACK.with_alpha(0.25)),
+            ..default()
+        })
+        .with_children(|builder| {
+            builder.spawn((
+                UiHealthText,
+                TextBundle::from_sections([
+                    section.clone(),
+                    section.clone(),
+                    section.clone(),
+                    section.clone(),
+                    section.clone(),
+                    section.clone(),
+                ]),
+            ));
+        });
 }
 
 fn display_attribute(
@@ -153,6 +191,7 @@ fn display_attribute(
         ),
         With<Player>,
     >,
+    q_fireball: Query<&Fireball>,
     mut q_ui: Query<&mut Text, With<UiHealthText>>,
 ) {
     for (health, health_cap, health_regen, mana, gec) in q_player.iter() {
@@ -180,6 +219,7 @@ fn display_attribute(
                 );
             }
             ui.sections[4].value = format!("\n{:}", gec);
+            ui.sections[5].value = format!("\nFireball count: {:.1}", q_fireball.iter().count());
         }
     }
 }
@@ -208,7 +248,7 @@ pub fn inputs(
     mut query: Query<EntityMut, With<Player>>,
     keys: Res<ButtonInput<KeyCode>>,
     mut context: GameAttributeContextMut,
-    commands: Commands
+    commands: Commands,
 ) {
     if let Ok(player) = query.get_single_mut() {
         if keys.just_pressed(KeyCode::Space) {

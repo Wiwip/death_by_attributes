@@ -62,8 +62,7 @@ pub fn apply_instant_modifier(
         match modifier {
             Modifier::Scalar(scalar_mod) => apply_scalar_modifier(target_attribute, scalar_mod),
             Modifier::Meta(meta_mod) => {
-                let scalar_mod_option =
-                    context.convert_modifier(entity_mut, meta_mod);
+                let scalar_mod_option = context.convert_modifier(entity_mut, meta_mod);
                 if let Some(scalar_mod) = scalar_mod_option {
                     apply_scalar_modifier(target_attribute, &scalar_mod);
                 }
@@ -114,8 +113,7 @@ pub fn apply_realtime_modifier(
                 apply_scalar_realtime_modifier(target_attribute, scalar_mod, elapsed_time)
             }
             Modifier::Meta(meta_mod) => {
-                let scalar_mod_option =
-                    context.convert_modifier(&entity_mut, meta_mod);
+                let scalar_mod_option = context.convert_modifier(&entity_mut, meta_mod);
                 if let Some(scalar_mod) = scalar_mod_option {
                     apply_scalar_realtime_modifier(target_attribute, &scalar_mod, elapsed_time);
                 }
