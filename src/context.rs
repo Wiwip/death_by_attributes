@@ -5,13 +5,10 @@ use crate::modifiers::{MetaModifier, ScalarModifier};
 use bevy::ecs::component::Components;
 use bevy::ecs::system::SystemParam;
 use bevy::log::warn_once;
-use bevy::prelude::{
-    AppTypeRegistry, Commands, Component, EntityMut, EntityRef, FromWorld, GetField, Mut, Res,
-    Resource, World,
-};
-use bevy::reflect::{ReflectFromPtr, ReflectMut, ReflectRef, TypeRegistry, TypeRegistryArc};
+use bevy::prelude::Res;
+use bevy::prelude::{AppTypeRegistry, Commands, Component, EntityMut, GetField, World};
+use bevy::reflect::{ReflectFromPtr, ReflectMut, ReflectRef};
 use std::any::TypeId;
-use std::sync::{Arc, RwLock};
 
 #[derive(SystemParam)]
 pub struct GameAttributeContextMut<'w> {
@@ -131,12 +128,54 @@ impl GameAttributeContextMut<'_> {
     }
 
     pub fn try_activate(&self, entity_mut: EntityMut, name: String, commands: Commands) {
-        let Some(mut gec) = self.get_ability_container_mut(&entity_mut) else {
+        let Some(gec) = self.get_ability_container_mut(&entity_mut) else {
             return;
         };
 
         if let Some(ability) = gec.abilities.get(&name) {
             ability.try_activate(self, &entity_mut, commands);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use attributes_macro::Attribute;
+    use bevy::ecs::system::RunSystemOnce;
+    use bevy::prelude::*;
+
+    #[derive(Component, Attribute, Reflect, Deref, DerefMut)]
+    pub struct SomeAttribute {
+        pub value: GameAttribute,
+    }
+
+    fn spawn_test(mut commands: Commands) {
+        commands.spawn(SomeAttribute::new(100.));
+    }
+
+    #[test]
+    fn test_get_attribute_exist() {
+        let mut world = World::default();
+
+        // Must register the attribute manually
+        let type_registry = AppTypeRegistry::default();
+        type_registry.write().register::<SomeAttribute>();
+        world.insert_resource(type_registry);
+
+        fn get_attr_system(
+            mut query: Query<EntityMut, With<SomeAttribute>>,
+            context: GameAttributeContextMut,
+        ) {
+            assert_eq!(query.iter().len(), 1);
+
+            for entity_mut in query.iter_mut() {
+                context.get::<SomeAttribute>(&entity_mut).unwrap();
+            }
+        }
+
+        world.run_system_once(spawn_test);
+        world.run_system_once(get_attr_system);
     }
 }

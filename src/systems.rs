@@ -6,12 +6,11 @@ use crate::effect::{
 };
 use crate::events::CurrentValueUpdateTrigger;
 use crate::modifiers::{Modifier, ModifierAggregator};
-use bevy::ecs::component::Components;
 use bevy::prelude::*;
 use bevy::utils::HashSet;
 
 pub fn handle_apply_effect_events(
-    mut query: Query<(EntityMut)>,
+    mut query: Query<EntityMut>,
     mut event_reader: EventReader<GameEffectEvent>,
     mut context: GameAttributeContextMut,
 ) {
@@ -54,7 +53,7 @@ pub fn tick_active_effects(mut query: Query<&mut GameEffectContainer>, time: Res
 }
 
 pub fn update_attribute_base_value(
-    mut query: Query<(EntityMut), With<GameEffectContainer>>,
+    mut query: Query<EntityMut, With<GameEffectContainer>>,
     time: Res<Time>,
     context: GameAttributeContextMut,
 ) {
@@ -89,7 +88,7 @@ pub fn update_attribute_current_value(
     mut query: Query<EntityMut>,
     context: GameAttributeContextMut,
 ) {
-    for mut entity_mut in query.iter_mut() {
+    for entity_mut in query.iter_mut() {
         let mut modifier_list = Vec::new();
         let mut attribute_list = HashSet::new();
 
