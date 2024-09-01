@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 bevy = { version = "0.15.0-dev", features = ["dynamic_linking"], git = "https://github.com/bevyengine/bevy.git" }
 attributes_macro = { path = "attributes_macro" }
-rand = "0.9.0-alpha.1"
+rand = "0.9.0-alpha.2"
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]
@@ -22,4 +22,9 @@ opt-level = 3
 [profile.release]
 codegen-units = 1
 
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
 
+[[bench]]
+name = "attribute_bench"
+harness = false

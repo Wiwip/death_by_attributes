@@ -5,8 +5,6 @@ use bevy::prelude::*;
 use std::any::TypeId;
 use std::fmt;
 use std::fmt::{Debug, Formatter};
-use std::ops::Mul;
-use std::ptr::write;
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -100,7 +98,7 @@ pub fn apply_realtime_effect(
 }
 
 pub fn apply_realtime_modifier(
-    mut context: &GameAttributeContextMut,
+    context: &GameAttributeContextMut,
     entity_mut: &EntityMut,
     modifier: &Modifier,
     elapsed_time: f32,
