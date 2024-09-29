@@ -5,7 +5,7 @@ use crate::modifiers::Modifier::Scalar;
 use crate::modifiers::{Modifier, ScalarModifier};
 use bevy::prelude::*;
 use bevy::utils::HashMap;
-use std::sync::RwLock;
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 pub type AbilityActivationFn = fn(Commands);
 
@@ -14,12 +14,20 @@ pub type AbilityActivationFn = fn(Commands);
 ///
 #[derive(Component, Default)]
 pub struct GameAbilityComponent {
-    pub abilities: HashMap<String, GameAbility>,
+    abilities: RwLock<HashMap<String, GameAbility>>,
 }
 
 impl GameAbilityComponent {
     pub fn grant_ability(&mut self, name: String, ability: GameAbility) {
-        self.abilities.insert(name, ability);
+        self.abilities.write().unwrap().insert(name, ability);
+    }
+
+    pub fn get_abilities_mut(&mut self) -> RwLockWriteGuard<'_, HashMap<String, GameAbility>> {
+        self.abilities.write().unwrap()
+    }
+
+    pub fn get_abilities(&self) -> RwLockReadGuard<'_, HashMap<String, GameAbility>> {
+        self.abilities.read().unwrap()
     }
 }
 
