@@ -12,7 +12,7 @@ pub struct GameAttribute {
 macro_rules! easy_attribute {
     ( $StructName:ident) => {
         #[derive(Component, Attribute, Reflect, Deref, DerefMut)]
-        struct $StructName {
+        pub struct $StructName {
             pub value: GameAttribute,
         }
     };
