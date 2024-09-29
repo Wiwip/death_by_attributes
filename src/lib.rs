@@ -15,6 +15,8 @@ pub mod events;
 pub mod modifiers;
 pub mod systems;
 
+pub use attributes_macro::Attribute;
+
 pub struct DeathByAttributesPlugin;
 
 impl Plugin for DeathByAttributesPlugin {

@@ -56,7 +56,7 @@ pub fn apply_instant_modifier(
 ) {
     let target_attribute_option = context.get_mut_by_id(entity_mut, modifier.get_attribute_id());
 
-    if let Some(target_attribute) = target_attribute_option {
+    /*if let Some(target_attribute) = target_attribute_option {
         match modifier {
             Modifier::Scalar(scalar_mod) => apply_scalar_modifier(target_attribute, scalar_mod),
             Modifier::Meta(meta_mod) => {
@@ -66,7 +66,7 @@ pub fn apply_instant_modifier(
                 }
             }
         }
-    }
+    }*/
 }
 
 fn apply_scalar_modifier(attribute: &mut GameAttribute, scalar_mod: &ScalarModifier) {

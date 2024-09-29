@@ -4,11 +4,14 @@ use crate::effect::GameEffectContainer;
 use crate::modifiers::{MetaModifier, ScalarModifier};
 use bevy::ecs::component::Components;
 use bevy::ecs::system::SystemParam;
+use bevy::ecs::world::FilteredEntityMut;
 use bevy::log::warn_once;
-use bevy::prelude::Res;
 use bevy::prelude::{AppTypeRegistry, Commands, Component, EntityMut, GetField, World};
+use bevy::prelude::{Entity, QueryBuilder, Res};
 use bevy::reflect::{ReflectFromPtr, ReflectMut, ReflectRef};
+use bevy::text::cosmic_text::fontdb::Query;
 use std::any::TypeId;
+use std::cell::Cell;
 
 #[derive(SystemParam)]
 pub struct GameAttributeContextMut<'w> {
@@ -100,7 +103,7 @@ impl GameAttributeContextMut<'_> {
 
     pub fn get_mut<'a, T: Component + GameAttributeMarker>(
         &'a self,
-        entity_mut: &'a EntityMut,
+        entity_mut: &'a mut EntityMut,
     ) -> Option<&mut GameAttribute> {
         self.get_mut_by_id(entity_mut, TypeId::of::<T>())
     }
@@ -132,7 +135,7 @@ impl GameAttributeContextMut<'_> {
             return;
         };
 
-        if let Some(ability) = gec.abilities.get(&name) {
+        if let Some(ability) = gec.get_abilities().get(&name) {
             ability.try_activate(self, &entity_mut, commands);
         }
     }

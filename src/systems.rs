@@ -85,10 +85,10 @@ pub fn update_attribute_base_value(
 
 pub fn update_attribute_current_value(
     mut commands: Commands,
-    mut query: Query<EntityMut>,
+    mut query: Query<EntityMut, With<GameEffectContainer>>,
     context: GameAttributeContextMut,
 ) {
-    for entity_mut in query.iter_mut() {
+    for mut entity_mut in query.iter_mut() {
         let mut modifier_list = Vec::new();
         let mut attribute_list = HashSet::new();
 
@@ -134,8 +134,12 @@ pub fn update_attribute_current_value(
 
 pub fn tick_ability_cooldowns(mut query: Query<&mut GameAbilityComponent>, time: Res<Time>) {
     for mut gac in &mut query {
-        for (_, ability) in &mut gac.abilities {
+        for (_, ability) in gac.get_abilities_mut().iter_mut() {
             ability.cooldown.write().unwrap().tick(time.delta());
         }
     }
+}
+
+fn test(mut world: World) {
+    QueryBuilder::<(Entity)>::new(&mut world).build();
 }
