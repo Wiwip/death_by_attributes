@@ -9,7 +9,6 @@ use bevy::log::warn_once;
 use bevy::prelude::{AppTypeRegistry, Commands, Component, EntityMut, GetField, World};
 use bevy::prelude::{Entity, QueryBuilder, Res};
 use bevy::reflect::{ReflectFromPtr, ReflectMut, ReflectRef};
-use bevy::text::cosmic_text::fontdb::Query;
 use std::any::TypeId;
 use std::cell::Cell;
 
@@ -30,11 +29,11 @@ impl GameAttributeContextMut<'_> {
             return None;
         };
 
-        let Some(ptr) = entity_mut.get_by_id(component_id) else {
+        let Ok(ptr) = entity_mut.get_by_id(component_id) else {
             return None;
         };
 
-        let type_registry = self.type_registry.read();
+        let type_registry = self.type_registry.0.read();
         let reflect_data = type_registry
             .get(type_id)
             .unwrap_or_else(|| panic!("The type_id isn't registered."));
@@ -60,11 +59,11 @@ impl GameAttributeContextMut<'_> {
             return None;
         };
 
-        let Some(ptr) = entity_mut.get_by_id(component_id) else {
+        let Ok(ptr) = entity_mut.get_by_id(component_id) else {
             return None;
         };
 
-        let type_registry = self.type_registry.read();
+        let type_registry = self.type_registry.0.read();
         let reflect_data = type_registry
             .get(type_id)
             .unwrap_or_else(|| panic!("The type isn't registered."));

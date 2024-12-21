@@ -2,7 +2,6 @@ use attributes_macro::Attribute;
 use bevy::ecs::component::{ComponentHooks, StorageType};
 use bevy::ecs::schedule::{LogLevel, ScheduleBuildSettings};
 use bevy::prelude::*;
-use bevy::text::Text;
 use bevy::time::common_conditions::on_timer;
 use death_by_attributes::abilities::{
     AbilityActivationFn, GameAbilityBuilder, GameAbilityComponent,
@@ -36,15 +35,15 @@ fn main() {
                 ..default()
             });
         })
-        .observe(clamp_health)
+        .add_observer(clamp_health)
         .run();
 }
 
 fn register_types(type_registry: ResMut<AppTypeRegistry>) {
-    type_registry.write().register::<Health>();
-    type_registry.write().register::<HealthCap>();
-    type_registry.write().register::<HealthRegen>();
-    type_registry.write().register::<Mana>();
+    type_registry.0.write().register::<Health>();
+    type_registry.0.write().register::<HealthCap>();
+    type_registry.0.write().register::<HealthRegen>();
+    type_registry.0.write().register::<Mana>();
 }
 
 #[derive(Component)]
@@ -127,56 +126,26 @@ fn clamp_health(
 struct Player;
 
 #[derive(Component)]
-struct UiHealthText;
+struct HealthInterfaceMarker;
+
+#[derive(Component)]
+struct ManaInterfaceMarker;
 
 fn setup_ui(mut commands: Commands) {
-    commands.spawn(Camera2dBundle::default());
+    commands.spawn(Camera2d::default());
 
-    let section = TextSection::new(
-        "",
-        TextStyle {
-            font_size: 18.0,
-            ..default()
-        },
-    );
-
-    let root_uinode = commands
-        .spawn(NodeBundle {
-            style: Style {
-                width: Val::Percent(100.),
-                height: Val::Percent(100.),
-                justify_content: JustifyContent::SpaceBetween,
-                ..default()
-            },
-            ..default()
-        })
-        .id();
-
-    let left_column = commands
-        .spawn(NodeBundle {
-            style: Style {
-                flex_direction: FlexDirection::Column,
-                justify_content: JustifyContent::SpaceBetween,
-                align_items: AlignItems::Start,
-                flex_grow: 1.,
-                margin: UiRect::axes(Val::Px(15.), Val::Px(5.)),
-                ..default()
-            },
-            background_color: BackgroundColor(Color::BLACK.with_alpha(0.25)),
+    commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Column,
+            justify_content: JustifyContent::SpaceBetween,
+            align_items: AlignItems::Start,
+            flex_grow: 1.,
+            margin: UiRect::axes(Val::Px(15.), Val::Px(5.)),
             ..default()
         })
         .with_children(|builder| {
-            builder.spawn((
-                UiHealthText,
-                TextBundle::from_sections([
-                    section.clone(),
-                    section.clone(),
-                    section.clone(),
-                    section.clone(),
-                    section.clone(),
-                    section.clone(),
-                ]),
-            ));
+            builder.spawn((Text::new("Health"), HealthInterfaceMarker));
+            builder.spawn((Text::new("Mana"), ManaInterfaceMarker));
         });
 }
 
@@ -186,41 +155,50 @@ fn display_attribute(
             &Health,
             Option<&HealthCap>,
             Option<&HealthRegen>,
-            Option<&Mana>,
+            &Mana,
             &GameEffectContainer,
         ),
         With<Player>,
     >,
-    q_fireball: Query<&Fireball>,
-    mut q_ui: Query<&mut Text, With<UiHealthText>>,
+    mut q_health: Query<&mut Text, With<HealthInterfaceMarker>>,
+    //mut q_mana: Query<&mut Text, With<ManaInterfaceMarker>>,
 ) {
     for (health, health_cap, health_regen, mana, gec) in q_player.iter() {
-        for mut ui in q_ui.iter_mut() {
-            ui.sections[0].value = format!(
+        if let Ok(mut text) = q_health.get_single_mut() {
+            text.0 = format!(
                 "Health: {:.1} [{:.1}]",
                 health.value.current_value, health.value.base_value
             );
-            if let Some(health_cap) = health_cap {
-                ui.sections[1].value = format!(
-                    "\nMaxHealth: {:.1} [{:.1}]",
-                    health_cap.value.current_value, health_cap.value.base_value
-                );
-            }
-            if let Some(health_regen) = health_regen {
-                ui.sections[2].value = format!(
-                    "\nHealth Regen: {:.1} [{:.1}]",
-                    health_regen.value.current_value, health_regen.value.base_value
-                );
-            }
-            if let Some(mana) = mana {
-                ui.sections[3].value = format!(
-                    "\nMana: {:.1} [{:.1}]",
-                    mana.value.current_value, mana.value.base_value
-                );
-            }
-            ui.sections[4].value = format!("\n{:}", gec);
-            ui.sections[5].value = format!("\nFireball count: {:.1}", q_fireball.iter().count());
         }
+
+        /*if let Ok(mut text) = q_mana.get_single_mut() {
+            text.0 = format!(
+                "\nMana: {:.1} [{:.1}]",
+                mana.value.current_value, mana.value.base_value
+            );
+        }*/
+
+        /*
+        if let Some(health_cap) = health_cap {
+            ui.sections[1].value = format!(
+                "\nMaxHealth: {:.1} [{:.1}]",
+                health_cap.value.current_value, health_cap.value.base_value
+            );
+        }
+        if let Some(health_regen) = health_regen {
+            ui.sections[2].value = format!(
+                "\nHealth Regen: {:.1} [{:.1}]",
+                health_regen.value.current_value, health_regen.value.base_value
+            );
+        }
+        if let Some(mana) = mana {
+            ui.sections[3].value = format!(
+                "\nMana: {:.1} [{:.1}]",
+                mana.value.current_value, mana.value.base_value
+            );
+        }
+        ui.sections[4].value = format!("\n{:}", gec);
+        ui.sections[5].value = format!("\nFireball count: {:.1}", q_fireball.iter().count());*/
     }
 }
 

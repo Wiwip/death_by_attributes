@@ -73,7 +73,7 @@ pub fn update_attribute_base_value(
                                 &context,
                                 &entity_mut,
                                 effect,
-                                time.delta_seconds(),
+                                time.delta_secs(),
                             );
                         }
                     }
