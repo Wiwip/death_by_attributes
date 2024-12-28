@@ -91,7 +91,7 @@ fn setup(mut commands: Commands, mut event_writer: EventWriter<GameEffectEvent>)
         ))
         .id();
 
-    let health_regen = GameEffectBuilder::new()
+    /*let health_regen = GameEffectBuilder::new()
         .with_permanent_duration()
         .with_realtime_application()
         .with_meta_modifier::<Health, HealthRegen>(ModifierType::Additive)
@@ -110,6 +110,15 @@ fn setup(mut commands: Commands, mut event_writer: EventWriter<GameEffectEvent>)
     event_writer.send(GameEffectEvent {
         entity: id,
         effect: event_effect,
+    });*/
+
+    let damage_effect = GameEffectBuilder::new()
+        .with_scalar_modifier::<Health>(-50.0, ModifierType::Additive)
+        .build();
+
+    event_writer.send(GameEffectEvent{
+        entity: id,
+        effect: damage_effect,
     });
 }
 
@@ -117,6 +126,7 @@ fn clamp_health(
     trigger: Trigger<CurrentValueUpdateTrigger>,
     mut query: Query<(&mut Health, &HealthCap)>,
 ) {
+    info!("ugh");
     let (mut health, max_health) = query.get_mut(trigger.entity()).unwrap();
     health.base_value = health.base_value.clamp(0.0, max_health.value.current_value);
     health.current_value = health.base_value;
