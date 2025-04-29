@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bevy = { version = "0.15", features = ["dynamic_linking"] }
+bevy = { version = "0.16", features = ["dynamic_linking"] }
 attributes_macro = { path = "attributes_macro" }
 
 # Enable a small amount of optimization in debug mode
@@ -24,6 +24,6 @@ codegen-units = 1
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
 
-[[bench]]
-name = "attribute_bench"
-harness = false
+#[[bench]]
+#name = "attribute_bench"
+#harness = false

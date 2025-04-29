@@ -4,8 +4,8 @@ use crate::effect::{apply_instant_modifier, GameEffect};
 use crate::modifiers::Modifier::Scalar;
 use crate::modifiers::{Modifier, ScalarModifier};
 use bevy::prelude::*;
-use bevy::utils::HashMap;
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use bevy::platform::collections::HashMap;
 
 pub type AbilityActivationFn = fn(Commands);
 
@@ -37,8 +37,8 @@ pub struct GameAbilityBuilder {
 }
 
 impl GameAbilityBuilder {
-    pub fn with_effect(mut self, effect: GameEffect) -> Self {
-        self.ability.applied_effects.push(effect);
+    pub fn with_effect(mut self, effect: GameEffect, who: GameEffectTarget) -> Self {
+        self.ability.applied_effects.push((who, effect));
         self
     }
 
@@ -62,9 +62,14 @@ impl GameAbilityBuilder {
     }
 }
 
+pub enum GameEffectTarget {
+    OwnUnit,
+    Target,
+}
+
 #[derive(Default)]
 pub struct GameAbility {
-    pub applied_effects: Vec<GameEffect>,
+    pub applied_effects: Vec<(GameEffectTarget, GameEffect)>,
     pub cost: Option<Modifier>,
     pub cooldown: RwLock<Timer>,
     pub ability_activation: Option<AbilityActivationFn>,

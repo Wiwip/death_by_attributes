@@ -129,8 +129,8 @@ impl GameAttributeContextMut<'_> {
         None
     }
 
-    pub fn try_activate(&self, entity_mut: EntityMut, name: String, commands: Commands) {
-        let Some(gec) = self.get_ability_container_mut(&entity_mut) else {
+    pub fn try_activate(&self, entity_mut: &EntityMut, name: String, commands: Commands) {
+        let Some(gec) = self.get_ability_container_mut(entity_mut) else {
             return;
         };
 

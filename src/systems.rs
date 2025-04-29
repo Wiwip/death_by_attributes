@@ -1,3 +1,4 @@
+use bevy::platform::collections::HashSet;
 use crate::abilities::GameAbilityComponent;
 use crate::context::GameAttributeContextMut;
 use crate::effect::{
@@ -7,7 +8,6 @@ use crate::effect::{
 use crate::events::CurrentValueUpdateTrigger;
 use crate::modifiers::{Modifier, ModifierAggregator};
 use bevy::prelude::*;
-use bevy::utils::HashSet;
 
 pub fn handle_apply_effect_events(
     mut query: Query<EntityMut>,

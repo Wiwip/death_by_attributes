@@ -4,7 +4,7 @@ use bevy::ecs::schedule::{LogLevel, ScheduleBuildSettings};
 use bevy::prelude::*;
 use bevy::time::common_conditions::on_timer;
 use death_by_attributes::abilities::{
-    AbilityActivationFn, GameAbilityBuilder, GameAbilityComponent,
+    AbilityActivationFn, GameAbilityBuilder, GameAbilityComponent, GameEffectTarget,
 };
 use death_by_attributes::attributes::GameAttribute;
 use death_by_attributes::attributes::GameAttributeMarker;
@@ -27,6 +27,10 @@ fn main() {
         .add_systems(
             Update,
             display_attribute.run_if(on_timer(Duration::from_millis(16))),
+        )
+        .add_systems(
+            Update,
+            display_attribute_entity.run_if(on_timer(Duration::from_millis(16))),
         )
         .add_systems(PreUpdate, inputs)
         .edit_schedule(Update, |schedule| {
@@ -75,6 +79,7 @@ fn setup(mut commands: Commands, mut event_writer: EventWriter<GameEffectEvent>)
                     .with_duration(4.0)
                     .with_scalar_modifier::<Health>(0.40, ModifierType::Multiplicative)
                     .build(),
+                GameEffectTarget::OwnUnit,
             )
             .build(),
     );
@@ -91,7 +96,7 @@ fn setup(mut commands: Commands, mut event_writer: EventWriter<GameEffectEvent>)
         ))
         .id();
 
-    /*let health_regen = GameEffectBuilder::new()
+    let health_regen = GameEffectBuilder::new()
         .with_permanent_duration()
         .with_realtime_application()
         .with_meta_modifier::<Health, HealthRegen>(ModifierType::Additive)
@@ -110,36 +115,48 @@ fn setup(mut commands: Commands, mut event_writer: EventWriter<GameEffectEvent>)
     event_writer.send(GameEffectEvent {
         entity: id,
         effect: event_effect,
-    });*/
+    });
 
     let damage_effect = GameEffectBuilder::new()
         .with_scalar_modifier::<Health>(-50.0, ModifierType::Additive)
         .build();
 
-    event_writer.send(GameEffectEvent{
+    event_writer.send(GameEffectEvent {
         entity: id,
         effect: damage_effect,
     });
+
+    commands
+        .spawn((
+            GameAbilityComponent::default(),
+            GameEffectContainer::default(),
+            Health::new(1000.0),
+            HealthCap::new(1000.0),
+        ));
 }
 
 fn clamp_health(
     trigger: Trigger<CurrentValueUpdateTrigger>,
     mut query: Query<(&mut Health, &HealthCap)>,
 ) {
-    info!("ugh");
-    let (mut health, max_health) = query.get_mut(trigger.entity()).unwrap();
-    health.base_value = health.base_value.clamp(0.0, max_health.value.current_value);
-    health.current_value = health.base_value;
+
+    if let Ok((mut health, max_health)) = query.get_mut(trigger.target()) {
+        health.base_value = health.base_value.clamp(0.0, max_health.value.current_value);
+        health.current_value = health.base_value;
+    } else {
+        println!("Incorrect entity target in clamp_health.")
+    }
+
 }
 
 #[derive(Component)]
 struct Player;
 
 #[derive(Component)]
-struct HealthInterfaceMarker;
+struct PlayerHealthMarker;
 
 #[derive(Component)]
-struct ManaInterfaceMarker;
+struct EntityHealthMarker;
 
 fn setup_ui(mut commands: Commands) {
     commands.spawn(Camera2d::default());
@@ -154,61 +171,36 @@ fn setup_ui(mut commands: Commands) {
             ..default()
         })
         .with_children(|builder| {
-            builder.spawn((Text::new("Health"), HealthInterfaceMarker));
-            builder.spawn((Text::new("Mana"), ManaInterfaceMarker));
+            builder.spawn((Text::new("Health"), PlayerHealthMarker));
+            builder.spawn((Text::new("Entity Health"), EntityHealthMarker));
         });
 }
 
 fn display_attribute(
-    q_player: Query<
-        (
-            &Health,
-            Option<&HealthCap>,
-            Option<&HealthRegen>,
-            &Mana,
-            &GameEffectContainer,
-        ),
-        With<Player>,
-    >,
-    mut q_health: Query<&mut Text, With<HealthInterfaceMarker>>,
-    //mut q_mana: Query<&mut Text, With<ManaInterfaceMarker>>,
+    q_player: Query<&Health, With<Player>>,
+    mut q_health: Query<&mut Text, With<PlayerHealthMarker>>,
 ) {
-    for (health, health_cap, health_regen, mana, gec) in q_player.iter() {
+    for (health) in q_player.iter() {
         if let Ok(mut text) = q_health.get_single_mut() {
             text.0 = format!(
                 "Health: {:.1} [{:.1}]",
                 health.value.current_value, health.value.base_value
             );
         }
+    }
+}
 
-        /*if let Ok(mut text) = q_mana.get_single_mut() {
+fn display_attribute_entity(
+    q_entity: Query<&Health, Without<Player>>,
+    mut q_health: Query<&mut Text, With<EntityHealthMarker>>,
+) {
+    for (health) in q_entity.iter() {
+        if let Ok(mut text) = q_health.get_single_mut() {
             text.0 = format!(
-                "\nMana: {:.1} [{:.1}]",
-                mana.value.current_value, mana.value.base_value
-            );
-        }*/
-
-        /*
-        if let Some(health_cap) = health_cap {
-            ui.sections[1].value = format!(
-                "\nMaxHealth: {:.1} [{:.1}]",
-                health_cap.value.current_value, health_cap.value.base_value
+                "Entity Health: {:.1} [{:.1}]",
+                health.value.current_value, health.value.base_value
             );
         }
-        if let Some(health_regen) = health_regen {
-            ui.sections[2].value = format!(
-                "\nHealth Regen: {:.1} [{:.1}]",
-                health_regen.value.current_value, health_regen.value.base_value
-            );
-        }
-        if let Some(mana) = mana {
-            ui.sections[3].value = format!(
-                "\nMana: {:.1} [{:.1}]",
-                mana.value.current_value, mana.value.base_value
-            );
-        }
-        ui.sections[4].value = format!("\n{:}", gec);
-        ui.sections[5].value = format!("\nFireball count: {:.1}", q_fireball.iter().count());*/
     }
 }
 
@@ -233,14 +225,17 @@ pub struct Mana {
 }
 
 pub fn inputs(
-    mut query: Query<EntityMut, With<Player>>,
+    mut q_player: Query<EntityMut, With<Player>>,
+    mut q_entities: Query<EntityMut, (Without<Player>, With<Health>)>,
     keys: Res<ButtonInput<KeyCode>>,
     mut context: GameAttributeContextMut,
     commands: Commands,
 ) {
-    if let Ok(player) = query.get_single_mut() {
+    if let Ok(player) = q_player.get_single_mut() {
         if keys.just_pressed(KeyCode::Space) {
-            context.try_activate(player, "fireball".to_string(), commands);
+            if let Ok(entity) = q_entities.get_single_mut() {
+                context.try_activate(&player, "fireball".to_string(), commands);
+            }
         }
     }
 }
