@@ -1,13 +1,7 @@
 [package]
 name = "death_by_attributes"
 version = "0.1.0"
-edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-bevy = { version = "0.16", features = ["dynamic_linking"] }
-attributes_macro = { path = "attributes_macro" }
+edition = "2024"
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]
@@ -21,9 +15,25 @@ opt-level = 3
 [profile.release]
 codegen-units = 1
 
-[dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
+[dependencies]
+attributes_macro = { path = "attributes_macro" }
 
-#[[bench]]
-#name = "attribute_bench"
-#harness = false
+[dependencies.bevy]
+version = "0.16"
+default-features = false
+features = [
+    "bevy_core_pipeline",
+    "bevy_log",
+    "bevy_state",
+    "dynamic_linking",
+]
+
+[dev-dependencies.bevy]
+version = "0.16"
+default-features = false
+features = [
+    "bevy_core_pipeline",
+    "bevy_log",
+    "bevy_state",
+    "dynamic_linking",
+]
