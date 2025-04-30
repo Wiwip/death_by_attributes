@@ -3,7 +3,7 @@ extern crate proc_macro;
 use proc_macro::TokenStream;
 
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput};
+use syn::{DeriveInput, parse_macro_input};
 
 #[proc_macro_derive(Attribute)]
 pub fn derive_attribute_macro(input: TokenStream) -> TokenStream {
@@ -22,10 +22,8 @@ pub fn derive_attribute_macro(input: TokenStream) -> TokenStream {
         impl #st_name {
             pub fn new(value: f32) -> Self {
                 Self {
-                    value: GameAttribute {
-                        current_value: value,
-                        base_value: value,
-                    }
+                    current_value: value,
+                    base_value: value,
                 }
             }
         }
