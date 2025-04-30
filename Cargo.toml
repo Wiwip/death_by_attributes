@@ -17,10 +17,11 @@ codegen-units = 1
 
 [dependencies]
 attributes_macro = { path = "attributes_macro" }
+rand = "0.8.5"
 
 [dependencies.bevy]
 version = "0.16"
-default-features = false
+default-features = true
 features = [
     "bevy_core_pipeline",
     "bevy_log",
@@ -30,10 +31,7 @@ features = [
 
 [dev-dependencies.bevy]
 version = "0.16"
-default-features = false
+default-features = true
 features = [
-    "bevy_core_pipeline",
-    "bevy_log",
-    "bevy_state",
     "dynamic_linking",
 ]

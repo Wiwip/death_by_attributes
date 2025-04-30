@@ -1,7 +1,3 @@
-use crate::abilities::GameAbilityComponent;
-use crate::attributes::{GameAttribute, GameAttributeMarker};
-use crate::effect::GameEffectContainer;
-use crate::modifiers::{MetaModifier, ScalarModifier};
 use bevy::ecs::component::Components;
 use bevy::ecs::system::SystemParam;
 use bevy::ecs::world::FilteredEntityMut;
@@ -11,7 +7,7 @@ use bevy::prelude::{Entity, QueryBuilder, Res};
 use bevy::reflect::{ReflectFromPtr, ReflectMut, ReflectRef};
 use std::any::TypeId;
 use std::cell::Cell;
-
+/*
 #[derive(SystemParam)]
 pub struct GameAttributeContextMut<'w> {
     pub components: &'w Components,
@@ -181,3 +177,4 @@ mod tests {
         world.run_system_once(get_attr_system);
     }
 }
+*/

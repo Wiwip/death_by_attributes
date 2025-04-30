@@ -1,37 +1,34 @@
-use bevy::platform::collections::HashSet;
-use crate::abilities::GameAbilityComponent;
-use crate::context::GameAttributeContextMut;
-use crate::effect::{
-    apply_instant_effect, apply_realtime_effect, GameEffectContainer, GameEffectDuration,
-    GameEffectEvent, GameEffectPeriod,
-};
-use crate::events::CurrentValueUpdateTrigger;
-use crate::modifiers::{Modifier, ModifierAggregator};
+use crate::AttributeEntityMut;
+use crate::effects::{GameEffectContainer, GameEffectDuration, GameEffectEvent, GameEffectPeriod};
+use crate::modifiers::ModAggregator;
+use bevy::platform::collections::{HashMap, HashSet, hash_map};
+use bevy::platform::hash::Hashed;
 use bevy::prelude::*;
+use bevy::utils::PreHashMap;
+use std::any::{Any, TypeId};
+use std::borrow::Borrow;
+use std::collections::hash_map::Entry;
+use std::time::Instant;
 
 pub fn handle_apply_effect_events(
-    mut query: Query<EntityMut>,
+    mut query: Query<(AttributeEntityMut, &mut GameEffectContainer)>,
     mut event_reader: EventReader<GameEffectEvent>,
-    mut context: GameAttributeContextMut,
 ) {
-    for ev in event_reader.read() {
-        if let Ok(mut entity_mut) = query.get_mut(ev.entity) {
-            // The context having an entity_ref blocks us from having a mutable ref to the game effect container
-            // thus the addition to the vector list
+    let start = Instant::now();
 
+    for ev in event_reader.read() {
+        if let Ok((mut entity_mut, mut container)) = query.get_mut(ev.entity) {
             match &ev.effect.duration {
                 GameEffectDuration::Instant => {
-                    apply_instant_effect(&mut context, &mut entity_mut, &ev.effect);
+                    for modifier in &ev.effect.modifiers {
+                        modifier.0.apply_base(&mut entity_mut).unwrap()
+                    }
                 }
                 GameEffectDuration::Duration(_) => {
-                    if let Some(gec) = context.get_effect_container(&entity_mut) {
-                        gec.add_effect(&ev.effect);
-                    };
+                    container.add_effect(&ev.effect);
                 }
                 GameEffectDuration::Permanent => {
-                    if let Some(gec) = context.get_effect_container(&entity_mut) {
-                        gec.add_effect(&ev.effect);
-                    };
+                    container.add_effect(&ev.effect);
                 }
             }
         } else {
@@ -41,105 +38,90 @@ pub fn handle_apply_effect_events(
             )
         }
     }
+
+    let elapsed = start.elapsed();
+    println!("handle_apply_effect_events: {:?}", elapsed)
 }
 
 pub fn tick_active_effects(mut query: Query<&mut GameEffectContainer>, time: Res<Time>) {
-    for mut gec in &mut query {
-        for effect in &mut gec.effects.try_lock().unwrap().iter_mut() {
+    let start = Instant::now();
+
+    query.par_iter_mut().for_each(|mut container| {
+        for effect in &mut container.effects.iter_mut() {
             effect.tick_effect(time.delta());
         }
-        gec.remove_expired_effects();
-    }
+        container.remove_expired_effects();
+    });
+
+    let elapsed = start.elapsed();
+    println!("tick_active_effects: {:?}", elapsed)
 }
 
-pub fn update_attribute_base_value(
-    mut query: Query<EntityMut, With<GameEffectContainer>>,
-    time: Res<Time>,
-    context: GameAttributeContextMut,
-) {
-    for entity_mut in query.iter_mut() {
-        if let Some(gec) = context.get_effect_container(&entity_mut) {
-            let effect_lock = gec.effects.try_lock().unwrap();
-            for effect in effect_lock.iter() {
+pub fn update_attribute_base_value(mut query: Query<(AttributeEntityMut, &GameEffectContainer)>) {
+    let start = Instant::now();
+
+    query
+        .par_iter_mut()
+        .for_each(|(mut entity_mut, container)| {
+            for effect in &container.effects {
                 if let Some(period) = &effect.periodic_application {
                     match period {
                         GameEffectPeriod::Periodic(timer) => {
                             if timer.just_finished() {
-                                apply_instant_effect(&context, &entity_mut, effect);
+                                for modifier in &effect.modifiers {
+                                    modifier.0.apply_base(&mut entity_mut).unwrap()
+                                }
                             }
                         }
-                        GameEffectPeriod::Realtime => {
-                            apply_realtime_effect(
-                                &context,
-                                &entity_mut,
-                                effect,
-                                time.delta_secs(),
-                            );
-                        }
+                        _ => {}
                     }
                 }
             }
-        };
-    }
+        });
+
+    let elapsed = start.elapsed();
+    println!("update_attribute_base_value: {:?}", elapsed)
 }
 
 pub fn update_attribute_current_value(
-    mut commands: Commands,
-    mut query: Query<EntityMut, With<GameEffectContainer>>,
-    context: GameAttributeContextMut,
+    mut query: Query<(AttributeEntityMut, &GameEffectContainer)>,
 ) {
-    for mut entity_mut in query.iter_mut() {
+    let start = Instant::now();
+    for (mut entity_mut, container) in query.iter_mut() {
         let mut modifier_list = Vec::new();
-        let mut attribute_list = HashSet::new();
+        let mut attribute_list = PreHashMap::default();
 
-        let Some(gec) = context.get_effect_container(&entity_mut) else {
-            continue;
-        };
-
-        let effect_lock = gec.effects.try_lock().unwrap();
-        for effect in effect_lock.iter() {
+        for effect in container.effects.iter() {
             if effect.periodic_application.is_none() {
                 modifier_list.extend(&effect.modifiers);
 
                 for modifier in &effect.modifiers {
-                    attribute_list.insert(modifier.get_attribute_id());
+                    attribute_list.insert(modifier.0.evaluator_id(), modifier.clone());
                 }
             }
         }
 
-        for attribute_id in attribute_list {
-            let aggregate: ModifierAggregator = modifier_list
+        for (type_id, eval) in attribute_list {
+            let aggregator: ModAggregator = modifier_list
                 .iter()
-                .filter(|&item| attribute_id == item.get_attribute_id())
-                .map(|&item| match item {
-                    Modifier::Scalar(scalar_mod) => ModifierAggregator::from(scalar_mod),
-                    Modifier::Meta(meta_mod) => {
-                        let scalar_mod_option = context.convert_modifier(&entity_mut, meta_mod);
-                        if let Some(scalar_mod) = scalar_mod_option {
-                            ModifierAggregator::from(&scalar_mod)
-                        } else {
-                            ModifierAggregator::default()
-                        }
-                    }
-                })
+                .filter(|&item| type_id == item.0.evaluator_id())
+                .map(|&item| item.0.aggregator())
                 .sum();
 
-            if let Some(attribute) = context.get_mut_by_id(&entity_mut, attribute_id) {
-                attribute.current_value = aggregate.get_current_value(attribute.base_value);
-                commands.trigger_targets(CurrentValueUpdateTrigger, entity_mut.id());
-            }
+            let _ = eval.0.commit(&mut entity_mut, aggregator);
+            //println!("{:?}", aggregator);
+
+            // commands.trigger_targets(CurrentValueUpdateTrigger, entity_mut.id());
         }
     }
+    let elapsed = start.elapsed();
+    println!("update_attribute_current_value: {:?}", elapsed)
 }
 
-pub fn tick_ability_cooldowns(mut query: Query<&mut GameAbilityComponent>, time: Res<Time>) {
+pub fn tick_ability_cooldowns(mut query: Query<&mut Transform>, time: Res<Time>) {
     for mut gac in &mut query {
-        for (_, ability) in gac.get_abilities_mut().iter_mut() {
+        /*for (_, ability) in gac.get_abilities_mut().iter_mut() {
             ability.cooldown.write().unwrap().tick(time.delta());
-        }
+        }*/
     }
-}
-
-fn test(mut world: World) {
-    QueryBuilder::<(Entity)>::new(&mut world).build();
 }

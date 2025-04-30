@@ -1,18 +1,8 @@
-use crate::attributes::GameAttributeMarker;
-use crate::context::GameAttributeContextMut;
-use crate::effect::{apply_instant_modifier, GameEffect};
-use crate::modifiers::Modifier::Scalar;
-use crate::modifiers::{Modifier, ScalarModifier};
 use bevy::prelude::*;
-use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
-use bevy::platform::collections::HashMap;
 
 pub type AbilityActivationFn = fn(Commands);
 
-///
-///
-///
-#[derive(Component, Default)]
+/*#[derive(Component, Default)]
 pub struct GameAbilityComponent {
     abilities: RwLock<HashMap<String, GameAbility>>,
 }
@@ -66,8 +56,8 @@ pub enum GameEffectTarget {
     OwnUnit,
     Target,
 }
-
-#[derive(Default)]
+*/
+/*#[derive(Default)]
 pub struct GameAbility {
     pub applied_effects: Vec<(GameEffectTarget, GameEffect)>,
     pub cost: Option<Modifier>,
@@ -123,5 +113,4 @@ impl GameAbility {
         self.cooldown.write().unwrap().reset();
     }
 }
-
-pub trait AbilityTask {}
+*/

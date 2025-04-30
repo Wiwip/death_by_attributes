@@ -14,16 +14,13 @@ pub fn derive_attribute_macro(input: TokenStream) -> TokenStream {
 
     let stream = quote! {
         #[automatically_derived]
-        impl GameAttributeMarker for #st_name #ty_generics #where_clause {
-
-        }
-
-        #[automatically_derived]
         impl #st_name {
             pub fn new(value: f32) -> Self {
                 Self {
-                    current_value: value,
-                    base_value: value,
+                    attribute: AttributeDef {
+                        current_value: value,
+                        base_value: value,
+                    }
                 }
             }
         }
