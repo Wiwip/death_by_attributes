@@ -1,7 +1,7 @@
 use crate::effects::{GameEffectContainer, GameEffectEvent};
 use crate::systems::{
-    handle_apply_effect_events, tick_ability_cooldowns,
-    tick_active_effects, update_attribute_base_value, update_attribute_current_value,
+    handle_apply_effect_events, tick_ability_cooldowns, tick_active_effects,
+    update_attribute_base_value, update_attribute_current_value,
 };
 use bevy::app::MainScheduleOrder;
 use bevy::ecs::schedule::ScheduleLabel;
@@ -10,15 +10,15 @@ use std::any::TypeId;
 
 pub mod abilities;
 pub mod attributes;
-pub mod context;
-pub mod evaluators;
 pub mod effects;
+pub mod meta_modifiers;
 pub mod modifiers;
 pub mod systems;
 
+use crate::abilities::GameAbilityContainer;
 use crate::attributes::AttributeDef;
 pub use attributes_macro::Attribute;
-use bevy::ecs::world::EntityMutExcept;
+use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
 
 pub struct DeathByAttributesPlugin;
 
@@ -47,7 +47,8 @@ impl Plugin for DeathByAttributesPlugin {
     }
 }
 
-type AttributeEntityMut<'w> = EntityMutExcept<'w, (GameEffectContainer)>;
+pub type AttributeEntityMut<'w> = EntityMutExcept<'w, (GameEffectContainer, GameAbilityContainer)>;
+pub type AttributeEntityRef<'w> = EntityRefExcept<'w, (GameEffectContainer, GameAbilityContainer)>;
 
 #[derive(ScheduleLabel, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BaseValueUpdate;
@@ -75,5 +76,26 @@ pub enum AttributeEvaluationError {
     AttributeNotPresent(TypeId),
 }
 
-trait Editable: Reflect + Sized + Send + Sync + 'static {}
-impl Editable for AttributeDef {}
+pub trait Editable: Reflect + Sized + Send + Sync + 'static {
+    fn get_base_value(&self) -> f32;
+    fn get_current_value(&self) -> f32;
+
+    fn set_base_value(&mut self, value: f32);
+    fn set_current_value(&mut self, value: f32);
+}
+impl Editable for AttributeDef {
+    fn get_base_value(&self) -> f32 {
+        self.base_value
+    }
+    fn get_current_value(&self) -> f32 {
+        self.current_value
+    }
+
+    fn set_base_value(&mut self, value: f32) {
+        self.base_value = value;
+    }
+
+    fn set_current_value(&mut self, value: f32) {
+        self.current_value = value;
+    }
+}

@@ -1,13 +1,22 @@
+use crate::attributes::AttributeAccessorMut;
+use crate::effects::GameEffect;
+use crate::{AttributeEntityMut, AttributeEntityRef};
+
+use crate::modifiers::ModType::Additive;
+use crate::modifiers::{AttributeModVariable, AttributeModifier, ModEvaluator};
+use bevy::platform::collections::HashMap;
+use bevy::prelude::ops::abs;
 use bevy::prelude::*;
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-pub type AbilityActivationFn = fn(Commands);
+pub type AbilityActivationFn = fn(&mut AttributeEntityMut, Commands);
 
-/*#[derive(Component, Default)]
-pub struct GameAbilityComponent {
+#[derive(Component, Default)]
+pub struct GameAbilityContainer {
     abilities: RwLock<HashMap<String, GameAbility>>,
 }
 
-impl GameAbilityComponent {
+impl GameAbilityContainer {
     pub fn grant_ability(&mut self, name: String, ability: GameAbility) {
         self.abilities.write().unwrap().insert(name, ability);
     }
@@ -32,13 +41,21 @@ impl GameAbilityBuilder {
         self
     }
 
-    pub fn with_cost<T: Component + GameAttributeMarker>(mut self, cost: f32) -> Self {
-        self.ability.cost = Some(Scalar(ScalarModifier::additive::<T>(cost)));
+    pub fn with_cost(
+        mut self,
+        cost: f32,
+        attribute_ref: impl AttributeAccessorMut + Clone,
+    ) -> Self {
+        let evaluator = ModEvaluator::new(cost, Additive);
+        self.ability.cost = Some(AttributeModVariable::new(AttributeModifier::new(
+            attribute_ref,
+            evaluator,
+        )));
         self
     }
 
     pub fn with_cooldown(mut self, seconds: f32) -> Self {
-        self.ability.cooldown = RwLock::new(Timer::from_seconds(seconds, TimerMode::Once));
+        self.ability.cooldown = Timer::from_seconds(seconds, TimerMode::Once);
         self
     }
 
@@ -53,37 +70,32 @@ impl GameAbilityBuilder {
 }
 
 pub enum GameEffectTarget {
-    OwnUnit,
+    Caller,
     Target,
 }
-*/
-/*#[derive(Default)]
+
+#[derive(Default)]
 pub struct GameAbility {
     pub applied_effects: Vec<(GameEffectTarget, GameEffect)>,
-    pub cost: Option<Modifier>,
-    pub cooldown: RwLock<Timer>,
+    pub cost: Option<AttributeModVariable>,
+    pub cooldown: Timer,
     pub ability_activation: Option<AbilityActivationFn>,
 }
 
 impl GameAbility {
-    pub fn try_activate(
-        &self,
-        context: &GameAttributeContextMut,
-        entity_mut: &EntityMut,
-        commands: Commands,
-    ) {
-        if self.can_activate(&context, entity_mut) {
-            self.commit_cost(&context, entity_mut);
+    pub fn try_activate(&mut self, entity_mut: &mut AttributeEntityMut, commands: Commands) {
+        if self.can_activate(entity_mut) {
+            self.commit_cost(entity_mut);
 
             if let Some(activation_function) = self.ability_activation {
-                activation_function(commands);
+                activation_function(entity_mut, commands);
             }
         }
     }
 
-    pub fn can_activate(&self, context: &GameAttributeContextMut, entity_mut: &EntityMut) -> bool {
-        // Check cooldown first. If ability is still on cooldown, cannot activate yet.
-        if !self.cooldown.read().unwrap().finished() {
+    pub fn can_activate(&self, entity_ref: &mut AttributeEntityMut) -> bool {
+        // Check cooldown first. If ability is still on cooldown, we cannot activate it yet.
+        if !self.cooldown.finished() {
             return false;
         }
 
@@ -92,25 +104,17 @@ impl GameAbility {
             return true;
         };
 
-        let attr_opt = context.get_by_id(&entity_mut, modifier.get_attribute_id());
-        let Some(attr) = attr_opt else {
-            return false;
-        };
+        let current_value = modifier.0.get_current_value(entity_ref);
+        let cost_magnitude = modifier.0.get_magnitude();
 
-        let cost_mod = match modifier {
-            Scalar(scalar) => scalar,
-            Modifier::Meta(meta) => &context.convert_modifier(&entity_mut, meta).unwrap(),
-        };
-
-        f32::abs(cost_mod.magnitude) <= attr.current_value
+        f32::abs(cost_magnitude) <= current_value
     }
 
-    pub fn commit_cost(&self, context: &GameAttributeContextMut, entity_mut: &EntityMut) {
+    pub fn commit_cost(&mut self, entity_mut: &mut AttributeEntityMut) {
         if let Some(modifier) = &self.cost {
-            apply_instant_modifier(context, entity_mut, &modifier);
+            modifier.0.apply(entity_mut).expect("couldn't commit");
         }
 
-        self.cooldown.write().unwrap().reset();
+        self.cooldown.reset();
     }
 }
-*/

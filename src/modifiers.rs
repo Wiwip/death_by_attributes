@@ -1,177 +1,216 @@
-use crate::attributes::{AttributeDef, EditableAttribute};
-use crate::{Editable, AttributeEntityMut};
+use crate::attributes::{AttributeAccessorMut, AttributeDef};
+use std::any::TypeId;
+
+use crate::{AttributeEntityMut, AttributeEntityRef, Editable};
 use bevy::animation::AnimationEvaluationError;
-use bevy::ecs::component::Mutable;
 use bevy::platform::hash::Hashed;
 use bevy::prelude::*;
-use bevy::reflect::{TypeInfo, Typed};
-use std::any::TypeId;
-use std::fmt;
+use bevy::reflect::Reflectable;
 use std::fmt::{Debug, Formatter};
 use std::iter::Sum;
-use std::marker::PhantomData;
-use std::ops::Add;
-use crate::evaluators::AttributeModEvaluator;
+use std::ops::{Add, AddAssign};
 
-pub type BoxEditableAttribute = Box<dyn EditableAttribute<Property = AttributeDef>>;
+#[derive(Debug, TypePath)]
+pub struct AttributeModVariable(pub Box<dyn EvalModifier>);
+
+impl Clone for AttributeModVariable {
+    fn clone(&self) -> Self {
+        Self(EvalModifier::clone_value(&*self.0))
+    }
+}
+
+impl AttributeModVariable {
+    pub fn new(animation_curve: impl EvalModifier) -> Self {
+        Self(Box::new(animation_curve))
+    }
+}
+
+pub trait EvalModifier: Debug + Send + Sync + 'static {
+    /// Returns a boxed clone of this value.
+    fn clone_value(&self) -> Box<dyn EvalModifier>;
+
+    fn get_aggregator(&self) -> ModAggregator;
+
+    fn get_magnitude(&self) -> f32;
+
+    fn get_current_value(&self, entity_ref: &mut AttributeEntityMut) -> f32;
+
+    fn apply(
+        &self,
+        proto: &mut AttributeEntityMut,
+    ) -> std::result::Result<(), AnimationEvaluationError>;
+
+    fn apply_from_aggregator(
+        &self,
+        proto: &mut AttributeEntityMut,
+        aggregator: ModAggregator,
+    ) -> std::result::Result<(), AnimationEvaluationError>;
+
+    fn evaluator_id(&self) -> Hashed<(TypeId, usize)>;
+}
 
 #[derive(Reflect, FromReflect)]
 #[reflect(from_reflect = false)]
-pub struct AttributeMod<P> {
-    pub(crate) attribute_ref: P,
-    pub(crate) magnitude: f32, // or an evaluator
-    pub(crate) mod_type: ModType,
+pub struct AttributeModifier<P, C> {
+    attribute_ref: P,
+    evaluator: C,
 }
 
-impl<P> AttributeMod<P>
+impl<P, C> AttributeModifier<P, C>
 where
-    P: EditableAttribute,
+    P: AttributeAccessorMut,
+    C: ModifierCalculations<P::Property>,
 {
-    pub fn new(attribute_ref: P, magnitude: f32, mod_type: ModType) -> Self {
+    pub fn new(attribute_ref: P, evaluator: C) -> Self {
         Self {
             attribute_ref,
+            evaluator,
+        }
+    }
+}
+
+impl<P, C> Clone for AttributeModifier<P, C>
+where
+    P: Clone,
+    C: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            attribute_ref: self.attribute_ref.clone(),
+            evaluator: self.evaluator.clone(),
+        }
+    }
+}
+
+impl<P: Send + Sync + 'static, C> Debug for AttributeModifier<P, C>
+where
+    P: Clone + AttributeAccessorMut,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
+}
+
+impl<P: Send + Sync + 'static, C> EvalModifier for AttributeModifier<P, C>
+where
+    P: AttributeAccessorMut + Clone,
+    C: ModifierCalculations<P::Property>,
+{
+    fn clone_value(&self) -> Box<dyn EvalModifier> {
+        Box::new(self.clone())
+    }
+
+    fn get_aggregator(&self) -> ModAggregator {
+        self.evaluator.aggregator()
+    }
+
+    fn get_magnitude(&self) -> f32 {
+        self.evaluator.get_magnitude()
+    }
+
+    fn get_current_value(&self, entity_mut: &mut AttributeEntityMut) -> f32 {
+        self.attribute_ref
+            .get_mut(entity_mut)
+            .unwrap()
+            .get_current_value()
+    }
+
+    fn apply(
+        &self,
+        entity_mut: &mut AttributeEntityMut,
+    ) -> std::result::Result<(), AnimationEvaluationError> {
+        let attribute_ref = self.attribute_ref.get_mut(entity_mut)?;
+        let attribute_def = attribute_ref
+            .as_any_mut()
+            .downcast_mut::<AttributeDef>()
+            .unwrap();
+        let aggregator = self.evaluator.aggregator();
+
+        match aggregator.overrule {
+            None => {
+                attribute_def.base_value += aggregator.additive;
+                attribute_def.base_value *= 1.0 + aggregator.multiplicative;
+            }
+            Some(v) => attribute_def.current_value = v,
+        }
+        Ok(())
+    }
+
+    fn apply_from_aggregator(
+        &self,
+        entity_mut: &mut AttributeEntityMut,
+        aggregator: ModAggregator,
+    ) -> Result<(), AnimationEvaluationError> {
+        let attribute_ref = self.attribute_ref.get_mut(entity_mut)?;
+        let attribute_def = attribute_ref
+            .as_any_mut()
+            .downcast_mut::<AttributeDef>()
+            .unwrap();
+
+        match aggregator.overrule {
+            None => {
+                attribute_def.current_value = (attribute_def.base_value + aggregator.additive)
+                    * (1.0 + aggregator.multiplicative)
+            }
+            Some(v) => attribute_def.current_value = v,
+        }
+        Ok(())
+    }
+
+    fn evaluator_id(&self) -> Hashed<(TypeId, usize)> {
+        self.attribute_ref.evaluator_id()
+    }
+}
+
+pub trait ModifierCalculations<T>: Debug + Clone + Reflectable {
+    fn aggregator(&self) -> ModAggregator;
+    fn get_magnitude(&self) -> f32;
+}
+
+#[derive(Default, Debug, Clone, Reflect)]
+pub struct ModEvaluator {
+    magnitude: f32,
+    mod_type: ModType,
+}
+
+impl ModEvaluator {
+    pub fn new(magnitude: f32, mod_type: ModType) -> Self {
+        Self {
             magnitude,
             mod_type,
         }
     }
 }
 
-impl<P> Clone for AttributeMod<P>
-where
-    P: Clone,
-{
-    fn clone(&self) -> Self {
-        Self {
-            attribute_ref: self.attribute_ref.clone(),
-            magnitude: self.magnitude,
-            mod_type: self.mod_type,
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct AttributeRef<C, A, F: Fn(&mut C) -> &mut A> {
-    func: F,
-    marker: PhantomData<(C, A)>,
-    evaluator_id: Hashed<(TypeId, usize)>
-}
-
-impl<C: Typed, P, F: Fn(&mut C) -> &mut P + 'static> AttributeRef<C, P, F> {
-    pub fn new_unchecked(func: F) -> Self {
-        let field_index;
-        if let TypeInfo::Struct(struct_info) = C::type_info() {
-            field_index = struct_info
-                .index_of("attribute")
-                .expect("Field name should exist");
-        } else if let TypeInfo::TupleStruct(struct_info) = C::type_info() {
-            field_index = "attribute"
-                .parse()
-                .expect("Field name should be a valid tuple index");
-            if field_index >= struct_info.field_len() {
-                panic!("Field name should be a valid tuple index");
-            }
-        } else {
-            panic!("Only structs are supported in `AnimatedField::new_unchecked`")
-        }
-
-        Self {
-            func,
-            marker: PhantomData,
-            evaluator_id: Hashed::new((TypeId::of::<C>(), field_index)),
-        }
-    }
-}
-
-impl<C, A, F> EditableAttribute for AttributeRef<C, A, F>
-where
-    C: Component<Mutability = Mutable>,
-    A: Editable + Clone + Sync + Debug,
-    F: Fn(&mut C) -> &mut A + Send + Sync + 'static,
-{
-    type Property = A;
-
-    fn get_mut<'a>(
-        &self,
-        entity: &'a mut AttributeEntityMut,
-    ) -> Result<&'a mut A, AnimationEvaluationError> {
-        let c = entity
-            .get_mut::<C>()
-            .ok_or_else(|| AnimationEvaluationError::ComponentNotPresent(TypeId::of::<C>()))?;
-
-        Ok((self.func)(c.into_inner()))
-    }
-
-    fn evaluator_id(&self) -> Hashed<(TypeId, usize)> {
-        self.evaluator_id
-    }
-}
-
-/*
-
-#[derive(Clone)]
-pub struct ScalarModifier {
-    pub target_attribute: TypeId,
-    pub magnitude: f32,
-    pub mod_type: ModifierType,
-}
-
-impl ScalarModifier {
-    pub fn additive<M: Component + GameAttributeMarker>(magnitude: f32) -> ScalarModifier {
-        ScalarModifier {
-            target_attribute: TypeId::of::<M>(),
-            magnitude,
-            mod_type: ModifierType::Additive,
-        }
-    }
-
-    pub fn multi<M: Component + GameAttributeMarker>(magnitude: f32) -> ScalarModifier {
-        ScalarModifier {
-            target_attribute: TypeId::of::<M>(),
-            magnitude,
-            mod_type: ModifierType::Multiplicative,
-        }
-    }
-
-    pub fn overrule<M: Component + GameAttributeMarker>(magnitude: f32) -> ScalarModifier {
-        ScalarModifier {
-            target_attribute: TypeId::of::<M>(),
-            magnitude,
-            mod_type: ModifierType::Overrule,
-        }
-    }
-}
-
-impl Debug for ScalarModifier {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+impl<T> ModifierCalculations<T> for ModEvaluator {
+    fn aggregator(&self) -> ModAggregator {
         match self.mod_type {
-            ModifierType::Additive => {
-                write!(f, "Add:{:.1}", self.magnitude)
-            }
-            ModifierType::Multiplicative => {
-                write!(f, "Mul:{:.1}", self.magnitude)
-            }
-            ModifierType::Overrule => {
-                write!(f, "Over:{:.1}", self.magnitude)
-            }
+            ModType::Additive => ModAggregator {
+                additive: self.magnitude,
+                multiplicative: 0.0,
+                overrule: None,
+            },
+            ModType::Multiplicative => ModAggregator {
+                additive: 0.0,
+                multiplicative: self.magnitude,
+                overrule: None,
+            },
+            ModType::Overrule => ModAggregator {
+                additive: 0.0,
+                multiplicative: 0.0,
+                overrule: Some(self.magnitude),
+            },
         }
     }
-}
 
-#[derive(Clone, Copy)]
-pub struct MetaModifier {
-    pub target_attribute: TypeId,
-    pub magnitude_attribute: TypeId,
-    pub mod_type: ModifierType,
-}
-
-impl Debug for MetaModifier {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "MetaMod")
+    fn get_magnitude(&self) -> f32 {
+        self.magnitude
     }
 }
-*/
-#[derive(Debug, Clone, Copy, Reflect)]
+
+#[derive(Default, Debug, Clone, Copy, Reflect)]
 pub enum ModType {
+    #[default]
     Additive,
     Multiplicative,
     Overrule,
@@ -193,19 +232,6 @@ impl ModAggregator {
     }
 }
 
-impl From<&AttributeMod<f32>> for ModAggregator {
-    fn from(value: &AttributeMod<f32>) -> Self {
-        let mut aggregator = ModAggregator::default();
-
-        match value.mod_type {
-            ModType::Additive => aggregator.additive += value.magnitude,
-            ModType::Multiplicative => aggregator.multiplicative += value.magnitude,
-            ModType::Overrule => aggregator.overrule = Some(value.magnitude),
-        }
-        aggregator
-    }
-}
-
 impl Add for &ModAggregator {
     type Output = ModAggregator;
 
@@ -215,6 +241,26 @@ impl Add for &ModAggregator {
             multiplicative: self.additive + rhs.additive,
             overrule: self.overrule.or(rhs.overrule),
         }
+    }
+}
+
+impl Add<ModAggregator> for &mut ModAggregator {
+    type Output = ModAggregator;
+
+    fn add(self, rhs: ModAggregator) -> Self::Output {
+        ModAggregator {
+            additive: self.additive + rhs.additive,
+            multiplicative: self.additive + rhs.additive,
+            overrule: self.overrule.or(rhs.overrule),
+        }
+    }
+}
+
+impl AddAssign<ModAggregator> for &mut ModAggregator {
+    fn add_assign(&mut self, rhs: ModAggregator) {
+        self.additive += rhs.additive;
+        self.multiplicative += rhs.multiplicative;
+        self.overrule = self.overrule.or(rhs.overrule);
     }
 }
 

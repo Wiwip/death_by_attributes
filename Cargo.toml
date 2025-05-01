@@ -17,7 +17,8 @@ codegen-units = 1
 
 [dependencies]
 attributes_macro = { path = "attributes_macro" }
-rand = "0.8.5"
+rand = "0.9.1"
+thread_local = "1.1.8"
 
 [dependencies.bevy]
 version = "0.16"

@@ -1,23 +1,23 @@
-use crate::modifiers::AttributeRef;
-use crate::{AttributeEvaluationError, attribute_field, attributes};
+use crate::attributes::AttributeMut;
+use crate::{AttributeEvaluationError, attribute_mut, attributes};
 
-use crate::attributes::{AttributeDef, EditableAttribute};
-use crate::evaluators::{AttributeModEvaluator, BoxAttributeModEvaluator};
+use crate::attributes::{AttributeDef, AttributeAccessorMut};
 use crate::effects::GameEffectDuration::{Instant, Permanent};
+use crate::effects::GameEffectPeriod::Periodic;
+
 use crate::modifiers::ModType::{Additive, Multiplicative};
-use crate::modifiers::{AttributeMod, BoxEditableAttribute, ModType};
+use crate::modifiers::{AttributeModifier, AttributeModVariable, ModType, ModEvaluator};
+use bevy::prelude::TimerMode::Once;
 use bevy::prelude::*;
 use bevy::reflect::Typed;
+use bevy::time::TimerMode::Repeating;
 use std::any::TypeId;
 use std::fmt;
 use std::fmt::{Debug, Formatter};
 use std::sync::Mutex;
 use std::time::Duration;
-use bevy::prelude::TimerMode::Once;
-use bevy::time::TimerMode::Repeating;
-use crate::effects::GameEffectPeriod::Periodic;
 
-pub type Modifiers = Vec<BoxAttributeModEvaluator>;
+pub type Modifiers = Vec<AttributeModVariable>;
 
 #[derive(Default, Reflect, Clone)]
 pub struct GameEffect {
@@ -68,10 +68,10 @@ impl GameEffectBuilder {
     pub fn with_additive_modifier(
         mut self,
         value: f32,
-        attribute_ref: impl EditableAttribute + Clone,
+        attribute_ref: impl AttributeAccessorMut + Clone,
     ) -> Self {
-        let modifier =
-            BoxAttributeModEvaluator::new(AttributeMod::new(attribute_ref, value, Additive));
+        let evaluator = ModEvaluator::new(value, Additive);
+        let modifier = AttributeModVariable::new(AttributeModifier::new(attribute_ref, evaluator));
         self.effect.modifiers.push(modifier);
         self
     }
@@ -79,10 +79,10 @@ impl GameEffectBuilder {
     pub fn with_multiplicative_modifier(
         mut self,
         value: f32,
-        attribute_ref: impl EditableAttribute + Clone,
+        attribute_ref: impl AttributeAccessorMut + Clone,
     ) -> Self {
-        let modifier =
-            BoxAttributeModEvaluator::new(AttributeMod::new(attribute_ref, value, Multiplicative));
+        let evaluator = ModEvaluator::new(value, Multiplicative);
+        let modifier = AttributeModVariable::new(AttributeModifier::new(attribute_ref, evaluator));
         self.effect.modifiers.push(modifier);
         self
     }
@@ -123,15 +123,12 @@ impl GameEffectPeriodBuilder {
     pub fn with_periodic_application(self, seconds: f32) -> GameEffectBuilder {
         let duration = match self.duration {
             None => Permanent,
-            Some(t) => GameEffectDuration::Duration(Timer::from_seconds(t, Once))
+            Some(t) => GameEffectDuration::Duration(Timer::from_seconds(t, Once)),
         };
 
         GameEffectBuilder {
             effect: GameEffect {
-                periodic_application: Some(Periodic(Timer::from_seconds(
-                    seconds,
-                    Repeating,
-                ))),
+                periodic_application: Some(Periodic(Timer::from_seconds(seconds, Repeating))),
                 duration,
                 ..default()
             },
@@ -140,7 +137,7 @@ impl GameEffectPeriodBuilder {
     pub fn with_continuous_application(self) -> GameEffectBuilder {
         let duration = match self.duration {
             None => Permanent,
-            Some(t) => GameEffectDuration::Duration(Timer::from_seconds(t, Once))
+            Some(t) => GameEffectDuration::Duration(Timer::from_seconds(t, Once)),
         };
 
         GameEffectBuilder {
@@ -152,18 +149,6 @@ impl GameEffectPeriodBuilder {
         }
     }
 }
-
-/*#[derive(Asset, Reflect, Clone, Default)]
-#[reflect(Clone, Default)]
-pub struct GameEffect {
-    // This field is ignored by reflection because AnimationCurves can contain things that are not reflect-able
-    #[reflect(ignore, clone)]
-    pub modifiers: Modifiers,
-    pub periodic_application: Option<GameEffectPeriod>,
-    pub duration: GameEffectDuration,
-}
-
-*/
 
 impl GameEffect {
     #[inline]
@@ -178,9 +163,9 @@ impl GameEffect {
         &mut self.modifiers
     }
 
-    pub fn add_modifier(&mut self, modifier: impl EditableAttribute) {
+    pub fn add_modifier(&mut self, modifier: impl AttributeAccessorMut) {
         // Update the duration of the animation by this curve duration if it's longer
-        //self.modifiers.push(Modifier::new(curve));
+        //self.modifiers.push(GameAttribute::new(modifier));
     }
 
     pub fn builder() -> GameEffectBuilder {
@@ -191,20 +176,20 @@ impl GameEffect {
         if let Some(period) = &mut self.periodic_application {
             match period {
                 GameEffectPeriod::Realtime => { /* Nothing to do here! */ }
-                GameEffectPeriod::Periodic(timer) => {
+                Periodic(timer) => {
                     timer.tick(elapsed_time);
                 }
             }
         }
 
         match &mut self.duration {
-            GameEffectDuration::Instant => {
+            Instant => {
                 error!("Instant effects shouldn't be ticked.")
             }
             GameEffectDuration::Duration(effect_timer) => {
                 effect_timer.tick(elapsed_time);
             }
-            GameEffectDuration::Permanent => { /* Nothing to do */ }
+            Permanent => { /* Nothing to do */ }
         }
     }
 }
@@ -248,13 +233,13 @@ pub enum GameEffectDuration {
 impl Debug for GameEffectDuration {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            GameEffectDuration::Instant => {
+            Instant => {
                 write!(f, "-")
             }
             GameEffectDuration::Duration(timer) => {
                 write!(f, "{:.1}", timer.remaining_secs())
             }
-            GameEffectDuration::Permanent => {
+            Permanent => {
                 write!(f, "Inf")
             }
         }

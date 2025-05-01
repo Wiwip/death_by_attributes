@@ -3,7 +3,10 @@ use bevy::ecs::component::{ComponentHooks, StorageType};
 use bevy::ecs::schedule::{LogLevel, ScheduleBuildSettings};
 use bevy::prelude::*;
 use bevy::time::common_conditions::on_timer;
-use death_by_attributes::abilities::AbilityActivationFn;
+use death_by_attributes::abilities::{
+    AbilityActivationFn, GameAbilityBuilder, GameAbilityContainer,
+};
+use death_by_attributes::attributes::{AttributeMut, AttributeRef};
 
 use death_by_attributes::attributes::AttributeDef;
 
@@ -11,20 +14,16 @@ use death_by_attributes::effects::{
     GameEffect, GameEffectBuilder, GameEffectContainer, GameEffectEvent, GameEffectPeriod,
 };
 
-use death_by_attributes::evaluators::BoxAttributeModEvaluator;
 use death_by_attributes::effects::GameEffectDuration::{Instant, Permanent};
 use death_by_attributes::effects::GameEffectPeriod::Periodic;
 use death_by_attributes::modifiers::ModType::{Additive, Multiplicative};
-use death_by_attributes::modifiers::{AttributeMod, AttributeRef, BoxEditableAttribute, ModType};
+use death_by_attributes::modifiers::{AttributeModifier, ModType};
 use death_by_attributes::systems::{
     handle_apply_effect_events, tick_active_effects, update_attribute_base_value,
 };
-use death_by_attributes::{
-    BaseValueUpdate, CurrentValueUpdate, CurrentValueUpdateTrigger, DeathByAttributesPlugin,
-    attribute, attribute_field, modifiers,
-};
+use death_by_attributes::{AttributeEntityMut, BaseValueUpdate, CurrentValueUpdate, CurrentValueUpdateTrigger, DeathByAttributesPlugin, attribute, attribute_mut, modifiers, attribute_ref};
+use rand::{Rng, random};
 use std::time::Duration;
-use rand::{random, Rng};
 
 fn main() {
     App::new()
@@ -57,65 +56,51 @@ struct UiFireballText;
 struct Fireball;
 
 fn setup(mut commands: Commands, mut event_writer: EventWriter<GameEffectEvent>) {
-    //let mut ability_component = GameAbilityComponent::default();
-    /*ability_component.grant_ability(
+    let mut rng = rand::rng();
+    let mut ability_component = GameAbilityContainer::default();
+    ability_component.grant_ability(
         "fireball".to_string(),
         GameAbilityBuilder::default()
-            .with_cooldown(0.250)
-            .with_cost::<Mana>(-12.0)
-            .with_activation(|mut commands: Commands| {
+            .with_cooldown(0.200)
+            .with_cost(-12.0, attribute_mut!(Health))
+            .with_activation(|_: &mut AttributeEntityMut, _: Commands| {
                 info!("fireball!");
-                commands.spawn(Fireball);
+                //commands.spawn(Fireball);
             })
             .build(),
     );
-
-    ability_component.grant_ability(
-        "sprint".to_string(),
-        GameAbilityBuilder::default()
-            .with_cooldown(2.0)
-            .with_effect(
-                GameEffectBuilder::new()
-                    .with_duration(4.0)
-                    .with_scalar_modifier::<Health>(0.40, ModifierType::Multiplicative)
-                    .build(),
-                GameEffectTarget::OwnUnit,
-            )
-            .build(),
-    );*/
-
+    
     let entity = commands
         .spawn((
             Player,
-            //ability_component,
-            GameEffectContainer::default(),
+            ability_component,
             Health::new(100.0),
-            HealthCap::new(1000.0),
+            HealthCap::new(200.0),
             HealthRegen::new(8.0),
             Mana::new(1000.0),
         ))
         .id();
 
-
     let effect = GameEffectBuilder::new()
         .with_permanent_duration()
         .with_continuous_application()
-        .with_additive_modifier(100.0, attribute_field!(Health))
-        .with_multiplicative_modifier(0.1, attribute_field!(Health))
-        .with_multiplicative_modifier(0.1, attribute_field!(HealthCap))
+        .with_additive_modifier(100.0, attribute_mut!(HealthCap))
+        .with_multiplicative_modifier(0.1, attribute_mut!(HealthCap))
         .build();
-
     event_writer.write(GameEffectEvent { entity, effect });
 
-    let mut rng = rand::thread_rng();
+    let effect = GameEffectBuilder::new()
+        .with_permanent_duration()
+        .with_periodic_application(1.0)
+        .with_additive_modifier(5.0, attribute_mut!(Health))
+        .build();
+    event_writer.write(GameEffectEvent { entity, effect });
 
     for _ in 0..10 {
         let entity = commands
             .spawn((
-                //ability_component,
-                GameEffectContainer::default(),
                 Health::new(100.0),
-                HealthCap::new(1000000.0),
+                HealthCap::new(1000.0),
                 HealthRegen::new(2.0),
                 Mana::new(1000.0),
             ))
@@ -123,21 +108,16 @@ fn setup(mut commands: Commands, mut event_writer: EventWriter<GameEffectEvent>)
 
         for _ in 0..50 {
             let effect = GameEffectBuilder::new()
-                .with_duration(rng.gen_range(100.0..300.0))
-                .with_periodic_application(rng.gen_range(20.0..100.0))
-                .with_additive_modifier(3.0, attribute_field!(Health))
+                .with_duration(rng.random_range(100.0..300.0))
+                .with_periodic_application(rng.random_range(20.0..100.0))
+                .with_additive_modifier(rng.random_range(1.0..20.0), attribute_mut!(Health))
                 .build();
 
             event_writer.write(GameEffectEvent { entity, effect });
         }
     }
 
-    commands.spawn((
-        //GameAbilityComponent::default(),
-        GameEffectContainer::default(),
-        Health::new(100.0),
-        HealthCap::new(1000.0),
-    ));
+    commands.spawn((Health::new(100.0), HealthCap::new(1000.0)));
 }
 
 fn clamp_health(
@@ -207,22 +187,31 @@ fn display_attribute_entity(
     }
 }
 
-attribute!(Health);
+#[derive(Component, Attribute, Default, Clone, Reflect, Deref, DerefMut, Debug)]
+#[require(GameEffectContainer, GameAbilityContainer)]
+pub struct Test {
+    pub attribute: AttributeDef,
+}
+
+attribute!(Health, HealthRegen, HealthCap);
 attribute!(HealthCap);
 attribute!(HealthRegen);
-attribute!(Mana);
+
+attribute!(Mana, ManaRegen);
+attribute!(ManaRegen);
 
 pub fn inputs(
-    mut q_player: Query<EntityMut, With<Player>>,
-    mut q_entities: Query<EntityMut, (Without<Player>, With<Health>)>,
+    mut q_player: Query<(AttributeEntityMut, &mut GameAbilityContainer), With<Player>>,
     keys: Res<ButtonInput<KeyCode>>,
     commands: Commands,
 ) {
-    if let Ok(player) = q_player.single_mut() {
+    if let Ok((mut entity_mut, mut abilities)) = q_player.single_mut() {
         if keys.just_pressed(KeyCode::Space) {
-            if let Ok(entity) = q_entities.single_mut() {
-                //context.try_activate(&player, "fireball".to_string(), commands);
-            }
+            abilities
+                .get_abilities_mut()
+                .get_mut("fireball")
+                .unwrap()
+                .try_activate(&mut entity_mut, commands);
         }
     }
 }

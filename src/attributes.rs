@@ -1,6 +1,6 @@
 use crate::{AttributeEntityMut, AttributeEntityRef, Editable};
 use bevy::animation::AnimationEvaluationError;
-use bevy::ecs::component::{Immutable, Mutable};
+use bevy::ecs::component::{Mutable};
 use bevy::platform::hash::Hashed;
 use bevy::prelude::{Component, Reflect};
 use bevy::reflect::{TypeInfo, Typed};

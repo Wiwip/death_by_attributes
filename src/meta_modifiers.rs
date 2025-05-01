@@ -21,7 +21,7 @@ impl<P, Q, C> MetaMod<P, Q, C>
 where
     P: AttributeAccessorMut,
     Q: AttributeAccessorRef,
-    C: EvaluateMetaMod<P::Property>,
+    C: EvalMetaModifier<P::Property>,
 {
     pub fn new(target_attribute: P, source_attribute: Q, evaluator: C) -> Self {
         MetaMod {
@@ -58,7 +58,7 @@ where
     }
 }
 
-pub trait EvaluateMetaMod<T>: Debug + Clone + Reflectable {
+pub trait EvalMetaModifier<T>: Debug + Clone + Reflectable {
     fn evaluate(&self, target: &mut T, source: f32);
 }
 
@@ -75,7 +75,7 @@ impl MetaModEvaluator {
     }
 }
 
-impl<T: Editable> EvaluateMetaMod<T> for MetaModEvaluator {
+impl<T: Editable> EvalMetaModifier<T> for MetaModEvaluator {
     fn evaluate(&self, target: &mut T, source: f32) {
         target.set_base_value(source * self.magnitude)
     }
