@@ -50,7 +50,7 @@ macro_rules! attribute_ref {
     };
 }
 
-pub trait AttributeAccessorMut: Send + Sync + 'static {
+pub trait AttributeAccessorMut: Clone + Send + Sync + 'static {
     type Property: Editable;
 
     fn get_mut<'a>(
@@ -107,9 +107,9 @@ impl<C: Typed, P, F: Fn(&mut C) -> &mut P + 'static> AttributeMut<C, P, F> {
 
 impl<C, A, F> AttributeAccessorMut for AttributeMut<C, A, F>
 where
-    C: Component<Mutability = Mutable>,
+    C: Component<Mutability = Mutable> + std::clone::Clone,
     A: Editable + Clone + Sync + Debug,
-    F: Fn(&mut C) -> &mut A + Send + Sync + 'static,
+    F: Fn(&mut C) -> &mut A + Send + Sync + 'static + std::clone::Clone,
 {
     type Property = A;
 

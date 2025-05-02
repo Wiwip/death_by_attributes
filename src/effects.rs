@@ -1,23 +1,21 @@
-use crate::attributes::AttributeMut;
+use crate::attributes::{AttributeAccessorRef, AttributeMut, GameAttribute};
 use crate::{AttributeEvaluationError, attribute_mut, attributes};
 
-use crate::attributes::{AttributeDef, AttributeAccessorMut};
+use crate::attributes::{AttributeAccessorMut, AttributeDef};
 use crate::effects::GameEffectDuration::{Instant, Permanent};
 use crate::effects::GameEffectPeriod::Periodic;
 
-use crate::modifiers::ModType::{Additive, Multiplicative};
-use crate::modifiers::{AttributeModifier, AttributeModVariable, ModType, ModEvaluator};
+use crate::evaluators::FixedEvaluator;
+use crate::mutator::ModType::{Additive, Multiplicative};
+use crate::mutator::{MutatorWrapper, EvaluateMutator, ModType, Mutator};
 use bevy::prelude::TimerMode::Once;
 use bevy::prelude::*;
-use bevy::reflect::Typed;
 use bevy::time::TimerMode::Repeating;
-use std::any::TypeId;
 use std::fmt;
 use std::fmt::{Debug, Formatter};
-use std::sync::Mutex;
 use std::time::Duration;
 
-pub type Modifiers = Vec<AttributeModVariable>;
+pub type Modifiers = Vec<MutatorWrapper>;
 
 #[derive(Default, Reflect, Clone)]
 pub struct GameEffect {
@@ -67,23 +65,35 @@ impl GameEffectBuilder {
 
     pub fn with_additive_modifier(
         mut self,
-        value: f32,
+        magnitude: f32,
         attribute_ref: impl AttributeAccessorMut + Clone,
     ) -> Self {
-        let evaluator = ModEvaluator::new(value, Additive);
-        let modifier = AttributeModVariable::new(AttributeModifier::new(attribute_ref, evaluator));
+        let evaluator = FixedEvaluator::new(magnitude,Additive);
+        let modifier = MutatorWrapper::new(Mutator::new(attribute_ref, evaluator));
         self.effect.modifiers.push(modifier);
         self
     }
 
     pub fn with_multiplicative_modifier(
         mut self,
-        value: f32,
+        magnitude: f32,
         attribute_ref: impl AttributeAccessorMut + Clone,
     ) -> Self {
-        let evaluator = ModEvaluator::new(value, Multiplicative);
-        let modifier = AttributeModVariable::new(AttributeModifier::new(attribute_ref, evaluator));
+        let evaluator = FixedEvaluator::new(magnitude,Multiplicative);
+        let modifier = MutatorWrapper::new(Mutator::new(attribute_ref, evaluator));
         self.effect.modifiers.push(modifier);
+        self
+    }
+
+    pub fn with_meta_modifier(
+        mut self,
+        value: f32,
+        dest: impl AttributeAccessorMut + Clone,
+        source: impl AttributeAccessorRef + Clone,
+    ) -> Self {
+        //let evaluator = MetaModEvaluator::new(value);
+        //let modifier = AttributeModVariable::new(MetaMod::new(dest, source, evaluator));
+        //self.effect.modifiers.push(modifier);
         self
     }
 
@@ -151,25 +161,22 @@ impl GameEffectPeriodBuilder {
 }
 
 impl GameEffect {
+    pub fn builder() -> GameEffectBuilder {
+        GameEffectBuilder::default()
+    }
+
     #[inline]
-    /// [`BoxedModifier`]s for each animation target. Indexed by the [`AnimationTargetId`].
     pub fn modifiers(&self) -> &Modifiers {
         &self.modifiers
     }
 
     #[inline]
-    /// Get mutable references of [`BoxedModifier`]s for each animation target. Indexed by the [`AnimationTargetId`].
     pub fn modifiers_mut(&mut self) -> &mut Modifiers {
         &mut self.modifiers
     }
 
-    pub fn add_modifier(&mut self, modifier: impl AttributeAccessorMut) {
-        // Update the duration of the animation by this curve duration if it's longer
-        //self.modifiers.push(GameAttribute::new(modifier));
-    }
-
-    pub fn builder() -> GameEffectBuilder {
-        GameEffectBuilder::default()
+    pub fn add_modifier(&mut self, modifier: impl EvaluateMutator) {
+        self.modifiers.push(MutatorWrapper::new(modifier));
     }
 
     pub fn tick_effect(&mut self, elapsed_time: Duration) {

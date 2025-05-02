@@ -11,8 +11,8 @@ use std::any::TypeId;
 pub mod abilities;
 pub mod attributes;
 pub mod effects;
-pub mod meta_modifiers;
-pub mod modifiers;
+pub mod evaluators;
+pub mod mutator;
 pub mod systems;
 
 use crate::abilities::GameAbilityContainer;
@@ -80,8 +80,8 @@ pub trait Editable: Reflect + Sized + Send + Sync + 'static {
     fn get_base_value(&self) -> f32;
     fn get_current_value(&self) -> f32;
 
-    fn set_base_value(&mut self, value: f32);
-    fn set_current_value(&mut self, value: f32);
+    //fn set_base_value(&mut self, value: f32);
+    //fn set_current_value(&mut self, value: f32);
 }
 impl Editable for AttributeDef {
     fn get_base_value(&self) -> f32 {
@@ -91,11 +91,11 @@ impl Editable for AttributeDef {
         self.current_value
     }
 
-    fn set_base_value(&mut self, value: f32) {
+    /*fn set_base_value(&mut self, value: f32) {
         self.base_value = value;
     }
 
     fn set_current_value(&mut self, value: f32) {
         self.current_value = value;
-    }
+    }*/
 }

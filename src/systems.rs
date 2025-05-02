@@ -1,21 +1,12 @@
-use crate::effects::{GameEffectContainer, GameEffectDuration, GameEffectEvent, GameEffectPeriod};
-use crate::modifiers::{AttributeModVariable, ModAggregator};
-use bevy::prelude::Vec;
-
 use crate::abilities::GameAbilityContainer;
-
+use crate::effects::{GameEffectContainer, GameEffectDuration, GameEffectEvent, GameEffectPeriod};
+use crate::mutator::{MutatorWrapper, ModAggregator};
 use crate::{AttributeEntityMut, CurrentValueUpdateTrigger};
-use bevy::ecs::observer::TriggerTargets;
-use bevy::ecs::world::Entry::Vacant;
-use bevy::platform::collections::hash_map::RawEntryMut;
-use bevy::platform::collections::{HashMap, HashSet, hash_map};
-use bevy::platform::hash::{Hashed, PassHash};
+use bevy::prelude::Vec;
 use bevy::prelude::*;
 use bevy::utils::{PreHashMap, PreHashMapExt};
-use std::any::{Any, TypeId};
+use std::any::TypeId;
 use std::cell::RefCell;
-use std::collections::hash_map::Entry;
-use std::ops::{Add, AddAssign};
 use std::time::Instant;
 use thread_local::ThreadLocal;
 
@@ -78,7 +69,7 @@ pub fn update_attribute_base_value(mut query: Query<(AttributeEntityMut, &GameEf
                         GameEffectPeriod::Periodic(timer) => {
                             if timer.just_finished() {
                                 for modifier in &effect.modifiers {
-                                    modifier.0.apply(&mut entity_mut).unwrap()
+                                    modifier.0.apply(&mut entity_mut);
                                 }
                             }
                         }
@@ -95,7 +86,7 @@ pub fn update_attribute_base_value(mut query: Query<(AttributeEntityMut, &GameEf
 #[derive(Default)]
 pub struct EvalStruct {
     evaluators: PreHashMap<(TypeId, usize), ModAggregator>,
-    modifiers: PreHashMap<(TypeId, usize), AttributeModVariable>,
+    modifiers: PreHashMap<(TypeId, usize), MutatorWrapper>,
 }
 
 #[derive(Default)]
@@ -128,7 +119,7 @@ pub fn update_attribute_current_value(
                                 ModAggregator::default()
                             });
 
-                        value += modifier.0.get_aggregator();
+                        value += modifier.0.get_aggregator(&mut entity_mut);
                     }
                 }
             }

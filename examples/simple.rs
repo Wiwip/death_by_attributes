@@ -6,22 +6,23 @@ use bevy::time::common_conditions::on_timer;
 use death_by_attributes::abilities::{
     AbilityActivationFn, GameAbilityBuilder, GameAbilityContainer,
 };
-use death_by_attributes::attributes::{AttributeMut, AttributeRef};
-
 use death_by_attributes::attributes::AttributeDef;
-
+use death_by_attributes::attributes::{AttributeMut, AttributeRef};
+use death_by_attributes::effects::GameEffectDuration::{Instant, Permanent};
+use death_by_attributes::effects::GameEffectPeriod::Periodic;
 use death_by_attributes::effects::{
     GameEffect, GameEffectBuilder, GameEffectContainer, GameEffectEvent, GameEffectPeriod,
 };
-
-use death_by_attributes::effects::GameEffectDuration::{Instant, Permanent};
-use death_by_attributes::effects::GameEffectPeriod::Periodic;
-use death_by_attributes::modifiers::ModType::{Additive, Multiplicative};
-use death_by_attributes::modifiers::{AttributeModifier, ModType};
+use death_by_attributes::evaluators::MetaEvaluator;
+use death_by_attributes::mutator::ModType::{Additive, Multiplicative};
+use death_by_attributes::mutator::{MutatorWrapper, ModType, Mutator};
 use death_by_attributes::systems::{
     handle_apply_effect_events, tick_active_effects, update_attribute_base_value,
 };
-use death_by_attributes::{AttributeEntityMut, BaseValueUpdate, CurrentValueUpdate, CurrentValueUpdateTrigger, DeathByAttributesPlugin, attribute, attribute_mut, modifiers, attribute_ref};
+use death_by_attributes::{
+    AttributeEntityMut, BaseValueUpdate, CurrentValueUpdate, CurrentValueUpdateTrigger,
+    DeathByAttributesPlugin, attribute, attribute_mut, attribute_ref, mutator,
+};
 use rand::{Rng, random};
 use std::time::Duration;
 
@@ -69,7 +70,7 @@ fn setup(mut commands: Commands, mut event_writer: EventWriter<GameEffectEvent>)
             })
             .build(),
     );
-    
+
     let entity = commands
         .spawn((
             Player,
@@ -89,11 +90,17 @@ fn setup(mut commands: Commands, mut event_writer: EventWriter<GameEffectEvent>)
         .build();
     event_writer.write(GameEffectEvent { entity, effect });
 
-    let effect = GameEffectBuilder::new()
+    let mut effect = GameEffectBuilder::new()
         .with_permanent_duration()
         .with_periodic_application(1.0)
         .with_additive_modifier(5.0, attribute_mut!(Health))
         .build();
+
+    let meta_mod = Mutator::new(
+        attribute_mut!(Health),
+        MetaEvaluator::new(attribute_mut!(HealthRegen), 0.24, Additive),
+    ); //, 0.24));//, MetaModEvaluator::new(0.24));
+    effect.modifiers.push(MutatorWrapper::new(meta_mod));
     event_writer.write(GameEffectEvent { entity, effect });
 
     for _ in 0..10 {

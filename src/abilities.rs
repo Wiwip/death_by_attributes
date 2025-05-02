@@ -1,13 +1,13 @@
+use crate::AttributeEntityMut;
 use crate::attributes::AttributeAccessorMut;
 use crate::effects::GameEffect;
-use crate::{AttributeEntityMut, AttributeEntityRef};
 
-use crate::modifiers::ModType::Additive;
-use crate::modifiers::{AttributeModVariable, AttributeModifier, ModEvaluator};
+use crate::mutator::{MutatorWrapper, Mutator};
 use bevy::platform::collections::HashMap;
-use bevy::prelude::ops::abs;
 use bevy::prelude::*;
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use crate::evaluators::FixedEvaluator;
+use crate::mutator::ModType::Additive;
 
 pub type AbilityActivationFn = fn(&mut AttributeEntityMut, Commands);
 
@@ -46,8 +46,8 @@ impl GameAbilityBuilder {
         cost: f32,
         attribute_ref: impl AttributeAccessorMut + Clone,
     ) -> Self {
-        let evaluator = ModEvaluator::new(cost, Additive);
-        self.ability.cost = Some(AttributeModVariable::new(AttributeModifier::new(
+        let evaluator = FixedEvaluator::new(cost, Additive);
+        self.ability.cost = Some(MutatorWrapper::new(Mutator::new(
             attribute_ref,
             evaluator,
         )));
@@ -77,7 +77,7 @@ pub enum GameEffectTarget {
 #[derive(Default)]
 pub struct GameAbility {
     pub applied_effects: Vec<(GameEffectTarget, GameEffect)>,
-    pub cost: Option<AttributeModVariable>,
+    pub cost: Option<MutatorWrapper>,
     pub cooldown: Timer,
     pub ability_activation: Option<AbilityActivationFn>,
 }
@@ -105,14 +105,14 @@ impl GameAbility {
         };
 
         let current_value = modifier.0.get_current_value(entity_ref);
-        let cost_magnitude = modifier.0.get_magnitude();
+        let cost_magnitude = modifier.0.get_magnitude(entity_ref);
 
         f32::abs(cost_magnitude) <= current_value
     }
 
     pub fn commit_cost(&mut self, entity_mut: &mut AttributeEntityMut) {
-        if let Some(modifier) = &self.cost {
-            modifier.0.apply(entity_mut).expect("couldn't commit");
+        if let Some(mutator) = &self.cost {
+            mutator.0.apply(entity_mut).expect("couldn't commit");
         }
 
         self.cooldown.reset();
