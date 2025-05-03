@@ -1,14 +1,13 @@
+use crate::mutator::EvaluateMutator;
 use crate::{AttributeEntityMut, AttributeEntityRef, Editable};
 use bevy::animation::AnimationEvaluationError;
-use bevy::ecs::component::{Mutable};
+use bevy::ecs::component::Mutable;
 use bevy::platform::hash::Hashed;
-use bevy::prelude::{Component, Reflect};
+use bevy::prelude::*;
 use bevy::reflect::{TypeInfo, Typed};
 use std::any::TypeId;
-use std::fmt::Debug;
+use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
-
-pub type GameAttribute = Box<dyn AttributeAccessorMut<Property = AttributeDef>>;
 
 #[derive(Default, Reflect, Debug, Clone)]
 pub struct AttributeDef {
@@ -16,11 +15,30 @@ pub struct AttributeDef {
     pub current_value: f32,
 }
 
+#[derive(Debug, Deref, DerefMut, TypePath)]
+pub struct StoredAttribute(pub Box<dyn EvaluateAttribute>);
+
+impl Clone for StoredAttribute {
+    fn clone(&self) -> Self {
+        Self(EvaluateAttribute::clone_value(&*self.0))
+    }
+}
+
+impl StoredAttribute {
+    pub fn new(effect: impl EvaluateAttribute) -> Self {
+        Self(Box::new(effect))
+    }
+}
+
+pub trait EvaluateAttribute: Debug + Send + Sync + 'static {
+    fn clone_value(&self) -> Box<dyn EvaluateAttribute>;
+}
+
 #[macro_export]
 macro_rules! attribute {
     ( $StructName:ident) => {
         #[derive(Component, Attribute, Default, Clone, Reflect, Deref, DerefMut, Debug)]
-        #[require(GameEffectContainer, GameAbilityContainer)]
+        #[require(GameAbilityContainer)]
         pub struct $StructName {
             pub attribute: AttributeDef,
         }
@@ -28,7 +46,7 @@ macro_rules! attribute {
 
     ( $StructName:ident, $($RequireStruct:ident),* ) => {
         #[derive(Component, Attribute, Default, Clone, Reflect, Deref, DerefMut, Debug)]
-        #[require(GameEffectContainer, GameAbilityContainer)]
+        #[require(GameAbilityContainer)]
         #[require($($RequireStruct),*)]
         pub struct $StructName {
             pub attribute: AttributeDef,
@@ -59,6 +77,7 @@ pub trait AttributeAccessorMut: Clone + Send + Sync + 'static {
     ) -> Result<&'a mut Self::Property, AnimationEvaluationError>;
 
     fn evaluator_id(&self) -> Hashed<(TypeId, usize)>;
+    fn attribute_id(&self) -> TypeId;
 }
 
 pub trait AttributeAccessorRef: Send + Sync + 'static {
@@ -70,6 +89,7 @@ pub trait AttributeAccessorRef: Send + Sync + 'static {
     ) -> Result<&'a Self::Property, AnimationEvaluationError>;
 
     fn evaluator_id(&self) -> Hashed<(TypeId, usize)>;
+    fn attribute_id(&self) -> TypeId;
 }
 
 #[derive(Clone)]
@@ -107,16 +127,16 @@ impl<C: Typed, P, F: Fn(&mut C) -> &mut P + 'static> AttributeMut<C, P, F> {
 
 impl<C, A, F> AttributeAccessorMut for AttributeMut<C, A, F>
 where
-    C: Component<Mutability = Mutable> + std::clone::Clone,
+    C: Component<Mutability = Mutable> + Clone,
     A: Editable + Clone + Sync + Debug,
-    F: Fn(&mut C) -> &mut A + Send + Sync + 'static + std::clone::Clone,
+    F: Fn(&mut C) -> &mut A + Send + Sync + 'static + Clone,
 {
     type Property = A;
 
     fn get_mut<'a>(
         &self,
         entity: &'a mut AttributeEntityMut,
-    ) -> bevy::prelude::Result<&'a mut A, AnimationEvaluationError> {
+    ) -> Result<&'a mut A, AnimationEvaluationError> {
         let c = entity
             .get_mut::<C>()
             .ok_or_else(|| AnimationEvaluationError::ComponentNotPresent(TypeId::of::<C>()))?;
@@ -127,6 +147,34 @@ where
     fn evaluator_id(&self) -> Hashed<(TypeId, usize)> {
         self.evaluator_id
     }
+
+    fn attribute_id(&self) -> TypeId {
+        TypeId::of::<C>()
+    }
+}
+
+impl<C, A, F> Debug for AttributeMut<C, A, F>
+where
+    A: Clone + Debug + Editable + Sync,
+    C: Clone + Component<Mutability = Mutable>,
+    F: 'static + Clone + Fn(&mut C) -> &mut A + Send + Sync,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let _ = write!(f, "A[{:?}]", self.evaluator_id);
+        Ok(())
+    }
+}
+
+impl<C, A, F> EvaluateAttribute for AttributeMut<C, A, F>
+where
+    C: Component<Mutability = Mutable> + Clone,
+    A: Editable + Clone + Sync + Debug,
+    F: Fn(&mut C) -> &mut A + Send + Sync + 'static + Clone,
+{
+    fn clone_value(&self) -> Box<dyn EvaluateAttribute> {
+        Box::new(self.clone())
+    }
+
 }
 
 #[derive(Clone)]
@@ -180,5 +228,8 @@ where
 
     fn evaluator_id(&self) -> Hashed<(TypeId, usize)> {
         self.evaluator_id
+    }
+    fn attribute_id(&self) -> TypeId {
+        TypeId::of::<C>()
     }
 }

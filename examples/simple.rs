@@ -1,29 +1,20 @@
 use attributes_macro::Attribute;
-use bevy::ecs::component::{ComponentHooks, StorageType};
 use bevy::ecs::schedule::{LogLevel, ScheduleBuildSettings};
 use bevy::prelude::*;
+use bevy::time::TimerMode::Repeating;
 use bevy::time::common_conditions::on_timer;
-use death_by_attributes::abilities::{
-    AbilityActivationFn, GameAbilityBuilder, GameAbilityContainer,
-};
+use death_by_attributes::abilities::{GameAbilityBuilder, GameAbilityContainer};
 use death_by_attributes::attributes::AttributeDef;
-use death_by_attributes::attributes::{AttributeMut, AttributeRef};
-use death_by_attributes::effects::GameEffectDuration::{Instant, Permanent};
-use death_by_attributes::effects::GameEffectPeriod::Periodic;
-use death_by_attributes::effects::{
-    GameEffect, GameEffectBuilder, GameEffectContainer, GameEffectEvent, GameEffectPeriod,
-};
+use death_by_attributes::attributes::AttributeMut;
+use death_by_attributes::effects::{Effect, EffectDuration, EffectPeriodicApplication, EffectTarget, GameEffectBuilder};
 use death_by_attributes::evaluators::MetaEvaluator;
-use death_by_attributes::mutator::ModType::{Additive, Multiplicative};
-use death_by_attributes::mutator::{MutatorWrapper, ModType, Mutator};
-use death_by_attributes::systems::{
-    handle_apply_effect_events, tick_active_effects, update_attribute_base_value,
-};
+use death_by_attributes::mutator::ModType::Additive;
+use death_by_attributes::mutator::{Mutator, StoredMutator};
 use death_by_attributes::{
-    AttributeEntityMut, BaseValueUpdate, CurrentValueUpdate, CurrentValueUpdateTrigger,
-    DeathByAttributesPlugin, attribute, attribute_mut, attribute_ref, mutator,
+    AttributeEntityMut, CurrentValueUpdateTrigger, DeathByAttributesPlugin, attribute,
+    attribute_mut,
 };
-use rand::{Rng, random};
+use rand::Rng;
 use std::time::Duration;
 
 fn main() {
@@ -56,7 +47,7 @@ struct UiFireballText;
 #[derive(Component)]
 struct Fireball;
 
-fn setup(mut commands: Commands, mut event_writer: EventWriter<GameEffectEvent>) {
+fn setup(mut commands: Commands) {
     let mut rng = rand::rng();
     let mut ability_component = GameAbilityContainer::default();
     ability_component.grant_ability(
@@ -71,60 +62,72 @@ fn setup(mut commands: Commands, mut event_writer: EventWriter<GameEffectEvent>)
             .build(),
     );
 
-    let entity = commands
-        .spawn((
-            Player,
-            ability_component,
-            Health::new(100.0),
-            HealthCap::new(200.0),
-            HealthRegen::new(8.0),
-            Mana::new(1000.0),
-        ))
-        .id();
+    let mut entity_commands = commands.spawn((
+        Player,
+        ability_component,
+        Health::new(100.0),
+        HealthCap::new(200.0),
+        HealthRegen::new(8.0),
+        Mana::new(1000.0),
+    ));
 
+    let entity = entity_commands.id();
+    entity_commands.insert((
+        EffectTarget(entity),
+        Effect::default(),
+        EffectDuration(Timer::from_seconds(999999999999.0, Repeating)),
+    ));
+
+    // Effect 1
     let effect = GameEffectBuilder::new()
         .with_permanent_duration()
         .with_continuous_application()
-        .with_additive_modifier(100.0, attribute_mut!(HealthCap))
+        .with_additive_modifier(900.0, attribute_mut!(HealthCap))
         .with_multiplicative_modifier(0.1, attribute_mut!(HealthCap))
         .build();
-    event_writer.write(GameEffectEvent { entity, effect });
 
+    commands.spawn((ChildOf(entity), EffectTarget(entity), effect));
+
+    // Effect 2
     let mut effect = GameEffectBuilder::new()
         .with_permanent_duration()
-        .with_periodic_application(1.0)
-        .with_additive_modifier(5.0, attribute_mut!(Health))
+        .with_periodic_application(3.0)
+        .with_additive_modifier(50.0, attribute_mut!(Health))
         .build();
 
     let meta_mod = Mutator::new(
         attribute_mut!(Health),
         MetaEvaluator::new(attribute_mut!(HealthRegen), 0.24, Additive),
-    ); //, 0.24));//, MetaModEvaluator::new(0.24));
-    effect.modifiers.push(MutatorWrapper::new(meta_mod));
-    event_writer.write(GameEffectEvent { entity, effect });
+    );
+    effect.modifiers.push(StoredMutator::new(meta_mod));
 
-    for _ in 0..10 {
-        let entity = commands
-            .spawn((
-                Health::new(100.0),
-                HealthCap::new(1000.0),
-                HealthRegen::new(2.0),
-                Mana::new(1000.0),
-            ))
-            .id();
+    commands.spawn((ChildOf(entity), EffectTarget(entity), effect, EffectPeriodicApplication::new(2.0)));
 
-        for _ in 0..50 {
+    for _ in 0..1000 {
+        let mut entity_commands = commands.spawn((
+            Health::new(100.0),
+            HealthCap::new(1000.0),
+            HealthRegen::new(2.0),
+            Mana::new(1000.0),
+        ));
+
+        let entity = entity_commands.id();
+        entity_commands.insert((
+            EffectTarget(entity),
+            Effect::default(),
+            EffectDuration::new(999999999999.0),
+        ));
+
+        for _ in 0..20 {
             let effect = GameEffectBuilder::new()
                 .with_duration(rng.random_range(100.0..300.0))
                 .with_periodic_application(rng.random_range(20.0..100.0))
                 .with_additive_modifier(rng.random_range(1.0..20.0), attribute_mut!(Health))
                 .build();
 
-            event_writer.write(GameEffectEvent { entity, effect });
+            commands.spawn((ChildOf(entity), EffectTarget(entity), effect, EffectDuration::new(rng.random_range(100.0..300.0))));
         }
     }
-
-    commands.spawn((Health::new(100.0), HealthCap::new(1000.0)));
 }
 
 fn clamp_health(
@@ -195,7 +198,7 @@ fn display_attribute_entity(
 }
 
 #[derive(Component, Attribute, Default, Clone, Reflect, Deref, DerefMut, Debug)]
-#[require(GameEffectContainer, GameAbilityContainer)]
+#[require(GameAbilityContainer)]
 pub struct Test {
     pub attribute: AttributeDef,
 }

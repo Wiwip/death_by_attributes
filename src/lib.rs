@@ -1,7 +1,9 @@
-use crate::effects::{GameEffectContainer, GameEffectEvent};
+use crate::effects::EvalStruct;
+use crate::effects::{Effect, EffectDuration, EffectPeriodicApplication, EffectTarget, GameEffectEvent};
 use crate::systems::{
-    handle_apply_effect_events, tick_ability_cooldowns, tick_active_effects,
-    update_attribute_base_value, update_attribute_current_value,
+    on_duration_effect_added, on_effect_removed, on_instant_effect_added,
+    tick_ability_cooldowns, tick_effects_duration, tick_effects_periodic_timer, update_base_values,
+    update_current_values,
 };
 use bevy::app::MainScheduleOrder;
 use bevy::ecs::schedule::ScheduleLabel;
@@ -24,37 +26,54 @@ pub struct DeathByAttributesPlugin;
 
 impl Plugin for DeathByAttributesPlugin {
     fn build(&self, app: &mut App) {
-        app.init_schedule(BaseValueUpdate)
+        app.init_schedule(AttributeUpdate)
             .add_event::<GameEffectEvent>()
             .add_systems(
-                BaseValueUpdate,
+                AttributeUpdate,
                 (
-                    handle_apply_effect_events,
-                    tick_active_effects,
-                    update_attribute_base_value,
-                )
-                    .chain(),
+                    tick_effects_periodic_timer,
+                    tick_ability_cooldowns,
+                    tick_effects_duration,
+                ),
             )
-            .add_systems(CurrentValueUpdate, update_attribute_current_value)
-            .add_systems(BaseValueUpdate, tick_ability_cooldowns);
+            .add_systems(
+                AttributeUpdate,
+                (update_base_values, update_current_values).chain(),
+            )
+            .insert_resource(EvalStruct::default())
+            .add_observer(on_instant_effect_added)
+            .add_observer(on_duration_effect_added)
+            .add_observer(on_effect_removed);
 
         app.world_mut()
             .resource_mut::<MainScheduleOrder>()
-            .insert_after(StateTransition, BaseValueUpdate);
-        app.world_mut()
-            .resource_mut::<MainScheduleOrder>()
-            .insert_after(BaseValueUpdate, CurrentValueUpdate);
+            .insert_after(Update, AttributeUpdate);
     }
 }
 
-pub type AttributeEntityMut<'w> = EntityMutExcept<'w, (GameEffectContainer, GameAbilityContainer)>;
-pub type AttributeEntityRef<'w> = EntityRefExcept<'w, (GameEffectContainer, GameAbilityContainer)>;
+pub type AttributeEntityMut<'w> = EntityMutExcept<
+    'w,
+    (
+        GameAbilityContainer,
+        EffectTarget,
+        Effect,
+        EffectPeriodicApplication,
+        EffectDuration,
+    ),
+>;
+pub type AttributeEntityRef<'w> = EntityRefExcept<
+    'w,
+    (
+        GameAbilityContainer,
+        EffectTarget,
+        Effect,
+        EffectPeriodicApplication,
+        EffectDuration,
+    ),
+>;
 
 #[derive(ScheduleLabel, Debug, Clone, PartialEq, Eq, Hash)]
-pub struct BaseValueUpdate;
-
-#[derive(ScheduleLabel, Debug, Clone, PartialEq, Eq, Hash)]
-pub struct CurrentValueUpdate;
+pub struct AttributeUpdate;
 
 #[derive(Event)]
 pub struct BaseValueUpdateTrigger;
@@ -79,9 +98,6 @@ pub enum AttributeEvaluationError {
 pub trait Editable: Reflect + Sized + Send + Sync + 'static {
     fn get_base_value(&self) -> f32;
     fn get_current_value(&self) -> f32;
-
-    //fn set_base_value(&mut self, value: f32);
-    //fn set_current_value(&mut self, value: f32);
 }
 impl Editable for AttributeDef {
     fn get_base_value(&self) -> f32 {
@@ -90,12 +106,4 @@ impl Editable for AttributeDef {
     fn get_current_value(&self) -> f32 {
         self.current_value
     }
-
-    /*fn set_base_value(&mut self, value: f32) {
-        self.base_value = value;
-    }
-
-    fn set_current_value(&mut self, value: f32) {
-        self.current_value = value;
-    }*/
 }

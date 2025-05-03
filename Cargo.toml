@@ -14,6 +14,7 @@ opt-level = 3
 # Add this to your Cargo.toml
 [profile.release]
 codegen-units = 1
+debug = true
 
 [dependencies]
 attributes_macro = { path = "attributes_macro" }
@@ -27,12 +28,13 @@ features = [
     "bevy_core_pipeline",
     "bevy_log",
     "bevy_state",
-    "dynamic_linking",
+    #"dynamic_linking",
 ]
 
-[dev-dependencies.bevy]
-version = "0.16"
-default-features = true
-features = [
-    "dynamic_linking",
-]
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+
+[[bench]]
+name = "continuous_effect"
+harness = false

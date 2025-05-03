@@ -1,13 +1,13 @@
 use crate::AttributeEntityMut;
-use crate::attributes::AttributeAccessorMut;
-use crate::effects::GameEffect;
+use crate::attributes::{AttributeAccessorMut, EvaluateAttribute};
+use crate::effects::Effect;
 
-use crate::mutator::{MutatorWrapper, Mutator};
+use crate::evaluators::FixedEvaluator;
+use crate::mutator::ModType::Additive;
+use crate::mutator::{Mutator, StoredMutator};
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
-use crate::evaluators::FixedEvaluator;
-use crate::mutator::ModType::Additive;
 
 pub type AbilityActivationFn = fn(&mut AttributeEntityMut, Commands);
 
@@ -36,7 +36,7 @@ pub struct GameAbilityBuilder {
 }
 
 impl GameAbilityBuilder {
-    pub fn with_effect(mut self, effect: GameEffect, who: GameEffectTarget) -> Self {
+    pub fn with_effect(mut self, effect: Effect, who: GameEffectTarget) -> Self {
         self.ability.applied_effects.push((who, effect));
         self
     }
@@ -44,13 +44,10 @@ impl GameAbilityBuilder {
     pub fn with_cost(
         mut self,
         cost: f32,
-        attribute_ref: impl AttributeAccessorMut + Clone,
+        attribute_ref: impl AttributeAccessorMut + Clone + EvaluateAttribute,
     ) -> Self {
         let evaluator = FixedEvaluator::new(cost, Additive);
-        self.ability.cost = Some(MutatorWrapper::new(Mutator::new(
-            attribute_ref,
-            evaluator,
-        )));
+        self.ability.cost = Some(StoredMutator::new(Mutator::new(attribute_ref, evaluator)));
         self
     }
 
@@ -76,8 +73,8 @@ pub enum GameEffectTarget {
 
 #[derive(Default)]
 pub struct GameAbility {
-    pub applied_effects: Vec<(GameEffectTarget, GameEffect)>,
-    pub cost: Option<MutatorWrapper>,
+    pub applied_effects: Vec<(GameEffectTarget, Effect)>,
+    pub cost: Option<StoredMutator>,
     pub cooldown: Timer,
     pub ability_activation: Option<AbilityActivationFn>,
 }
@@ -104,8 +101,14 @@ impl GameAbility {
             return true;
         };
 
-        let current_value = modifier.0.get_current_value(entity_ref);
-        let cost_magnitude = modifier.0.get_magnitude(entity_ref);
+        let current_value = match modifier.0.get_current_value(entity_ref) {
+            Ok(value) => value, 
+            Err(_) => return false,
+        };
+        let cost_magnitude = match modifier.0.get_magnitude(entity_ref) {
+            Ok(value) => value, 
+            Err(_) => return false
+        };
 
         f32::abs(cost_magnitude) <= current_value
     }

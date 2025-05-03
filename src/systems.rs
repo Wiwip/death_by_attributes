@@ -1,159 +1,160 @@
+#![allow(warnings)]
+
 use crate::abilities::GameAbilityContainer;
-use crate::effects::{GameEffectContainer, GameEffectDuration, GameEffectEvent, GameEffectPeriod};
-use crate::mutator::{MutatorWrapper, ModAggregator};
-use crate::{AttributeEntityMut, CurrentValueUpdateTrigger};
-use bevy::prelude::Vec;
+use crate::effects::{Effect, EffectDuration, EffectPeriodicApplication, EffectTarget, EvalStruct};
+use crate::AttributeEntityMut;
 use bevy::prelude::*;
-use bevy::utils::{PreHashMap, PreHashMapExt};
-use std::any::TypeId;
-use std::cell::RefCell;
+use bevy::utils::TypeIdMap;
 use std::time::Instant;
-use thread_local::ThreadLocal;
 
-pub fn handle_apply_effect_events(
-    mut query: Query<(AttributeEntityMut, &mut GameEffectContainer)>,
-    mut event_reader: EventReader<GameEffectEvent>,
-) {
-    let start = Instant::now();
-
-    for ev in event_reader.read() {
-        if let Ok((mut entity_mut, mut container)) = query.get_mut(ev.entity) {
-            match &ev.effect.duration {
-                GameEffectDuration::Instant => {
-                    for modifier in &ev.effect.modifiers {
-                        modifier.0.apply(&mut entity_mut).unwrap()
-                    }
-                }
-                GameEffectDuration::Duration(_) => {
-                    container.add_effect(&ev.effect);
-                }
-                GameEffectDuration::Permanent => {
-                    container.add_effect(&ev.effect);
-                }
-            }
-        } else {
-            warn!(
-                "Attempted to apply an effect to an invalid entity [{:?}] or it doesn't have a GameEffectContainer component.",
-                ev.entity
-            )
-        }
-    }
-
-    let elapsed = start.elapsed();
-    //println!("handle_apply_effect_events: {:?}", elapsed)
+pub fn tick_effects_periodic_timer(mut query: Query<&mut EffectPeriodicApplication>, time: Res<Time>) {
+    query.par_iter_mut().for_each(|mut timer| {
+        timer.0.tick(time.elapsed());
+    });
 }
 
-pub fn tick_active_effects(mut query: Query<&mut GameEffectContainer>, time: Res<Time>) {
+pub fn tick_effects_duration(mut query: Query<&mut EffectDuration>, time: Res<Time>) {
     let start = Instant::now();
 
-    query.par_iter_mut().for_each(|mut container| {
-        for effect in &mut container.effects.iter_mut() {
-            effect.tick_effect(time.delta());
-        }
-        container.remove_expired_effects();
+    query.par_iter_mut().for_each(|mut timer| {
+        timer.0.tick(time.elapsed());
     });
 
     let elapsed = start.elapsed();
-    //println!("tick_active_effects: {:?}", elapsed)
+    println!("tick_active_effects: {:?}", elapsed)
 }
 
-pub fn update_attribute_base_value(mut query: Query<(AttributeEntityMut, &GameEffectContainer)>) {
-    let start = Instant::now();
 
-    query
-        .par_iter_mut()
-        .for_each(|(mut entity_mut, container)| {
-            for effect in &container.effects {
-                if let Some(period) = &effect.periodic_application {
-                    match period {
-                        GameEffectPeriod::Periodic(timer) => {
-                            if timer.just_finished() {
-                                for modifier in &effect.modifiers {
-                                    modifier.0.apply(&mut entity_mut);
-                                }
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        });
-
-    let elapsed = start.elapsed();
-    //println!("update_attribute_base_value: {:?}", elapsed)
-}
-
-#[derive(Default)]
-pub struct EvalStruct {
-    evaluators: PreHashMap<(TypeId, usize), ModAggregator>,
-    modifiers: PreHashMap<(TypeId, usize), MutatorWrapper>,
-}
-
-#[derive(Default)]
-pub(crate) struct UpdateTracker {
-    entities: Vec<Entity>,
-}
-
-pub fn update_attribute_current_value(
-    mut commands: Commands,
-    mut query: Query<(Entity, AttributeEntityMut, &GameEffectContainer)>,
-    entities: Local<ThreadLocal<RefCell<UpdateTracker>>>,
+pub fn update_base_values(
+    query: Query<(&Effect, &EffectTarget, &EffectPeriodicApplication)>,
+    mut entities: Query<AttributeEntityMut>,
 ) {
     let start = Instant::now();
 
-    let a = query
-        .par_iter_mut()
-        .for_each(|(entity, mut entity_mut, container)| {
-            let mut evaluation_state = EvalStruct::default();
+    for (effect, target, timer) in query.iter() {
+        if timer.0.just_finished() {
+            let Ok(mut entity_mut) = entities.get_mut(target.0) else {
+                continue;
+            };
 
-            for effect in container.effects.iter() {
-                if effect.periodic_application.is_none() {
-                    for modifier in &effect.modifiers {
-                        evaluation_state
-                            .modifiers
-                            .get_or_insert_with(&modifier.0.evaluator_id(), || modifier.clone());
+            for modifier in &effect.modifiers {
+                let Ok(aggregator) = modifier.0.get_aggregator(&mut entity_mut) else {
+                    continue;
+                };
 
-                        let mut value = evaluation_state
-                            .evaluators
-                            .get_or_insert_with(&modifier.0.evaluator_id(), || {
-                                ModAggregator::default()
-                            });
-
-                        value += modifier.0.get_aggregator(&mut entity_mut);
-                    }
-                }
+                let _ = modifier.0.apply_from_aggregator(&mut entity_mut, aggregator);
             }
-
-            for (type_id, &aggregator) in evaluation_state.evaluators.iter() {
-                let modifier_ref = evaluation_state.modifiers.get(type_id).unwrap();
-                let _ = modifier_ref.0.apply_from_aggregator(&mut entity_mut, aggregator);
-            }
-
-            if !evaluation_state.evaluators.is_empty() {
-                let mut updated_entities = entities.get_or_default().borrow_mut();
-                let updated_entities = &mut *updated_entities;
-                updated_entities.entities.push(entity);
-            }
-        });
-
-    // Sends a trigger to the entities whose current value on any attributes was updated.
-    let mut updated_entities = entities.get_or_default().borrow_mut();
-    let updated_entities = &mut *updated_entities;
-
-    // There's nothing to trigger if noi entities were updated
-    if !updated_entities.entities.is_empty() {
-        commands.trigger_targets(CurrentValueUpdateTrigger, updated_entities.entities.clone());
-        updated_entities.entities.clear();
+        }
     }
 
     let elapsed = start.elapsed();
-    //println!("update_attribute_current_value: {:?}", elapsed)
+    println!("update_attributes: {:?}", elapsed)
+}
+
+pub fn update_current_values(
+    mut entities: Query<(Entity, AttributeEntityMut)>,
+    evaluation_state: Res<EvalStruct>,
+) {
+    let start = Instant::now();
+
+    for (entity, mut entity_mut) in entities.iter_mut() {
+        match evaluation_state.evaluators.get(&entity) {
+            None => {}
+            Some(map) => {
+                for (_, (mutator, aggregator)) in map {
+                    let _ = mutator.0.apply_from_aggregator(&mut entity_mut, *aggregator);
+                }
+            }
+        }
+    }
+
+    let elapsed = start.elapsed();
+    println!("update_attributes: {:?}", elapsed)
 }
 
 pub fn tick_ability_cooldowns(mut query: Query<&mut GameAbilityContainer>, time: Res<Time>) {
     for mut abilities in &mut query {
         for (_, ability) in abilities.get_abilities_mut().iter_mut() {
             ability.cooldown.tick(time.delta());
+        }
+    }
+}
+
+pub fn on_instant_effect_added(
+    trigger: Trigger<OnAdd, Effect>,
+    query: Query<&Effect, Without<EffectDuration>>,
+    mut entities: Query<AttributeEntityMut>,
+) {
+    let entity = trigger.target();
+    let Ok(effect) = query.get(entity) else {
+        return;
+    };
+
+    let modifiers = &effect.modifiers;
+    for modifier in modifiers.iter() {
+        let mut entity_mut = entities.get_mut(entity).unwrap();
+        if let Ok(aggregator) = modifier.0.get_aggregator(&mut entity_mut) {
+            let _ = modifier
+                .0
+                .apply_from_aggregator(&mut entity_mut, aggregator);
+        }
+    }
+}
+
+pub fn on_duration_effect_added(
+    trigger: Trigger<OnAdd, Effect>,
+    query: Query<&Effect, With<EffectDuration>>,
+    mut entities: Query<AttributeEntityMut>,
+    mut evaluation_state: ResMut<EvalStruct>,
+) {
+    let entity = trigger.target();
+    let Ok(effect) = query.get(entity) else {
+        return;
+    };
+
+    let modifiers = &effect.modifiers;
+    for modifier in modifiers.iter() {
+        let mut entity_mut = entities.get_mut(entity).unwrap();
+
+        let entity_effects = evaluation_state
+            .evaluators
+            .entry(entity)
+            .or_insert_with(|| TypeIdMap::with_hasher(Default::default()));
+
+        if let Ok(aggregator) = modifier.0.get_aggregator(&mut entity_mut) {
+            let (_, current_aggregator) = entity_effects
+                .entry(modifier.0.attribute_id())
+                .or_insert_with(|| (modifier.clone(), aggregator));
+
+            *current_aggregator += aggregator;
+        }
+    }
+}
+
+pub fn on_effect_removed(
+    trigger: Trigger<OnRemove, Effect>,
+    query: Query<&Effect, With<EffectDuration>>,
+    mut entities: Query<AttributeEntityMut>,
+    mut evaluation_state: ResMut<EvalStruct>,
+) {
+    let entity = trigger.target();
+    let effect = query.get(entity).unwrap();
+
+    let modifiers = &effect.modifiers;
+    for modifier in modifiers.iter() {
+        let mut entity_mut = entities.get_mut(entity).unwrap();
+
+        let entity_effects = evaluation_state
+            .evaluators
+            .entry(entity)
+            .or_insert_with(|| TypeIdMap::with_hasher(Default::default()));
+
+        if let Ok(aggregator) = modifier.0.get_aggregator(&mut entity_mut) {
+            let (_, current_aggregator) = entity_effects
+                .entry(modifier.0.attribute_id())
+                .or_insert_with(|| (modifier.clone(), aggregator));
+
+            *current_aggregator -= aggregator;
         }
     }
 }

@@ -1,4 +1,4 @@
-use crate::attributes::{AttributeAccessorMut, AttributeDef};
+use crate::attributes::{AttributeAccessorMut, AttributeDef, EvaluateAttribute, StoredAttribute};
 use crate::evaluators::Evaluator;
 use crate::{AttributeEntityMut, Editable};
 use bevy::animation::AnimationEvaluationError;
@@ -7,42 +7,53 @@ use bevy::prelude::*;
 use std::any::TypeId;
 use std::fmt::{Debug, Formatter};
 use std::iter::Sum;
-use std::ops::{Add, AddAssign};
+use std::ops::{Add, AddAssign, SubAssign};
 
-#[derive(Debug, TypePath)]
-pub struct MutatorWrapper(pub Box<dyn EvaluateMutator>);
+pub type Modifiers = Vec<StoredMutator>;
 
-impl Clone for MutatorWrapper {
+#[derive(Debug, Deref, DerefMut, TypePath)]
+pub struct StoredMutator(pub Box<dyn EvaluateMutator>);
+
+impl Clone for StoredMutator {
     fn clone(&self) -> Self {
         Self(EvaluateMutator::clone_value(&*self.0))
     }
 }
 
-impl MutatorWrapper {
-    pub fn new(curve: impl EvaluateMutator) -> Self {
-        Self(Box::new(curve))
+impl StoredMutator {
+    pub fn new(effect: impl EvaluateMutator) -> Self {
+        Self(Box::new(effect))
     }
 }
 
 pub trait EvaluateMutator: Debug + Send + Sync + 'static {
     /// Returns a boxed clone of this value.
     fn clone_value(&self) -> Box<dyn EvaluateMutator>;
-    fn get_aggregator(&self, entity: &mut AttributeEntityMut) -> ModAggregator;
-    fn get_magnitude(&self, entity: &mut AttributeEntityMut) -> f32;
-    fn get_current_value(&self, entity: &mut AttributeEntityMut) -> f32;
-
-    fn apply(
+    fn get_aggregator(
         &self,
-        proto: &mut AttributeEntityMut,
-    ) -> std::result::Result<(), AnimationEvaluationError>;
+        entity: &mut AttributeEntityMut,
+    ) -> Result<ModAggregator, AnimationEvaluationError>;
+    fn get_magnitude(
+        &self,
+        entity: &mut AttributeEntityMut,
+    ) -> Result<f32, AnimationEvaluationError>;
+    fn get_current_value(
+        &self,
+        entity: &mut AttributeEntityMut,
+    ) -> Result<f32, AnimationEvaluationError>;
+
+    fn get_stored_attribute(&self) -> StoredAttribute;
+
+    fn apply(&self, proto: &mut AttributeEntityMut) -> Result<(), AnimationEvaluationError>;
 
     fn apply_from_aggregator(
         &self,
         proto: &mut AttributeEntityMut,
         aggregator: ModAggregator,
-    ) -> std::result::Result<(), AnimationEvaluationError>;
+    ) -> Result<(), AnimationEvaluationError>;
 
     fn evaluator_id(&self) -> Hashed<(TypeId, usize)>;
+    fn attribute_id(&self) -> TypeId;
 }
 
 #[derive(Reflect, FromReflect)]
@@ -81,32 +92,49 @@ where
 impl<P, C> Debug for Mutator<P, C>
 where
     C: 'static + Evaluator + Send + Sync,
-    P: 'static + AttributeAccessorMut + Clone + Send + Sync,
+    P: 'static + AttributeAccessorMut + Clone + EvaluateAttribute + Send + Sync,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        todo!()
+        let _ = write!(f, "M[{:?}]", self.attribute);
+        Ok(())
     }
 }
 
 impl<P, C> EvaluateMutator for Mutator<P, C>
 where
-    P: AttributeAccessorMut + Clone + Send + Sync + 'static,
+    P: AttributeAccessorMut + EvaluateAttribute + Clone + Send + Sync + 'static,
     C: Evaluator + Send + Sync + 'static,
 {
     fn clone_value(&self) -> Box<dyn EvaluateMutator> {
         Box::new(self.clone())
     }
 
-    fn get_aggregator(&self, entity: &mut AttributeEntityMut) -> ModAggregator {
+    fn get_aggregator(
+        &self,
+        entity: &mut AttributeEntityMut,
+    ) -> Result<ModAggregator, AnimationEvaluationError> {
         self.evaluator.get_aggregator(entity)
     }
 
-    fn get_magnitude(&self, entity: &mut AttributeEntityMut) -> f32 {
+    fn get_magnitude(
+        &self,
+        entity: &mut AttributeEntityMut,
+    ) -> Result<f32, AnimationEvaluationError> {
         self.evaluator.get_magnitude(entity)
     }
 
-    fn get_current_value(&self, entity: &mut AttributeEntityMut) -> f32 {
-        self.attribute.get_mut(entity).unwrap().get_current_value()
+    fn get_current_value(
+        &self,
+        entity: &mut AttributeEntityMut,
+    ) -> Result<f32, AnimationEvaluationError> {
+        match self.attribute.get_mut(entity) {
+            Ok(value) => Ok(value.get_current_value()),
+            Err(err) => Err(err),
+        }
+    }
+
+    fn get_stored_attribute(&self) -> StoredAttribute {
+        StoredAttribute::new(self.attribute.clone())
     }
 
     fn apply(&self, entity: &mut AttributeEntityMut) -> Result<(), AnimationEvaluationError> {
@@ -117,15 +145,20 @@ where
             .downcast_mut::<AttributeDef>()
             .unwrap();
 
-        attribute_def.base_value += magnitude;
-        Ok(())
+        match magnitude {
+            Ok(value) => {
+                attribute_def.base_value += value;
+                Ok(())
+            }
+            Err(err) => Err(err),
+        }
     }
 
     fn apply_from_aggregator(
         &self,
         entity_mut: &mut AttributeEntityMut,
         aggregator: ModAggregator,
-    ) -> std::result::Result<(), AnimationEvaluationError> {
+    ) -> Result<(), AnimationEvaluationError> {
         let attribute_ref = self.attribute.get_mut(entity_mut)?;
         let attribute_def = attribute_ref
             .as_any_mut()
@@ -144,6 +177,10 @@ where
 
     fn evaluator_id(&self) -> Hashed<(TypeId, usize)> {
         self.attribute.evaluator_id()
+    }
+
+    fn attribute_id(&self) -> TypeId {
+        self.attribute.attribute_id()
     }
 }
 
@@ -216,10 +253,18 @@ impl Add<ModAggregator> for &mut ModAggregator {
     }
 }
 
-impl AddAssign<ModAggregator> for &mut ModAggregator {
+impl AddAssign for ModAggregator {
     fn add_assign(&mut self, rhs: ModAggregator) {
         self.additive += rhs.additive;
         self.multiplicative += rhs.multiplicative;
+        self.overrule = self.overrule.or(rhs.overrule);
+    }
+}
+
+impl SubAssign for ModAggregator {
+    fn sub_assign(&mut self, rhs: Self) {
+        self.additive -= rhs.additive;
+        self.multiplicative -= rhs.multiplicative;
         self.overrule = self.overrule.or(rhs.overrule);
     }
 }

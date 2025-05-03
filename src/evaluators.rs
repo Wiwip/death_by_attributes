@@ -1,11 +1,18 @@
 use crate::attributes::AttributeAccessorMut;
 use crate::mutator::{ModAggregator, ModType};
 use crate::{AttributeEntityMut, Editable};
+use bevy::animation::AnimationEvaluationError;
 use bevy::prelude::Reflect;
 
 pub trait Evaluator: Clone {
-    fn get_magnitude(&self, entity: &mut AttributeEntityMut) -> f32;
-    fn get_aggregator(&self, entity: &mut AttributeEntityMut) -> ModAggregator;
+    fn get_magnitude(
+        &self,
+        entity: &mut AttributeEntityMut,
+    ) -> Result<f32, AnimationEvaluationError>;
+    fn get_aggregator(
+        &self,
+        entity: &mut AttributeEntityMut,
+    ) -> Result<ModAggregator, AnimationEvaluationError>;
 }
 
 #[derive(Reflect, Clone, Debug)]
@@ -24,16 +31,22 @@ impl FixedEvaluator {
 }
 
 impl Evaluator for FixedEvaluator {
-    fn get_magnitude(&self, entity: &mut AttributeEntityMut) -> f32 {
-        self.magnitude
+    fn get_magnitude(
+        &self,
+        entity: &mut AttributeEntityMut,
+    ) -> Result<f32, AnimationEvaluationError> {
+        Ok(self.magnitude)
     }
 
-    fn get_aggregator(&self, entity: &mut AttributeEntityMut) -> ModAggregator {
-        match self.mod_type {
+    fn get_aggregator(
+        &self,
+        entity: &mut AttributeEntityMut,
+    ) -> Result<ModAggregator, AnimationEvaluationError> {
+        Ok(match self.mod_type {
             ModType::Additive => ModAggregator::additive(self.magnitude),
             ModType::Multiplicative => ModAggregator::multiplicative(self.magnitude),
             ModType::Overrule => ModAggregator::overrule(self.magnitude),
-        }
+        })
     }
 }
 
@@ -64,17 +77,29 @@ impl<P> Evaluator for MetaEvaluator<P>
 where
     P: AttributeAccessorMut + Clone,
 {
-    fn get_magnitude(&self, entity: &mut AttributeEntityMut) -> f32 {
-        self.attribute.get_mut(entity).unwrap().get_current_value()
+    fn get_magnitude(
+        &self,
+        entity: &mut AttributeEntityMut,
+    ) -> Result<f32, AnimationEvaluationError> {
+        match self.attribute.get_mut(entity) {
+            Ok(attribute) => Ok(attribute.get_current_value()),
+            Err(err) => Err(err),
+        }
     }
 
-    fn get_aggregator(&self, entity: &mut AttributeEntityMut) -> ModAggregator {
-        let actual_magnitude = self.get_magnitude(entity) * self.scale;
-        match self.mod_type {
+    fn get_aggregator(
+        &self,
+        entity: &mut AttributeEntityMut,
+    ) -> Result<ModAggregator, AnimationEvaluationError> {
+        let actual_magnitude = match self.get_magnitude(entity) {
+            Ok(magnitude) => magnitude * self.scale,
+            Err(err) => return Err(err),
+        };
+        Ok(match self.mod_type {
             ModType::Additive => ModAggregator::additive(actual_magnitude),
             ModType::Multiplicative => ModAggregator::multiplicative(actual_magnitude),
             ModType::Overrule => ModAggregator::overrule(actual_magnitude),
-        }
+        })
     }
 }
 
@@ -83,7 +108,6 @@ mod tests {
     use super::*;
     use crate::AttributeDef;
     use crate::GameAbilityContainer;
-    use crate::GameEffectContainer;
     use crate::attribute;
     use crate::attributes::AttributeMut;
     use crate::mutator::EvaluateMutator;
@@ -139,7 +163,7 @@ mod tests {
         fn execute_basic(mut query: Query<AttributeEntityMut>) {
             for mut entity in query.iter_mut() {
                 let health = attribute_mut!(Health);
-                let eval = FixedEvaluator::new(999.0,Additive);
+                let eval = FixedEvaluator::new(999.0, Additive);
                 let mutator = Mutator::new(health, eval);
 
                 let _ = mutator.apply(&mut entity);
