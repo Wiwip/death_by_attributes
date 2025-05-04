@@ -28,7 +28,7 @@ features = [
     "bevy_core_pipeline",
     "bevy_log",
     "bevy_state",
-    #"dynamic_linking",
+    "dynamic_linking",
 ]
 
 [dev-dependencies]
@@ -36,5 +36,5 @@ criterion = { version = "0.5", features = ["html_reports"] }
 
 
 [[bench]]
-name = "continuous_effect"
+name = "bench_systems"
 harness = false

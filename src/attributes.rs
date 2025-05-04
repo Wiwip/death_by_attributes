@@ -1,13 +1,10 @@
-use crate::mutator::EvaluateMutator;
-use crate::{AttributeEntityMut, AttributeEntityRef, Editable};
-use bevy::animation::AnimationEvaluationError;
-use bevy::ecs::component::Mutable;
-use bevy::platform::hash::Hashed;
 use bevy::prelude::*;
-use bevy::reflect::{TypeInfo, Typed};
-use std::any::TypeId;
 use std::fmt::{Debug, Formatter};
-use std::marker::PhantomData;
+
+pub trait AttributeComponent {
+    fn get_attribute_mut(&mut self) -> &mut AttributeDef;
+    fn get_attribute(&self) -> &AttributeDef;
+}
 
 #[derive(Default, Reflect, Debug, Clone)]
 pub struct AttributeDef {
@@ -15,32 +12,43 @@ pub struct AttributeDef {
     pub current_value: f32,
 }
 
-#[derive(Debug, Deref, DerefMut, TypePath)]
-pub struct StoredAttribute(pub Box<dyn EvaluateAttribute>);
-
-impl Clone for StoredAttribute {
-    fn clone(&self) -> Self {
-        Self(EvaluateAttribute::clone_value(&*self.0))
+impl std::fmt::Display for AttributeDef {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Base: {}, Current: {}",
+            self.base_value, self.current_value
+        )
     }
-}
-
-impl StoredAttribute {
-    pub fn new(effect: impl EvaluateAttribute) -> Self {
-        Self(Box::new(effect))
-    }
-}
-
-pub trait EvaluateAttribute: Debug + Send + Sync + 'static {
-    fn clone_value(&self) -> Box<dyn EvaluateAttribute>;
 }
 
 #[macro_export]
 macro_rules! attribute {
     ( $StructName:ident) => {
-        #[derive(Component, Attribute, Default, Clone, Reflect, Deref, DerefMut, Debug)]
+        #[derive(Component, Default, Clone, Reflect, Deref, DerefMut, Debug)]
         #[require(GameAbilityContainer)]
         pub struct $StructName {
             pub attribute: AttributeDef,
+        }
+
+        impl AttributeComponent for $StructName {
+            fn get_attribute_mut(&mut self) -> &mut AttributeDef {
+                &mut self.attribute
+            }
+            fn get_attribute(&self) -> &AttributeDef {
+                &self.attribute
+            }
+        }
+
+        impl $StructName {
+            pub fn new(value: f32) -> Self {
+                Self {
+                    attribute: AttributeDef {
+                        base_value: value,
+                        current_value: value,
+                    },
+                }
+            }
         }
     };
 
@@ -51,185 +59,25 @@ macro_rules! attribute {
         pub struct $StructName {
             pub attribute: AttributeDef,
         }
-    };
-}
 
-#[macro_export]
-macro_rules! attribute_mut {
-    ($component:ident) => {
-        AttributeMut::new_unchecked(|component: &mut $component| &mut component.attribute)
-    };
-}
-
-#[macro_export]
-macro_rules! attribute_ref {
-    ($component:ident) => {
-        AttributeRef::new_unchecked(|component: &$component| &component.attribute)
-    };
-}
-
-pub trait AttributeAccessorMut: Clone + Send + Sync + 'static {
-    type Property: Editable;
-
-    fn get_mut<'a>(
-        &self,
-        entity: &'a mut AttributeEntityMut,
-    ) -> Result<&'a mut Self::Property, AnimationEvaluationError>;
-
-    fn evaluator_id(&self) -> Hashed<(TypeId, usize)>;
-    fn attribute_id(&self) -> TypeId;
-}
-
-pub trait AttributeAccessorRef: Send + Sync + 'static {
-    type Property: Editable;
-
-    fn get<'a>(
-        &self,
-        entity: &'a AttributeEntityRef,
-    ) -> Result<&'a Self::Property, AnimationEvaluationError>;
-
-    fn evaluator_id(&self) -> Hashed<(TypeId, usize)>;
-    fn attribute_id(&self) -> TypeId;
-}
-
-#[derive(Clone)]
-pub struct AttributeMut<C, A, F: Fn(&mut C) -> &mut A> {
-    func: F,
-    marker: PhantomData<(C, A)>,
-    evaluator_id: Hashed<(TypeId, usize)>,
-}
-
-impl<C: Typed, P, F: Fn(&mut C) -> &mut P + 'static> AttributeMut<C, P, F> {
-    pub fn new_unchecked(func: F) -> Self {
-        let field_index;
-        if let TypeInfo::Struct(struct_info) = C::type_info() {
-            field_index = struct_info
-                .index_of("attribute")
-                .expect("Field name should exist");
-        } else if let TypeInfo::TupleStruct(struct_info) = C::type_info() {
-            field_index = "attribute"
-                .parse()
-                .expect("Field name should be a valid tuple index");
-            if field_index >= struct_info.field_len() {
-                panic!("Field name should be a valid tuple index");
+        impl AttributeComponent for $StructName {
+            fn get_attribute_mut(&mut self) -> &mut AttributeDef {
+                &mut self.attribute
             }
-        } else {
-            panic!("Only structs are supported in `AnimatedField::new_unchecked`")
-        }
-
-        Self {
-            func,
-            marker: PhantomData,
-            evaluator_id: Hashed::new((TypeId::of::<C>(), field_index)),
-        }
-    }
-}
-
-impl<C, A, F> AttributeAccessorMut for AttributeMut<C, A, F>
-where
-    C: Component<Mutability = Mutable> + Clone,
-    A: Editable + Clone + Sync + Debug,
-    F: Fn(&mut C) -> &mut A + Send + Sync + 'static + Clone,
-{
-    type Property = A;
-
-    fn get_mut<'a>(
-        &self,
-        entity: &'a mut AttributeEntityMut,
-    ) -> Result<&'a mut A, AnimationEvaluationError> {
-        let c = entity
-            .get_mut::<C>()
-            .ok_or_else(|| AnimationEvaluationError::ComponentNotPresent(TypeId::of::<C>()))?;
-
-        Ok((self.func)(c.into_inner()))
-    }
-
-    fn evaluator_id(&self) -> Hashed<(TypeId, usize)> {
-        self.evaluator_id
-    }
-
-    fn attribute_id(&self) -> TypeId {
-        TypeId::of::<C>()
-    }
-}
-
-impl<C, A, F> Debug for AttributeMut<C, A, F>
-where
-    A: Clone + Debug + Editable + Sync,
-    C: Clone + Component<Mutability = Mutable>,
-    F: 'static + Clone + Fn(&mut C) -> &mut A + Send + Sync,
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let _ = write!(f, "A[{:?}]", self.evaluator_id);
-        Ok(())
-    }
-}
-
-impl<C, A, F> EvaluateAttribute for AttributeMut<C, A, F>
-where
-    C: Component<Mutability = Mutable> + Clone,
-    A: Editable + Clone + Sync + Debug,
-    F: Fn(&mut C) -> &mut A + Send + Sync + 'static + Clone,
-{
-    fn clone_value(&self) -> Box<dyn EvaluateAttribute> {
-        Box::new(self.clone())
-    }
-
-}
-
-#[derive(Clone)]
-pub struct AttributeRef<C, A, F: Fn(&C) -> &A> {
-    func: F,
-    marker: PhantomData<(C, A)>,
-    evaluator_id: Hashed<(TypeId, usize)>,
-}
-
-impl<C: Typed, P, F: Fn(&C) -> &P + 'static> AttributeRef<C, P, F> {
-    pub fn new_unchecked(func: F) -> Self {
-        let field_index;
-        if let TypeInfo::Struct(struct_info) = C::type_info() {
-            field_index = struct_info
-                .index_of("attribute")
-                .expect("Field name should exist");
-        } else if let TypeInfo::TupleStruct(struct_info) = C::type_info() {
-            field_index = "attribute"
-                .parse()
-                .expect("Field name should be a valid tuple index");
-            if field_index >= struct_info.field_len() {
-                panic!("Field name should be a valid tuple index");
+            fn get_attribute(&self) -> &AttributeDef {
+                &self.attribute
             }
-        } else {
-            panic!("Only structs are supported in `AnimatedField::new_unchecked`")
         }
 
-        Self {
-            func,
-            marker: PhantomData,
-            evaluator_id: Hashed::new((TypeId::of::<C>(), field_index)),
+        impl $StructName {
+            pub fn new(value: f32) -> Self {
+                Self {
+                    attribute: AttributeDef {
+                        base_value: value,
+                        current_value: value,
+                    },
+                }
+            }
         }
-    }
-}
-
-impl<C, A, F> AttributeAccessorRef for AttributeRef<C, A, F>
-where
-    C: Component<Mutability = Mutable>,
-    A: Editable + Clone + Sync + Debug,
-    F: Fn(&C) -> &A + Send + Sync + 'static,
-{
-    type Property = A;
-
-    fn get<'a>(&self, entity: &'a AttributeEntityRef) -> Result<&'a A, AnimationEvaluationError> {
-        let c = entity
-            .get::<C>()
-            .ok_or_else(|| AnimationEvaluationError::ComponentNotPresent(TypeId::of::<C>()))?;
-
-        Ok((self.func)(c))
-    }
-
-    fn evaluator_id(&self) -> Hashed<(TypeId, usize)> {
-        self.evaluator_id
-    }
-    fn attribute_id(&self) -> TypeId {
-        TypeId::of::<C>()
-    }
+    };
 }

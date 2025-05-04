@@ -1,18 +1,13 @@
 use attributes_macro::Attribute;
 use bevy::ecs::schedule::{LogLevel, ScheduleBuildSettings};
 use bevy::prelude::*;
-use bevy::time::TimerMode::Repeating;
 use bevy::time::common_conditions::on_timer;
 use death_by_attributes::abilities::{GameAbilityBuilder, GameAbilityContainer};
+use death_by_attributes::attributes::AttributeComponent;
 use death_by_attributes::attributes::AttributeDef;
-use death_by_attributes::attributes::AttributeMut;
-use death_by_attributes::effects::{Effect, EffectDuration, EffectPeriodicApplication, EffectTarget, GameEffectBuilder};
-use death_by_attributes::evaluators::MetaEvaluator;
-use death_by_attributes::mutator::ModType::Additive;
-use death_by_attributes::mutator::{Mutator, StoredMutator};
+use death_by_attributes::effects::EffectBuilder;
 use death_by_attributes::{
-    AttributeEntityMut, CurrentValueUpdateTrigger, DeathByAttributesPlugin, attribute,
-    attribute_mut,
+    AttributeEntityMut, CurrentValueChanged, DeathByAttributesPlugin, attribute,
 };
 use rand::Rng;
 use std::time::Duration;
@@ -53,85 +48,70 @@ fn setup(mut commands: Commands) {
     ability_component.grant_ability(
         "fireball".to_string(),
         GameAbilityBuilder::default()
-            .with_cooldown(0.200)
-            .with_cost(-12.0, attribute_mut!(Health))
-            .with_activation(|_: &mut AttributeEntityMut, _: Commands| {
+            .with_cooldown(0.100)
+            .with_cost::<Health>(-12.0)
+            .with_activation(|_: AttributeEntityMut, mut commands: Commands| {
                 info!("fireball!");
-                //commands.spawn(Fireball);
+                commands.spawn(Fireball);
             })
             .build(),
     );
 
-    let mut entity_commands = commands.spawn((
-        Player,
-        ability_component,
-        Health::new(100.0),
-        HealthCap::new(200.0),
-        HealthRegen::new(8.0),
-        Mana::new(1000.0),
-    ));
+    let player_entity = commands
+        .spawn((
+            Player,
+            ability_component,
+            Health::new(100.0),
+            HealthCap::new(200.0),
+            HealthRegen::new(8.0),
+            Mana::new(1000.0),
+            ManaRegen::new(12.0),
+        ))
+        .id();
 
-    let entity = entity_commands.id();
-    entity_commands.insert((
-        EffectTarget(entity),
-        Effect::default(),
-        EffectDuration(Timer::from_seconds(999999999999.0, Repeating)),
-    ));
-
-    // Effect 1
-    let effect = GameEffectBuilder::new()
+    // Effect 1 - Passive Max Health Boost
+    EffectBuilder::new(player_entity)
         .with_permanent_duration()
         .with_continuous_application()
-        .with_additive_modifier(900.0, attribute_mut!(HealthCap))
-        .with_multiplicative_modifier(0.1, attribute_mut!(HealthCap))
-        .build();
+        .with_additive_modifier::<HealthCap>(9.0)
+        .with_multiplicative_modifier::<HealthCap>(0.1)
+        .build(&mut commands);
 
-    commands.spawn((ChildOf(entity), EffectTarget(entity), effect));
-
-    // Effect 2
-    let mut effect = GameEffectBuilder::new()
+    // Effect 2 - Periodic Health Regen
+    EffectBuilder::new(player_entity)
         .with_permanent_duration()
-        .with_periodic_application(3.0)
-        .with_additive_modifier(50.0, attribute_mut!(Health))
-        .build();
+        .with_periodic_application(1.0)
+        .with_additive_modifier::<Health>(5.0)
+        .build(&mut commands);
 
-    let meta_mod = Mutator::new(
-        attribute_mut!(Health),
-        MetaEvaluator::new(attribute_mut!(HealthRegen), 0.24, Additive),
-    );
-    effect.modifiers.push(StoredMutator::new(meta_mod));
-
-    commands.spawn((ChildOf(entity), EffectTarget(entity), effect, EffectPeriodicApplication::new(2.0)));
+    // Effect 3 - Instant
+    EffectBuilder::new(player_entity)
+        .with_instant_application()
+        .with_additive_modifier::<Health>(-35.0)
+        .build(&mut commands);
 
     for _ in 0..1000 {
-        let mut entity_commands = commands.spawn((
-            Health::new(100.0),
-            HealthCap::new(1000.0),
-            HealthRegen::new(2.0),
-            Mana::new(1000.0),
-        ));
+        let npc_entity = commands
+            .spawn((
+                Health::new(100.0),
+                HealthCap::new(1000.0),
+                HealthRegen::new(2.0),
+                Mana::new(1000.0),
+            ))
+            .id();
 
-        let entity = entity_commands.id();
-        entity_commands.insert((
-            EffectTarget(entity),
-            Effect::default(),
-            EffectDuration::new(999999999999.0),
-        ));
-
-        for _ in 0..20 {
-            let effect = GameEffectBuilder::new()
+        for _ in 0..50 {
+            EffectBuilder::new(npc_entity)
                 .with_duration(rng.random_range(100.0..300.0))
                 .with_periodic_application(rng.random_range(20.0..100.0))
-                .with_additive_modifier(rng.random_range(1.0..20.0), attribute_mut!(Health))
-                .build();
-
-            commands.spawn((ChildOf(entity), EffectTarget(entity), effect, EffectDuration::new(rng.random_range(100.0..300.0))));
+                .with_additive_modifier::<Health>(rng.random_range(1.0..20.0))
+                .build(&mut commands);
         }
     }
 }
 
 fn clamp_health(
-    trigger: Trigger<CurrentValueUpdateTrigger>,
+    trigger: Trigger<CurrentValueChanged>,
     mut query: Query<(&mut Health, &HealthCap)>,
 ) {
     if let Ok((mut health, max_health)) = query.get_mut(trigger.target()) {
@@ -174,9 +154,10 @@ fn display_attribute(
     mut q_health: Query<&mut Text, With<PlayerHealthMarker>>,
 ) {
     for (health) in q_player.iter() {
-        if let Ok(mut text) = q_health.get_single_mut() {
+        if let Ok(mut text) = q_health.single_mut() {
             text.0 = format!(
-                "Health: {:.1} [{:.1}]",
+                "Values: Current [Base]\n\
+                Health: {:.1} [{:.1}]",
                 health.current_value, health.base_value
             );
         }
@@ -188,7 +169,7 @@ fn display_attribute_entity(
     mut q_health: Query<&mut Text, With<EntityHealthMarker>>,
 ) {
     for (max_health) in q_entity.iter() {
-        if let Ok(mut text) = q_health.get_single_mut() {
+        if let Ok(mut text) = q_health.single_mut() {
             text.0 = format!(
                 "Max Health: {:.1} [{:.1}]",
                 max_health.current_value, max_health.base_value
@@ -203,11 +184,11 @@ pub struct Test {
     pub attribute: AttributeDef,
 }
 
-attribute!(Health, HealthRegen, HealthCap);
+attribute!(Health);
 attribute!(HealthCap);
 attribute!(HealthRegen);
 
-attribute!(Mana, ManaRegen);
+attribute!(Mana);
 attribute!(ManaRegen);
 
 pub fn inputs(
@@ -215,13 +196,13 @@ pub fn inputs(
     keys: Res<ButtonInput<KeyCode>>,
     commands: Commands,
 ) {
-    if let Ok((mut entity_mut, mut abilities)) = q_player.single_mut() {
+    if let Ok((entity_mut, mut abilities)) = q_player.single_mut() {
         if keys.just_pressed(KeyCode::Space) {
             abilities
                 .get_abilities_mut()
                 .get_mut("fireball")
                 .unwrap()
-                .try_activate(&mut entity_mut, commands);
+                .try_activate(entity_mut, commands);
         }
     }
 }

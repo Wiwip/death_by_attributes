@@ -1,15 +1,16 @@
-use crate::AttributeEntityMut;
-use crate::attributes::{AttributeAccessorMut, EvaluateAttribute};
+use crate::{AttributeEntityMut, BaseValueChanged, CurrentValueChanged};
 use crate::effects::Effect;
 
+use crate::attributes::AttributeComponent;
 use crate::evaluators::FixedEvaluator;
 use crate::mutator::ModType::Additive;
 use crate::mutator::{Mutator, StoredMutator};
+use bevy::ecs::component::Mutable;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-pub type AbilityActivationFn = fn(&mut AttributeEntityMut, Commands);
+pub type AbilityActivationFn = fn(AttributeEntityMut, Commands);
 
 #[derive(Component, Default)]
 pub struct GameAbilityContainer {
@@ -41,13 +42,12 @@ impl GameAbilityBuilder {
         self
     }
 
-    pub fn with_cost(
+    pub fn with_cost<C: Component<Mutability = Mutable> + AttributeComponent>(
         mut self,
         cost: f32,
-        attribute_ref: impl AttributeAccessorMut + Clone + EvaluateAttribute,
     ) -> Self {
         let evaluator = FixedEvaluator::new(cost, Additive);
-        self.ability.cost = Some(StoredMutator::new(Mutator::new(attribute_ref, evaluator)));
+        self.ability.cost = Some(StoredMutator::new(Mutator::new::<C>(evaluator)));
         self
     }
 
@@ -80,9 +80,13 @@ pub struct GameAbility {
 }
 
 impl GameAbility {
-    pub fn try_activate(&mut self, entity_mut: &mut AttributeEntityMut, commands: Commands) {
-        if self.can_activate(entity_mut) {
-            self.commit_cost(entity_mut);
+    pub fn try_activate(&mut self, mut entity_mut: AttributeEntityMut, mut commands: Commands) {
+        if self.can_activate(entity_mut.reborrow()) {
+            self.commit_cost(entity_mut.reborrow());
+            
+            // Trigger update of the current value
+            commands.trigger_targets(BaseValueChanged, entity_mut.id());
+            commands.trigger_targets(CurrentValueChanged, entity_mut.id());
 
             if let Some(activation_function) = self.ability_activation {
                 activation_function(entity_mut, commands);
@@ -90,7 +94,7 @@ impl GameAbility {
         }
     }
 
-    pub fn can_activate(&self, entity_ref: &mut AttributeEntityMut) -> bool {
+    pub fn can_activate(&self, entity: AttributeEntityMut) -> bool {
         // Check cooldown first. If ability is still on cooldown, we cannot activate it yet.
         if !self.cooldown.finished() {
             return false;
@@ -101,21 +105,21 @@ impl GameAbility {
             return true;
         };
 
-        let current_value = match modifier.0.get_current_value(entity_ref) {
-            Ok(value) => value, 
+        let current_value = match modifier.0.get_current_value(entity) {
+            Ok(value) => value,
             Err(_) => return false,
         };
-        let cost_magnitude = match modifier.0.get_magnitude(entity_ref) {
-            Ok(value) => value, 
-            Err(_) => return false
+        let cost_magnitude = match modifier.0.get_magnitude() {
+            Ok(value) => value,
+            Err(_) => return false,
         };
 
         f32::abs(cost_magnitude) <= current_value
     }
 
-    pub fn commit_cost(&mut self, entity_mut: &mut AttributeEntityMut) {
+    pub fn commit_cost(&mut self, entity_mut: AttributeEntityMut) {
         if let Some(mutator) = &self.cost {
-            mutator.0.apply(entity_mut).expect("couldn't commit");
+            mutator.0.apply_mutator(entity_mut);
         }
 
         self.cooldown.reset();
