@@ -10,7 +10,7 @@ pub fn derive_attribute_macro(input: TokenStream) -> TokenStream {
     // Parse the input tokens into a syntax tree
     let input = parse_macro_input!(input as DeriveInput);
     let st_name = input.ident;
-    let (_impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+    let (_impl_generics, _ty_generics, _where_clause) = input.generics.split_for_impl();
 
     let stream = quote! {
         #[automatically_derived]

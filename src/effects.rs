@@ -1,64 +1,26 @@
-use crate::AttributeEntityMut;
 use crate::attributes::AttributeComponent;
-use crate::evaluators::FixedEvaluator;
-use crate::mutator::ModType::{Additive, Multiplicative};
-use crate::mutator::Mutator;
-use crate::mutator::StoredMutator;
-use crate::mutator::{ModAggregator, Mutators};
+use crate::evaluators::{FixedEvaluator, MetaEvaluator};
+use crate::mutator::{ModType, MutatorCommand, MutatorHelper};
 use bevy::ecs::component::Mutable;
-use bevy::prelude::TimerMode::Once;
+use bevy::ecs::world::CommandQueue;
+use bevy::prelude::TimerMode::{Once, Repeating};
 use bevy::prelude::*;
-use bevy::time::TimerMode::Repeating;
-use bevy::utils::TypeIdMap;
-use std::any::TypeId;
-use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 
 #[derive(Component, Debug, Default)]
-pub struct Effect {
-    pub modifiers: Mutators,
-}
+pub struct Effect {}
 
-impl Effect {
-    pub fn apply_effect(&self, mut entity: AttributeEntityMut) {
-        for modifier in self.modifiers.iter() {
-            let _ = modifier.0.apply_mutator(entity.reborrow());
-        }
-    }
-}
+/// The entity that this effect is targeting.
+#[derive(Component, Reflect, Debug)]
+#[relationship(relationship_target = AffectedBy)]
+pub struct EffectTarget(Entity);
 
-#[derive(Default, Resource)]
-pub struct MutationAggregatorCache {
-    pub evaluators: HashMap<Entity, TypeIdMap<(StoredMutator, ModAggregator, bool, bool)>>,
-}
+/// All effects that are targeting this entity.
+#[derive(Component, Reflect, Debug)]
+#[relationship_target(relationship = EffectTarget, linked_spawn)]
+pub struct AffectedBy(Vec<Entity>);
 
-impl MutationAggregatorCache {
-    pub fn is_base_value_dirty(&self, entity: Entity, type_id: TypeId) -> Result<bool, ()> {
-        let Some(type_map) = self.evaluators.get(&entity) else {
-            return Err(());
-        };
-
-        let Some((_, _, base_value_dirty, _)) = type_map.get(&type_id) else {
-            return Err(());
-        };
-
-        Ok(*base_value_dirty)
-    }
-
-    pub fn is_current_value_dirty(&self, entity: Entity, type_id: TypeId) -> Result<bool, ()> {
-        let Some(type_map) = self.evaluators.get(&entity) else {
-            return Err(());
-        };
-
-        let Some((_, _, _, current_value_dirty)) = type_map.get(&type_id) else {
-            return Err(());
-        };
-
-        Ok(*current_value_dirty)
-    }
-}
-
-#[derive(Component, Deref, DerefMut)]
+#[derive(Component, Reflect, Deref, DerefMut)]
 pub struct EffectPeriodicTimer(pub Timer);
 
 impl EffectPeriodicTimer {
@@ -68,50 +30,58 @@ impl EffectPeriodicTimer {
 }
 
 pub struct EffectBuilder {
-    target: Entity,
-    effect: Effect,
+    pub(crate) actor_entity: Entity,
+    pub(crate) effect_entity: Entity,
+    pub(crate) effect: Effect,
+    queue: CommandQueue,
     duration: Option<EffectDuration>,
     period: Option<Timer>,
 }
 
 impl EffectBuilder {
-    pub fn new(target: Entity) -> GameEffectDurationBuilder {
+    pub fn new(actor_entity: Entity, effect_entity: Entity) -> GameEffectDurationBuilder {
+        assert_ne!(actor_entity, effect_entity);
+        info!("Created effect entity {}", effect_entity);
         GameEffectDurationBuilder {
             effect_builder: EffectBuilder {
-                target,
+                actor_entity,
+                effect_entity,
                 effect: Default::default(),
+                queue: Default::default(),
                 duration: None,
                 period: None,
             },
         }
     }
 
-    pub fn with_additive_modifier<C: Component<Mutability = Mutable> + AttributeComponent>(
+    pub fn mutate_by_scalar<T: AttributeComponent + Component<Mutability = Mutable>>(
         mut self,
         magnitude: f32,
+        mod_type: ModType,
     ) -> Self {
-        let evaluator = FixedEvaluator::new(magnitude, Additive);
-        let modifier = StoredMutator::new(Mutator::new::<C>(evaluator));
-        self.effect.modifiers.push(modifier);
+        self.queue.push(MutatorCommand {
+            effect_entity: self.effect_entity,
+            actor_entity: self.actor_entity,
+            mutator: MutatorHelper::new::<T>(FixedEvaluator::new(magnitude, mod_type)),
+        });
         self
     }
 
-    pub fn with_multiplicative_modifier<C: Component<Mutability = Mutable> + AttributeComponent>(
-        mut self,
-        magnitude: f32,
-    ) -> Self {
-        let evaluator = FixedEvaluator::new(magnitude, Multiplicative);
-        let modifier = StoredMutator::new(Mutator::new::<C>(evaluator));
-        self.effect.modifiers.push(modifier);
+    pub fn mutate_by_attribute<S, D>(mut self, magnitude: f32, mod_type: ModType) -> Self
+    where
+        S: AttributeComponent + Component<Mutability = Mutable>,
+        D: AttributeComponent + Component<Mutability = Mutable>,
+    {
+        self.queue.push(MutatorCommand {
+            effect_entity: self.effect_entity,
+            actor_entity: self.actor_entity,
+            mutator: MutatorHelper::new::<S>(MetaEvaluator::<D>::new(magnitude, mod_type)),
+        });
         self
     }
 
-    pub fn build(self, commands: &mut Commands) {
+    pub fn apply(self, commands: &mut Commands) {
         commands.queue(EffectCommand { builder: self });
-    }
-
-    pub fn build_deferred(self) -> EffectCommand {
-        EffectCommand { builder: self }
     }
 }
 
@@ -138,35 +108,33 @@ impl GameEffectDurationBuilder {
     }
 }
 
-pub struct EffectCommand {
-    builder: EffectBuilder,
-}
-
-impl EffectCommand {
-    pub fn get_effect(&self) -> &Effect {
-        &self.builder.effect
-    }
+pub(crate) struct EffectCommand {
+    pub(crate) builder: EffectBuilder,
 }
 
 impl Command for EffectCommand {
-    fn apply(self, world: &mut World) -> () {
-        let mut entity_command = world.spawn_empty();
+    fn apply(mut self, world: &mut World) -> () {
+        assert_ne!(Entity::PLACEHOLDER, self.builder.effect_entity);
 
+        // Spawn mutators before the effects
+        world.commands().append(&mut self.builder.queue);
+        world.flush();
+
+        let mut entity_command = world.entity_mut(self.builder.effect_entity);
         if let Some(duration) = self.builder.duration {
             entity_command.insert(duration);
         }
-
         if let Some(period) = self.builder.period {
             entity_command.insert(EffectPeriodicTimer(period));
         }
 
-        // This must be here. A bug in the ordering of commands makes the app crash
-        entity_command.insert((ChildOf(self.builder.target), self.builder.effect));
+        entity_command.insert((
+            Name::new("Effect"),
+            EffectTarget(self.builder.actor_entity),
+            self.builder.effect,
+        ));
     }
 }
-
-#[derive(Default, Debug, Clone, Reflect)]
-pub struct GameEffectPeriod(pub Timer);
 
 pub struct GameEffectPeriodBuilder {
     effect_builder: EffectBuilder,

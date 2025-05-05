@@ -1,104 +1,85 @@
-use crate::effects::{Effect, EffectDuration, EffectPeriodicTimer, MutationAggregatorCache};
+use crate::effects::{Effect, EffectDuration, EffectPeriodicTimer, EffectTarget};
 use crate::systems::{
-    on_effect_removed, on_instant_effect_added, tick_ability_cooldowns,
-    tick_effects_duration_timer, tick_effects_periodic_timer, update_base_values,
-    update_current_values,
+    check_duration_effect_expiry, on_attribute_mutation_changed, on_base_value_changed,
+    on_duration_effect_applied, on_duration_effect_removed, on_instant_effect_applied,
+    tick_ability_cooldowns, tick_effects_duration_timer, tick_effects_periodic_timer,
+    trigger_periodic_effects,
 };
-use bevy::app::MainScheduleOrder;
 use bevy::ecs::schedule::ScheduleLabel;
 use bevy::prelude::*;
 use std::any::TypeId;
+use std::collections::HashMap;
 
 pub mod abilities;
+pub mod actor;
 pub mod attributes;
 pub mod effects;
 pub mod evaluators;
 pub mod mutator;
 pub mod systems;
-pub mod actor;
 
 use crate::abilities::GameAbilityContainer;
-use crate::attributes::AttributeDef;
+use crate::mutator::{EffectMutators, ModAggregator, Mutating, Mutator};
 pub use attributes_macro::Attribute;
-use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
+use bevy::ecs::world::EntityMutExcept;
+use bevy::utils::TypeIdMap;
 
 pub struct DeathByAttributesPlugin;
 
 impl Plugin for DeathByAttributesPlugin {
     fn build(&self, app: &mut App) {
-        app.init_schedule(AttributeUpdate)
+        app.add_systems(PreUpdate, tick_ability_cooldowns)
+            .add_systems(PreUpdate, tick_effects_duration_timer)
             .add_systems(
-                AttributeUpdate,
-                (
-                    tick_effects_periodic_timer,
-                    tick_ability_cooldowns,
-                    tick_effects_duration_timer,
-                ),
+                PreUpdate,
+                (tick_effects_periodic_timer, trigger_periodic_effects).chain(),
             )
-            .add_systems(
-                AttributeUpdate,
-                (update_base_values, update_current_values).chain(),
-            )
-            .add_observer(on_instant_effect_added)
-            .add_observer(on_effect_removed)
-            .insert_resource(MutationAggregatorCache::default());
-
-        app.world_mut()
-            .resource_mut::<MainScheduleOrder>()
-            .insert_after(Update, AttributeUpdate);
+            .add_systems(PostUpdate, check_duration_effect_expiry)
+            .add_observer(on_instant_effect_applied)
+            .add_observer(on_duration_effect_applied)
+            .add_observer(on_base_value_changed)
+            .add_observer(on_attribute_mutation_changed)
+            .add_observer(on_duration_effect_removed)
+            .insert_resource(CachedMutations::default());
     }
 }
 
-pub type AttributeEntityMut<'w> = EntityMutExcept<
+pub type ActorEntityMut<'w> = EntityMutExcept<
     'w,
     (
         GameAbilityContainer,
+        // We exclude anything related to effects
         Effect,
+        EffectTarget,
+        EffectMutators,
         EffectPeriodicTimer,
         EffectDuration,
-        Children,
-        ChildOf,
-    ),
->;
-pub type AttributeEntityRef<'w> = EntityRefExcept<
-    'w,
-    (
-        GameAbilityContainer,
-        Effect,
-        EffectPeriodicTimer,
-        EffectDuration,
-        Children,
-        ChildOf,
+        // We exclude anything related to mutators
+        Mutator,
+        Mutating,
     ),
 >;
 
 #[derive(ScheduleLabel, Debug, Clone, PartialEq, Eq, Hash)]
-pub struct AttributeUpdate;
+pub struct AttributeUpdateSchedule;
 
 #[derive(Event)]
-pub struct BaseValueChanged;
+pub struct OnBaseValueChanged;
 
 #[derive(Event)]
-pub struct CurrentValueChanged;
+pub struct OnAttributeMutationChanged;
 
-/// Why Bevy failed to evaluate an animation.
+#[derive(Event)]
+pub struct OnCurrentValueChanged;
+
 #[derive(Clone, Debug)]
 pub enum AttributeEvaluationError {
-    /// The component to be animated isn't present on the animation target.
-    ///
-    /// To fix this error, make sure the entity to be animated contains all
-    /// components that have animation curves.
     ComponentNotPresent(TypeId),
-
-    /// The component to be animated was present, but the property on the
-    /// component wasn't present.
-    AttributeNotPresent(TypeId),
 }
 
-pub trait Editable: Reflect + Sized + Send + Sync + 'static {
+/*pub trait Editable: Reflect + Sized + Send + Sync + 'static {
     fn get_base_value(&self) -> f32;
     fn get_current_value(&self) -> f32;
-    fn set_current_value(&mut self, value: f32);
 }
 impl Editable for AttributeDef {
     fn get_base_value(&self) -> f32 {
@@ -107,8 +88,9 @@ impl Editable for AttributeDef {
     fn get_current_value(&self) -> f32 {
         self.current_value
     }
+}*/
 
-    fn set_current_value(&mut self, value: f32) {
-        self.current_value = value;
-    }
+#[derive(Default, Resource)]
+pub struct CachedMutations {
+    pub evaluators: HashMap<Entity, TypeIdMap<(Mutator, ModAggregator)>>,
 }

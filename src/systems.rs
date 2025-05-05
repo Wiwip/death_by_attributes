@@ -1,11 +1,13 @@
 use crate::abilities::GameAbilityContainer;
-use crate::effects::{Effect, EffectDuration, EffectPeriodicTimer, MutationAggregatorCache};
-use crate::mutator::{ModAggregator, StoredMutator};
-use crate::{AttributeEntityMut, BaseValueChanged, CurrentValueChanged};
-use bevy::platform::collections::HashMap;
+use crate::effects::{Effect, EffectDuration, EffectPeriodicTimer, EffectTarget};
+use crate::mutator::{EffectMutators, ModAggregator, Mutator};
+use crate::{
+    ActorEntityMut, CachedMutations, OnAttributeMutationChanged, OnBaseValueChanged,
+    OnCurrentValueChanged,
+};
+use bevy::ecs::relationship::Relationship;
 use bevy::prelude::*;
-use std::any::TypeId;
-use std::ops::{Deref, DerefMut};
+use std::ops::DerefMut;
 
 pub fn tick_effects_periodic_timer(mut query: Query<&mut EffectPeriodicTimer>, time: Res<Time>) {
     query.par_iter_mut().for_each(|mut timer| {
@@ -24,91 +26,207 @@ pub fn tick_effects_duration_timer(mut query: Query<&mut EffectDuration>, time: 
     });
 }
 
-pub fn update_base_values(
-    effects: Query<(&Effect, &EffectPeriodicTimer)>,
-    mut entities: Query<(Entity, &Children, AttributeEntityMut), Without<Effect>>,
-    mut mutation_cache: ResMut<MutationAggregatorCache>,
+pub fn on_instant_effect_applied(
+    trigger: Trigger<OnAdd, Effect>,
+    effects: Query<(&EffectTarget, &EffectMutators, &Effect), Without<EffectDuration>>,
+    mutators: Query<&Mutator>,
+    mut entities: Query<ActorEntityMut>,
+    mut cache: ResMut<CachedMutations>,
     mut commands: Commands,
 ) {
-    let mut updated_entities = Vec::new();
+    let effect_entity = trigger.target();
 
-    for (applied_entity, applied_effects, mut entity_mut) in entities.iter_mut() {
-        let mut modifiers: HashMap<TypeId, (StoredMutator, ModAggregator)> = Default::default();
+    let Ok((actor_entity, mutator_entities, _)) = effects.get(effect_entity) else {
+        warn_once!("instant_effect_applied failed for {}", effect_entity);
+        return;
+    };
 
-        for effect_entity in applied_effects.iter() {
-            let Ok((effect, periodic_timer)) = effects.get(effect_entity) else {
+    let type_map = cache.evaluators.entry(actor_entity.get()).or_default();
+
+    for mutator_entity in mutator_entities.iter() {
+        let Ok(mutator) = mutators.get(mutator_entity) else {
+            continue;
+        };
+
+        // Initialise the cache so current values are properly updated
+        let _ = type_map
+            .entry(mutator.0.target())
+            .or_insert((mutator.clone(), ModAggregator::default()));
+
+        // Once recovered, apply the aggregator
+        let aggregator = mutator.to_aggregator();
+        let entity_mut = entities.get_mut(actor_entity.get()).unwrap();
+        let _ = mutator.apply_aggregator(entity_mut, aggregator);
+    }
+
+    // Notify actor entity that a base value has changed
+    commands.trigger_targets(OnBaseValueChanged, actor_entity.get());
+
+    // Despawn the effect since it is instant
+    commands.entity(effect_entity).despawn();
+}
+
+pub fn on_duration_effect_applied(
+    trigger: Trigger<OnAdd, Effect>,
+    effects: Query<
+        (&EffectTarget, &EffectMutators, &Effect),
+        (With<EffectDuration>, Without<EffectPeriodicTimer>),
+    >,
+    mutators: Query<&Mutator>,
+    mut cache: ResMut<CachedMutations>,
+    mut commands: Commands,
+) {
+    let mut updated = false;
+    let effect_entity = trigger.target();
+    let Ok((actor_entity, mutator_entities, _)) = effects.get(effect_entity) else {
+        warn_once!("on_duration_effect_added failed for {}", effect_entity);
+        return;
+    };
+
+    let type_map = cache.evaluators.entry(actor_entity.get()).or_default();
+
+    for mutator_entity in mutator_entities.iter() {
+        let Ok(mutator) = mutators.get(mutator_entity) else {
+            warn_once!("failed to retrieve a mutator for {}", mutator_entity);
+            continue;
+        };
+
+        // Query and update the cached aggregators
+        let (_, stored_aggregator) = type_map
+            .entry(mutator.0.target())
+            .or_insert((mutator.clone(), ModAggregator::default()));
+        let aggregator = mutator.0.to_aggregator();
+        *stored_aggregator += aggregator;
+
+        updated = true;
+    }
+
+    // Notify updated entities that their base values has changed.
+    if updated {
+        commands.trigger_targets(OnAttributeMutationChanged, actor_entity.get());
+    }
+}
+
+pub fn trigger_periodic_effects(
+    mut entities: Query<ActorEntityMut, (Without<Effect>, Without<Mutator>)>,
+    effects: Query<
+        (
+            &EffectTarget,
+            &EffectMutators,
+            &Effect,
+            &EffectPeriodicTimer,
+        ),
+        With<EffectDuration>,
+    >,
+    mutators: Query<&Mutator>,
+    mut cache: ResMut<CachedMutations>,
+    mut commands: Commands,
+) {
+    let mut updated_entities: Vec<Entity> = Vec::new();
+
+    for (actor_entity, mutator_entities, _, periodic_timer) in effects.iter() {
+        if !periodic_timer.just_finished() {
+            continue;
+        }
+
+        let type_map = cache.evaluators.entry(actor_entity.get()).or_default();
+        updated_entities.push(actor_entity.get());
+
+        for mutator_entity in mutator_entities.iter() {
+            let Ok(mutator) = mutators.get(mutator_entity) else {
                 continue;
             };
 
-            if !periodic_timer.just_finished() {
-                continue;
+            // Necessary for the cache to be initialized. Kind of a hack...
+            let _ = type_map
+                .entry(mutator.0.target())
+                .or_insert((mutator.clone(), ModAggregator::default()));
+
+            // Once recovered, apply the aggregator
+            let aggregator = mutator.to_aggregator();
+            if let Ok(entity_mut) = entities.get_mut(actor_entity.get()) {
+                let _ = mutator.apply_aggregator(entity_mut, aggregator);
             }
-
-            updated_entities.push(applied_entity);
-
-            for mutator in &effect.modifiers {
-                let (_, aggregator) = modifiers
-                    .entry(mutator.0.target())
-                    .or_insert_with(|| (mutator.clone(), ModAggregator::default()));
-
-                if let Ok(value) = &mutator.0.to_aggregator() {
-                    // Update the aggregator to be applied
-                    aggregator.additive = aggregator.additive + value.additive;
-                    aggregator.multi = aggregator.multi + value.multi;
-
-                    // Round-about way to set the dirty_bool to true
-                    let type_map = mutation_cache.evaluators.entry(applied_entity).or_default();
-                    let (_, _, _, current_value_dirty) = type_map
-                        .entry(mutator.0.target())
-                        .or_insert((mutator.clone(), ModAggregator::default(), false, false));
-                    *current_value_dirty = true;
-                }
-            }
-        }
-
-        for (_, (mutator, aggregator)) in modifiers {
-            mutator
-                .0
-                .apply_aggregator(entity_mut.reborrow(), aggregator);
         }
     }
 
     // Notify updated entities that their base values has changed.
     if !updated_entities.is_empty() {
-        commands.trigger_targets(CurrentValueChanged, updated_entities);
+        commands.trigger_targets(OnBaseValueChanged, updated_entities);
     }
 }
 
-pub fn update_current_values(
-    mut entities: Query<(Entity, AttributeEntityMut)>,
-    mut evaluation_state: ResMut<MutationAggregatorCache>,
+pub fn on_base_value_changed(
+    trigger: Trigger<OnBaseValueChanged>,
+    mut entities: Query<ActorEntityMut, (Without<Effect>, Without<Mutator>)>,
+    cache: Res<CachedMutations>,
     mut commands: Commands,
 ) {
-    let mut updated_entities = Vec::new();
+    let updated_entity = trigger.target();
 
-    for (entity, mut entity_mut) in entities.iter_mut() {
-        let Some(type_map) = evaluation_state.evaluators.get_mut(&entity) else {
-            continue;
-        };
+    let Ok(mut entity_mut) = entities.get_mut(updated_entity) else {
+        println!("update_current_values failed for {}", updated_entity);
+        return;
+    };
+    let Some(type_map) = cache.evaluators.get(&updated_entity) else {
+        println!(
+            "cache.evaluators.get(&updated_entity) {:?}\n{:#?}",
+            updated_entity, cache.evaluators
+        );
+        return;
+    };
 
-        for (stored_mutator, stored_aggregator, _, current_value_dirty) in type_map.values_mut() {
-            if *current_value_dirty {
-                stored_mutator.update_current_value(entity_mut.reborrow(), *stored_aggregator);
+    let mut updated_value = false;
 
-                updated_entities.push(entity);
-            }
-
-            *current_value_dirty = false;
+    for (stored_mutator, stored_aggregator) in type_map.values() {
+        let result = stored_mutator.update_current_value(entity_mut.reborrow(), *stored_aggregator);
+        if updated_value == false && result == true {
+            updated_value = true;
         }
     }
 
-    // Notify updated entities that their current values has changed.
-    if !updated_entities.is_empty() {
-        commands.trigger_targets(BaseValueChanged, updated_entities);
+    // Notify entity of the changed attributes
+    if updated_value {
+        commands.trigger_targets(OnCurrentValueChanged, updated_entity);
     }
 }
 
-pub fn tick_ability_cooldowns(mut query: Query<&mut GameAbilityContainer>, time: Res<Time>) {
+pub fn on_attribute_mutation_changed(
+    trigger: Trigger<OnAttributeMutationChanged>,
+    mut entities: Query<ActorEntityMut, (Without<Effect>, Without<Mutator>)>,
+    cache: Res<CachedMutations>,
+    mut commands: Commands,
+) {
+    let updated_entity = trigger.target();
+
+    let Ok(mut entity_mut) = entities.get_mut(updated_entity) else {
+        println!("update_current_values failed for {}", updated_entity);
+        return;
+    };
+    let Some(type_map) = cache.evaluators.get(&updated_entity) else {
+        println!(
+            "cache.evaluators.get(&updated_entity) {:?}\n{:#?}",
+            updated_entity, cache.evaluators
+        );
+        return;
+    };
+
+    let mut updated_value = false;
+
+    for (stored_mutator, stored_aggregator) in type_map.values() {
+        let result = stored_mutator.update_current_value(entity_mut.reborrow(), *stored_aggregator);
+        if updated_value == false && result == true {
+            updated_value = true;
+        }
+    }
+
+    // Notify entity of the changed attributes
+    if updated_value {
+        commands.trigger_targets(OnCurrentValueChanged, updated_entity);
+    }
+}
+
+pub(crate) fn tick_ability_cooldowns(mut query: Query<&mut GameAbilityContainer>, time: Res<Time>) {
     for mut abilities in &mut query {
         for (_, ability) in abilities.get_abilities_mut().iter_mut() {
             ability.cooldown.tick(time.delta());
@@ -116,96 +234,61 @@ pub fn tick_ability_cooldowns(mut query: Query<&mut GameAbilityContainer>, time:
     }
 }
 
-pub fn on_instant_effect_added(
-    trigger: Trigger<OnAdd, Effect>,
-    query: Query<(&ChildOf, &Effect), Without<EffectDuration>>,
-    mut entities: Query<AttributeEntityMut>,
+pub fn check_duration_effect_expiry(
+    query: Query<(Entity, &EffectDuration)>,
     mut commands: Commands,
 ) {
-    let effect_entity = trigger.target();
-    let Ok((effect_target, effect)) = query.get(effect_entity) else {
-        return;
-    };
+    for (entity, duration) in query.iter() {
+        let EffectDuration::Duration(duration) = duration else {
+            continue;
+        };
 
-    let modifiers = &effect.modifiers;
-    for modifier in modifiers.iter() {
-        let entity_mut = entities.get_mut(effect_target.0).unwrap();
-        if let Ok(aggregator) = modifier.0.to_aggregator() {
-            let _ = modifier.0.apply_aggregator(entity_mut, aggregator);
+        if !duration.finished() {
+            continue;
         }
+
+        info!("Effect expired {:?}", entity);
+        commands.entity(entity).despawn();
     }
-
-    // Notify entity that a value has changed
-    commands.trigger_targets(BaseValueChanged, effect_target.0);
-    commands.trigger_targets(CurrentValueChanged, effect_target.0);
-
-    // Despawn the effect since it is instant
-    commands.entity(effect_entity).despawn();
 }
 
-pub fn on_effect_removed(
+pub fn on_duration_effect_removed(
     trigger: Trigger<OnRemove, Effect>,
-    query: Query<(&ChildOf, &Effect), With<EffectDuration>>,
-    mut mutation_cache: ResMut<MutationAggregatorCache>,
+    effects: Query<
+        (&EffectTarget, &EffectMutators, &Effect),
+        (With<EffectDuration>, Without<EffectPeriodicTimer>),
+    >,
+    mutators: Query<&Mutator>,
+    mut cache: ResMut<CachedMutations>,
     mut commands: Commands,
 ) {
+    let mut updated = false;
     let effect_entity = trigger.target();
-    let Ok((target_entity, effect)) = query.get(effect_entity) else {
+    let Ok((actor_entity, mutator_entities, _)) = effects.get(effect_entity) else {
+        warn_once!("on_effect_removed failed for {}", effect_entity);
         return;
     };
 
-    let type_map = mutation_cache
-        .evaluators
-        .entry(target_entity.0)
-        .or_default();
+    let type_map = cache.evaluators.entry(actor_entity.get()).or_default();
 
-    for modifier in effect.modifiers.iter() {
-        let (_, stored_aggregator, _, current_value_dirty) = type_map
-            .entry(modifier.0.target())
-            .or_insert((modifier.clone(), ModAggregator::default(), false, false));
+    for mutator_entity in mutator_entities.iter() {
+        let Ok(mutator) = mutators.get(mutator_entity) else {
+            warn_once!("failed to retrieve a mutator for {}", mutator_entity);
+            continue;
+        };
 
-        if let Ok(aggregator) = modifier.0.to_aggregator() {
-            *stored_aggregator -= aggregator;
-            *current_value_dirty = true;
-        } else {
-            *current_value_dirty = false;
-        }
-    }
-
-    // Notify entity that a value has changed
-    commands.trigger_targets(BaseValueChanged, target_entity.0);
-    commands.trigger_targets(CurrentValueChanged, target_entity.0);
-}
-
-/*pub fn on_duration_effect_added(
-    trigger: Trigger<OnAdd, Effect>,
-    query: Query<(&ChildOf, &Effect), With<EffectDuration>>,
-    mut mutation_cache: ResMut<MutationAggregatorCache>,
-) {
-    let effect_entity = trigger.target();
-    let Ok((effect_target, effect)) = query.get(effect_entity) else {
-        return;
-    };
-
-    let type_map = mutation_cache
-        .evaluators
-        .entry(effect_target.0)
-        .or_default();
-
-    println!("on_duration_effect_added");
-    println!("trigger.target: {:?}", effect_entity);
-    println!("target_entity: {:?}", effect_entity);
-
-    for mutator in effect.modifiers.iter() {
-        let (_, stored_aggregator, _, current_value_dirty) = type_map
+        // Query and update the cached aggregators
+        let (_, stored_aggregator) = type_map
             .entry(mutator.0.target())
-            .or_insert((mutator.clone(), ModAggregator::default(), false, false));
+            .or_insert((mutator.clone(), ModAggregator::default()));
+        let aggregator = mutator.0.to_aggregator();
+        *stored_aggregator -= aggregator;
 
-        /*if let Ok(aggregator) = mutator.0.to_aggregator() {
-            *stored_aggregator += aggregator;
-            *current_value_dirty = true;
-        } else {
-            *current_value_dirty = false;
-        }*/
+        updated = true;
     }
-}*/
+
+    // Notify updated entities that their base values has changed.
+    if updated {
+        commands.trigger_targets(OnBaseValueChanged, actor_entity.get());
+    }
+}

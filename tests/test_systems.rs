@@ -1,22 +1,17 @@
 use bevy::app::App;
-use bevy::asset::io::ErasedAssetWriter;
-use bevy::prelude::{ChildOf, Component};
-use bevy::prelude::{Deref, Update};
-use bevy::prelude::{DerefMut, IntoScheduleConfigs};
-use bevy::prelude::{Reflect, Res, World};
+use bevy::prelude::Reflect;
+use bevy::prelude::{Component, Update};
 use death_by_attributes::abilities::GameAbilityContainer;
 use death_by_attributes::attributes::AttributeComponent;
-use death_by_attributes::attributes::AttributeDef;
-use death_by_attributes::effects::{
-    Effect, EffectDuration, EffectPeriodicTimer, GameEffectDuration, MutationAggregatorCache,
-};
+use death_by_attributes::effects::{EffectBuilder, EffectPeriodicTimer};
 use death_by_attributes::evaluators::FixedEvaluator;
 use death_by_attributes::mutator::ModType::Additive;
-use death_by_attributes::mutator::{EvaluateMutator, Mutator, StoredMutator};
+use death_by_attributes::mutator::{ModAggregator, Mutator, MutatorHelper};
 use death_by_attributes::systems::{
-    on_effect_removed, update_base_values, update_current_values,
+    on_attribute_mutation_changed, on_base_value_changed, on_duration_effect_applied,
+    on_duration_effect_removed, trigger_periodic_effects,
 };
-use death_by_attributes::{AttributeUpdate, attribute};
+use death_by_attributes::{CachedMutations, attribute};
 use std::time::Duration;
 
 attribute!(TestA);
@@ -24,195 +19,132 @@ attribute!(TestA);
 #[test]
 fn test_update_base_values() {
     let mut app = App::new();
-    app.add_systems(Update, update_base_values);
-    app.insert_resource(MutationAggregatorCache::default());
+    app.add_systems(Update, trigger_periodic_effects);
+    app.add_observer(on_duration_effect_applied);
+    app.add_observer(on_base_value_changed);
+    app.insert_resource(CachedMutations::default());
 
-    let entity = app.world_mut().spawn(TestA::new(0.0)).id();
+    let player = app.world_mut().spawn(TestA::new(0.0)).id();
+    let effect = app.world_mut().spawn_empty().id();
 
-    let mutator = Mutator::new::<TestA>(FixedEvaluator::new(42.0, Additive));
-    let effect = Effect {
-        modifiers: vec![StoredMutator(Box::new(mutator))],
-    };
+    EffectBuilder::new(player, effect)
+        .with_permanent_duration()
+        .with_periodic_application(1.0)
+        .mutate_by_scalar::<TestA>(42.0, Additive)
+        .apply(&mut app.world_mut().commands());
 
-    let mut timer = EffectPeriodicTimer::new(1.0);
+    let value = app.world().get::<TestA>(player).unwrap();
+    assert_eq!(0.0, value.base_value);
+
+    app.world_mut().flush();
+
+    let mut timer = app
+        .world_mut()
+        .get_mut::<EffectPeriodicTimer>(effect)
+        .unwrap();
     timer.0.tick(Duration::from_secs(10));
 
-    app.world_mut()
-        .spawn((ChildOf(entity), effect, EffectDuration::new(100.0), timer));
-
-    // Check that the dirty bool is properly set on the current value when the base value changes
-    let res = app
-        .world()
-        .get_resource::<MutationAggregatorCache>()
-        .unwrap();
-    {
-        let mutator = Mutator::new::<TestA>(FixedEvaluator::new(42.0, Additive));
-        let dirty = res
-            .is_current_value_dirty(entity, mutator.target())
-            .unwrap();
-
-        assert_eq!(true, dirty);
-    }
+    let value = app.world().get::<TestA>(player).unwrap();
+    assert_eq!(0.0, value.base_value);
 
     app.update();
 
-    let value = app.world().get::<TestA>(entity).unwrap();
+    let value = app.world().get::<TestA>(player).unwrap();
     assert_eq!(42.0, value.base_value);
 
     app.update();
 
-    let value = app.world().get::<TestA>(entity).unwrap();
+    let value = app.world().get::<TestA>(player).unwrap();
     assert_eq!(84.0, value.base_value);
 }
 
 #[test]
 fn check_mutation_cache() {
     let mut app = App::new();
-    app.insert_resource(MutationAggregatorCache::default());
-    app.add_systems(Update, update_current_values);
-    app.add_observer(on_effect_removed);
+    app.insert_resource(CachedMutations::default());
+    app.add_observer(on_base_value_changed);
+    app.add_observer(on_duration_effect_applied);
+    app.add_observer(on_duration_effect_removed);
 
-    let entity = app.world_mut().spawn(TestA::new(0.0)).id();
+    let player = app.world_mut().spawn(TestA::new(0.0)).id();
+    let effect = app.world_mut().spawn_empty().id();
 
-    let mutator = Mutator::new::<TestA>(FixedEvaluator::new(42.0, Additive));
-    let effect = Effect {
-        modifiers: vec![StoredMutator(Box::new(mutator))],
-    };
+    let mutator = MutatorHelper::new::<TestA>(FixedEvaluator::new(42.0, Additive));
+    let mutator = Mutator::new(mutator);
 
-    // We spawn an effect targeting our entity and verify that the cache is updated
-    let effect_entity = app
-        .world_mut()
-        .spawn((ChildOf(entity), effect, EffectDuration::new(100.0)))
-        .id();
+    EffectBuilder::new(player, effect)
+        .with_permanent_duration()
+        .with_continuous_application()
+        .mutate_by_scalar::<TestA>(42.0, Additive)
+        .apply(&mut app.world_mut().commands());
+
+    app.update();
 
     {
-        let res = app
-            .world()
-            .get_resource::<MutationAggregatorCache>()
+        let mut res = app
+            .world_mut()
+            .get_resource_mut::<CachedMutations>()
             .unwrap();
-        let type_map = res.evaluators.get(&entity).unwrap();
-        let mutator = Mutator::new::<TestA>(FixedEvaluator::new(42.0, Additive));
-        let (_, stored_aggregator, _, _) = type_map.get(&mutator.target()).unwrap();
-
-        let dirty = res
-            .is_current_value_dirty(entity, mutator.target())
-            .unwrap();
+        let type_map = res.evaluators.entry(player).or_default();
+        let (_, stored_aggregator) = type_map
+            .entry(mutator.target())
+            .or_insert((mutator.clone(), ModAggregator::default()));
 
         assert_eq!(42.0, stored_aggregator.additive);
-        assert_eq!(true, dirty);
     }
 
     app.update();
 
     {
-        let res = app
-            .world()
-            .get_resource::<MutationAggregatorCache>()
-            .unwrap();
-        let type_map = res.evaluators.get(&entity).unwrap();
-        let mutator = Mutator::new::<TestA>(FixedEvaluator::new(42.0, Additive));
-        let (_, stored_aggregator, _, _) = type_map.get(&mutator.target()).unwrap();
-
-        let dirty = res
-            .is_current_value_dirty(entity, mutator.target())
-            .unwrap();
+        let res = app.world().get_resource::<CachedMutations>().unwrap();
+        let type_map = res.evaluators.get(&player).unwrap();
+        let (_, stored_aggregator) = type_map.get(&mutator.target()).unwrap();
 
         assert_eq!(42.0, stored_aggregator.additive);
-        assert_eq!(false, dirty);
     }
 
     // Despawn the effect and check that the cache is updated
-    app.world_mut().despawn(effect_entity);
+    app.world_mut().despawn(effect);
 
     {
-        let res = app
-            .world()
-            .get_resource::<MutationAggregatorCache>()
-            .unwrap();
-        let type_map = res.evaluators.get(&entity).unwrap();
-        let mutator = Mutator::new::<TestA>(FixedEvaluator::new(42.0, Additive));
-        let (_, stored_aggregator, _, _) = type_map.get(&mutator.target()).unwrap();
-
-        let dirty = res
-            .is_current_value_dirty(entity, mutator.target())
-            .unwrap();
+        let res = app.world().get_resource::<CachedMutations>().unwrap();
+        let type_map = res.evaluators.get(&player).unwrap();
+        let (_, stored_aggregator) = type_map.get(&mutator.target()).unwrap();
 
         assert_eq!(0.0, stored_aggregator.additive);
-        assert_eq!(true, dirty);
-    }
-
-    app.update();
-
-    let res = app
-        .world()
-        .get_resource::<MutationAggregatorCache>()
-        .unwrap();
-    {
-        let type_map = res.evaluators.get(&entity).unwrap();
-        let mutator = Mutator::new::<TestA>(FixedEvaluator::new(42.0, Additive));
-        let (_, stored_aggregator, _, _) = type_map.get(&mutator.target()).unwrap();
-
-        let dirty = res
-            .is_current_value_dirty(entity, mutator.target())
-            .unwrap();
-
-        assert_eq!(0.0, stored_aggregator.additive);
-        assert_eq!(false, dirty);
-    }
-
-    app.update();
-
-    let res = app
-        .world()
-        .get_resource::<MutationAggregatorCache>()
-        .unwrap();
-    {
-        let type_map = res.evaluators.get(&entity).unwrap();
-        let mutator = Mutator::new::<TestA>(FixedEvaluator::new(42.0, Additive));
-        let (_, stored_aggregator, _, _) = type_map.get(&mutator.target()).unwrap();
-
-        let dirty = res
-            .is_current_value_dirty(entity, mutator.target())
-            .unwrap();
-
-        assert_eq!(0.0, stored_aggregator.additive);
-        assert_eq!(false, dirty);
     }
 }
 
 #[test]
 fn test_update_current_values() {
     let mut app = App::new();
-    app.add_systems(Update, update_current_values);
-    app.insert_resource(MutationAggregatorCache::default());
-    app.add_observer(on_effect_removed);
+    app.add_observer(on_base_value_changed);
+    app.add_observer(on_duration_effect_applied);
+    app.add_observer(on_duration_effect_removed);
+    app.add_observer(on_attribute_mutation_changed);
+    app.insert_resource(CachedMutations::default());
 
-    let entity = app.world_mut().spawn(TestA::new(0.0)).id();
+    let player = app.world_mut().spawn(TestA::new(0.0)).id();
+    let effect = app.world_mut().spawn_empty().id();
 
-    let mutator = Mutator::new::<TestA>(FixedEvaluator::new(42.0, Additive));
-    let effect = Effect {
-        modifiers: vec![StoredMutator(Box::new(mutator))],
-    };
-
-    let effect_entity = app
-        .world_mut()
-        .spawn((ChildOf(entity), effect, EffectDuration::new(100.0)))
-        .id();
+    EffectBuilder::new(player, effect)
+        .with_permanent_duration()
+        .with_continuous_application()
+        .mutate_by_scalar::<TestA>(42.0, Additive)
+        .apply(&mut app.world_mut().commands());
 
     app.update();
 
-    let value = app.world().get::<TestA>(entity).unwrap();
+    let value = app.world().get::<TestA>(player).unwrap();
     assert_eq!(0.0, value.base_value);
     assert_eq!(42.0, value.current_value);
 
-    app.update();
-
-    // Despawn the effect and verify the attribute values
-    app.world_mut().despawn(effect_entity);
+    // Despawn the effect and confirm the attribute values
+    app.world_mut().despawn(effect);
 
     app.update();
 
-    let value = app.world().get::<TestA>(entity).unwrap();
+    let value = app.world().get::<TestA>(player).unwrap();
     assert_eq!(0.0, value.base_value);
     assert_eq!(0.0, value.current_value);
 }

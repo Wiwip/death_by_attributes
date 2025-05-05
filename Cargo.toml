@@ -19,11 +19,10 @@ debug = true
 [dependencies]
 attributes_macro = { path = "attributes_macro" }
 rand = "0.9.1"
-thread_local = "1.1.8"
 
 [dependencies.bevy]
 version = "0.16"
-default-features = true
+default-features = false
 features = [
     "bevy_core_pipeline",
     "bevy_log",
@@ -33,7 +32,20 @@ features = [
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
+bevy_egui = "0.34.1"
+bevy-inspector-egui = "0.31.0"
 
+[dev-dependencies.bevy]
+version = "0.16"
+default-features = true
+features = [
+    "bevy_core_pipeline",
+    "bevy_log",
+    "bevy_state",
+    "bevy_ui",
+    "default_font",
+    "dynamic_linking",
+]
 
 [[bench]]
 name = "bench_systems"
