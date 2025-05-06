@@ -1,6 +1,6 @@
-
-
+use rand::{rng, Rng};
 use bevy::ecs::schedule::{LogLevel, ScheduleBuildSettings};
+use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::time::common_conditions::on_timer;
 use bevy::window::PresentMode;
@@ -9,16 +9,28 @@ use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use death_by_attributes::abilities::{GameAbilityBuilder, GameAbilityContainer};
 use death_by_attributes::attributes::AttributeComponent;
 use death_by_attributes::effects::{AffectedBy, EffectBuilder, EffectPeriodicTimer, EffectTarget};
-use death_by_attributes::mutator::ModType::{Additive, Multiplicative};
-use death_by_attributes::mutator::{EffectMutators, Mutating};
-use death_by_attributes::{
-    ActorEntityMut, DeathByAttributesPlugin, OnCurrentValueChanged, attribute,
-};
+use death_by_attributes::mutators::meta::AttributeBuilder;
+use death_by_attributes::mutators::mutator::ModType::{Additive, Multiplicative};
+use death_by_attributes::mutators::{EffectMutators, Mutating, Mutator};
+use death_by_attributes::{ActorEntityMut, DeathByAttributesPlugin, attribute, OnBaseValueChanged};
 use std::time::Duration;
+
+attribute!(Strength);
+attribute!(Agility);
+attribute!(Health);
+attribute!(MaxHealth);
+attribute!(HealthRegen);
+attribute!(Mana);
+attribute!(ManaRegen);
+attribute!(AttackPower);
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins)
+        .add_plugins(DefaultPlugins.set(LogPlugin {
+            filter: "error,death_by_attributes=debug".into(),
+            level: bevy::log::Level::DEBUG,
+            ..default()
+        }))
         .add_plugins(DeathByAttributesPlugin)
         .add_plugins(EguiPlugin {
             enable_multipass_for_primary_context: true,
@@ -63,6 +75,7 @@ fn setup_window(mut query: Query<&mut Window>) {
 }
 
 fn setup(mut commands: Commands) {
+    let mut rng = rand::rng();
     let mut ability_component = GameAbilityContainer::default();
     ability_component.grant_ability(
         "fireball".to_string(),
@@ -81,10 +94,12 @@ fn setup(mut commands: Commands) {
             Player,
             ability_component,
             Health::new(100.0),
-            MaxHealth::new(200.0),
+            MaxHealth::new(100.0),
             HealthRegen::new(8.0),
             Mana::new(1000.0),
             ManaRegen::new(12.0),
+            Strength::new(8.0),
+            Agility::new(12.0),
         ))
         .insert(Name::new("Player"))
         .id();
@@ -115,7 +130,13 @@ fn setup(mut commands: Commands) {
         .mutate_by_scalar::<Health>(-35.0, Additive)
         .apply(&mut commands);
 
-    /*for _ in 0..1000 {
+    // Effect 4
+    AttributeBuilder::<AttackPower>::new(player_entity)
+        .mutate_by_attribute::<Strength>(1.0, Additive)
+        .mutate_by_attribute::<Health>(1.0, Additive)
+        .build(&mut commands);
+
+    for _ in 0..1000 {
         let effect_entity = commands.spawn_empty().id();
         let npc_entity = commands
             .spawn((
@@ -133,15 +154,17 @@ fn setup(mut commands: Commands) {
                 .mutate_by_scalar::<Health>(rng.random_range(1.0..20.0), Additive)
                 .apply(&mut commands);
         }
-    }*/
+    }
 }
 
 fn clamp_health(
-    trigger: Trigger<OnCurrentValueChanged>,
+    trigger: Trigger<OnBaseValueChanged>,
     mut query: Query<(&mut Health, &MaxHealth)>,
 ) {
     if let Ok((mut health, max_health)) = query.get_mut(trigger.target()) {
-        health.base_value = health.base_value.clamp(0.0, max_health.get_current_value());
+        let clamped_value = health.base_value().clamp(0.0, max_health.current_value());
+        health.set_base_value(clamped_value);
+        health.set_current_value(clamped_value);
     } else {
         println!("Incorrect entity target in clamp_health.")
     }
@@ -175,41 +198,44 @@ fn setup_ui(mut commands: Commands) {
 }
 
 fn display_attribute(
-    q_player: Query<(&Health, &MaxHealth), With<Player>>,
+    q_player: Query<(&Health, &MaxHealth, &AttackPower), With<Player>>,
     mut q_health: Query<&mut Text, With<PlayerHealthMarker>>,
 ) {
-    for (health, max_health) in q_player.iter() {
+    for (health, max_health, attack) in q_player.iter() {
         if let Ok(mut text) = q_health.single_mut() {
             text.0 = format!(
-                "Values: Current [Base]\n\
-                Health: {:.1} [{:.1}]\n\
-                Max Health: {:.1} [{:.1}]",
-                health.get_current_value(),
-                health.get_base_value(),
-                max_health.get_current_value(),
-                max_health.get_base_value()
+                "Values: Current [Base]
+                Health: {:.1} [{:.1}]
+                Max Health: {:.1} [{:.1}]
+                {:?}",
+                health.current_value(),
+                health.base_value(),
+                max_health.current_value(),
+                max_health.base_value(),
+                attack,
             );
         }
     }
 }
 
 fn display_attribute_entity(
-    q_entity: Query<&MaxHealth, With<Player>>,
+    player: Query<&EffectMutators, With<Player>>,
+    mutators: Query<&Mutator>,
     mut q_health: Query<&mut Text, With<EntityHealthMarker>>,
 ) {
-    for _max_health in q_entity.iter() {
-        if let Ok(_text) = q_health.single_mut() {
-            //text.0 = format!("Effects:",);
+    for mutator_entities in player.iter() {
+        let mut mutator_string = "".to_string();
+
+        for mutator_entity in mutator_entities.iter() {
+            let mutator = mutators.get(mutator_entity).unwrap();
+            mutator_string = format!("{mutator_string}\n{mutator}");
+        }
+
+        if let Ok(mut text) = q_health.single_mut() {
+            text.0 = format!("\nMutators:{}", mutator_string);
         }
     }
 }
-
-attribute!(Health);
-attribute!(MaxHealth);
-attribute!(HealthRegen);
-
-attribute!(Mana);
-attribute!(ManaRegen);
 
 fn inputs(
     mut q_player: Query<(ActorEntityMut, &mut GameAbilityContainer), With<Player>>,

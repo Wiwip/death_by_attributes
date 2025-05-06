@@ -1,9 +1,10 @@
 use crate::abilities::GameAbilityContainer;
 use crate::effects::{Effect, EffectDuration, EffectPeriodicTimer, EffectTarget};
-use crate::mutator::{EffectMutators, ModAggregator, Mutator};
+use crate::mutators::mutator::ModAggregator;
+use crate::mutators::{EffectMutators, Mutator};
 use crate::{
-    ActorEntityMut, CachedMutations, OnAttributeMutationChanged, OnBaseValueChanged,
-    OnCurrentValueChanged,
+    ActorEntityMut, CachedMutations, OnAttributeMutationChanged,
+    OnBaseValueChanged, OnCurrentValueChanged,
 };
 use bevy::ecs::relationship::Relationship;
 use bevy::prelude::*;

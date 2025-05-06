@@ -8,20 +8,21 @@ use crate::systems::{
 use bevy::ecs::schedule::ScheduleLabel;
 use bevy::prelude::*;
 use std::any::TypeId;
-use std::collections::HashMap;
+use std::marker::PhantomData;
 
 pub mod abilities;
-pub mod actor;
 pub mod attributes;
 pub mod effects;
 pub mod evaluators;
-pub mod mutator;
+pub mod mutators;
 pub mod systems;
 
 use crate::abilities::GameAbilityContainer;
-use crate::mutator::{EffectMutators, ModAggregator, Mutating, Mutator};
+use crate::mutators::mutator::ModAggregator;
+use crate::mutators::{EffectMutators, Mutating, Mutator};
 pub use attributes_macro::Attribute;
 use bevy::ecs::world::EntityMutExcept;
+use bevy::platform::collections::HashMap;
 use bevy::utils::TypeIdMap;
 
 pub struct DeathByAttributesPlugin;
@@ -40,7 +41,8 @@ impl Plugin for DeathByAttributesPlugin {
             .add_observer(on_base_value_changed)
             .add_observer(on_attribute_mutation_changed)
             .add_observer(on_duration_effect_removed)
-            .insert_resource(CachedMutations::default());
+            .insert_resource(CachedMutations::default())
+            .insert_resource(MetaCache::default());
     }
 }
 
@@ -66,6 +68,13 @@ pub struct AttributeUpdateSchedule;
 #[derive(Event)]
 pub struct OnBaseValueChanged;
 
+#[derive(Event, Debug)]
+pub struct OnAttributeChanged<A> {
+    phantom_data: PhantomData<A>,
+    pub aggregator: ModAggregator,
+    pub entity: Entity,
+}
+
 #[derive(Event)]
 pub struct OnAttributeMutationChanged;
 
@@ -77,20 +86,12 @@ pub enum AttributeEvaluationError {
     ComponentNotPresent(TypeId),
 }
 
-/*pub trait Editable: Reflect + Sized + Send + Sync + 'static {
-    fn get_base_value(&self) -> f32;
-    fn get_current_value(&self) -> f32;
-}
-impl Editable for AttributeDef {
-    fn get_base_value(&self) -> f32 {
-        self.base_value
-    }
-    fn get_current_value(&self) -> f32 {
-        self.current_value
-    }
-}*/
-
 #[derive(Default, Resource)]
 pub struct CachedMutations {
     pub evaluators: HashMap<Entity, TypeIdMap<(Mutator, ModAggregator)>>,
 }
+
+/// Caller entity (mutator observer) / TypeId (Attribute)
+#[derive(Default, Resource, Deref, DerefMut)]
+#[derive(Debug)]
+pub struct MetaCache(HashMap<(Entity, TypeId), (Mutator, ModAggregator)>);

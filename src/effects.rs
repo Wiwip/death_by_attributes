@@ -1,6 +1,9 @@
 use crate::attributes::AttributeComponent;
-use crate::evaluators::{FixedEvaluator, MetaEvaluator};
-use crate::mutator::{ModType, MutatorCommand, MutatorHelper};
+use crate::evaluators::meta::MetaEvaluator;
+use crate::evaluators::fixed::FixedEvaluator;
+use crate::mutators::mutator::ModType;
+use crate::mutators::mutator::MutatorCommand;
+use crate::mutators::mutator::MutatorHelper;
 use bevy::ecs::component::Mutable;
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::TimerMode::{Once, Repeating};

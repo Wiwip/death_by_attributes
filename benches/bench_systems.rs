@@ -1,10 +1,9 @@
 use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
 use criterion::*;
-use death_by_attributes::abilities::GameAbilityContainer;
 use death_by_attributes::attributes::AttributeComponent;
 use death_by_attributes::effects::EffectBuilder;
-use death_by_attributes::mutator::ModType::Additive;
+use death_by_attributes::mutators::mutator::ModType::Additive;
 use death_by_attributes::systems::{
     on_instant_effect_applied, tick_effects_duration_timer, tick_effects_periodic_timer,
     trigger_periodic_effects,

@@ -1,6 +1,8 @@
 use crate::attributes::AttributeComponent;
 use crate::evaluators::MutatorEvaluator;
+use crate::mutators::{EvaluateMutator, Mutating, Mutator, ObserveActor};
 use crate::{ActorEntityMut, AttributeEvaluationError};
+use crate::{OnCurrentValueChanged};
 use bevy::ecs::component::Mutable;
 use bevy::prelude::*;
 use std::any::{TypeId, type_name};
@@ -8,37 +10,6 @@ use std::fmt::{Debug, Formatter};
 use std::iter::Sum;
 use std::marker::PhantomData;
 use std::ops::{Add, AddAssign, DerefMut, Neg, SubAssign};
-
-pub trait EvaluateMutator: Debug + Send + Sync + 'static {
-    fn clone_value(&self) -> Box<dyn EvaluateMutator>;
-    fn apply_mutator(&self, entity_mut: ActorEntityMut);
-    fn apply_aggregator(&self, entity_mut: ActorEntityMut, aggregator: ModAggregator);
-    fn update_current_value(&self, entity_mut: ActorEntityMut, aggregator: ModAggregator) -> bool;
-
-    fn target(&self) -> TypeId;
-
-    fn to_aggregator(&self) -> ModAggregator;
-
-    fn get_current_value(
-        &self,
-        entity_mut: ActorEntityMut,
-    ) -> Result<f32, AttributeEvaluationError>;
-    fn get_base_value(&self, entity_mut: ActorEntityMut) -> Result<f32, AttributeEvaluationError>;
-
-    fn get_magnitude(&self) -> f32;
-    fn set_magnitude(&mut self, magnitude: f32);
-    fn register_observer<'a>(&'a self, world: &'a mut World, owner: Entity, target: Entity);
-}
-
-/// The entity that this effect is targeting.
-#[derive(Component, Reflect, Debug)]
-#[relationship(relationship_target = EffectMutators)]
-pub struct Mutating(Entity);
-
-/// All effects that are targeting this entity.
-#[derive(Component, Reflect, Debug)]
-#[relationship_target(relationship = Mutating, linked_spawn)]
-pub struct EffectMutators(Vec<Entity>);
 
 pub struct MutatorHelper<A> {
     _phantom: PhantomData<A>,
@@ -60,7 +31,7 @@ pub struct MutatorDef<A, E> {
 
 impl<A, E> Debug for MutatorDef<A, E>
 where
-    A: AttributeComponent + Component<Mutability = Mutable>,
+    A: AttributeComponent + Component<Mutability=Mutable>,
     E: MutatorEvaluator,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -71,9 +42,19 @@ where
     }
 }
 
+impl<A, E> std::fmt::Display for MutatorDef<A, E>
+where
+    A: AttributeComponent + Component<Mutability=Mutable>,
+    E: MutatorEvaluator,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} [{}]", &type_name::<A>(), &self.evaluator)
+    }
+}
+
 impl<P, C> EvaluateMutator for MutatorDef<P, C>
 where
-    P: Component<Mutability = Mutable> + AttributeComponent,
+    P: Component<Mutability=Mutable> + AttributeComponent,
     C: MutatorEvaluator + Clone,
 {
     fn clone_value(&self) -> Box<dyn EvaluateMutator> {
@@ -84,9 +65,8 @@ where
         let mut attribute = entity_mut.get_mut::<P>().unwrap(); // This is what I want to avoid
         let attribute = attribute.deref_mut();
         let aggregator = self.evaluator.get_aggregator();
-        let new_value = aggregator.evaluate(attribute.get_base_value());
-        let base_value = attribute.get_base_value_mut();
-        *base_value = new_value;
+        let new_value = aggregator.evaluate(attribute.base_value());
+        attribute.set_base_value(new_value);
     }
 
     fn apply_aggregator(&self, mut entity_mut: ActorEntityMut, aggregator: ModAggregator) {
@@ -96,9 +76,8 @@ where
         };
         let attribute = attribute.deref_mut();
 
-        let new_value = aggregator.evaluate(attribute.get_base_value());
-        let base_value = attribute.get_base_value_mut();
-        *base_value = new_value;
+        let new_value = aggregator.evaluate(attribute.base_value());
+        attribute.set_base_value(new_value);
     }
 
     fn update_current_value(
@@ -111,11 +90,12 @@ where
             .expect("Error getting mutable attribute in update_current_value");
         let attribute = attribute.deref_mut();
 
-        let new_value = aggregator.evaluate(attribute.get_base_value());
-        let old_value = attribute.get_current_value_mut();
-        *old_value = new_value;
+        let new_value = aggregator.evaluate(attribute.base_value());
+        let old_value = attribute.current_value();
 
-        new_value == *old_value
+        attribute.set_current_value(new_value);
+
+        new_value == old_value
     }
 
     fn target(&self) -> TypeId {
@@ -132,7 +112,7 @@ where
     ) -> Result<f32, AttributeEvaluationError> {
         let mut attribute = entity_mut.get_mut::<P>().unwrap();
         let attribute = attribute.deref_mut();
-        Ok(attribute.get_current_value())
+        Ok(attribute.current_value())
     }
 
     fn get_base_value(
@@ -141,7 +121,7 @@ where
     ) -> Result<f32, AttributeEvaluationError> {
         let mut attribute = entity_mut.get_mut::<P>().unwrap();
         let attribute = attribute.deref_mut();
-        Ok(attribute.get_base_value())
+        Ok(attribute.base_value())
     }
 
     fn get_magnitude(&self) -> f32 {
@@ -151,13 +131,26 @@ where
     fn set_magnitude(&mut self, magnitude: f32) {
         self.evaluator.set_magnitude(magnitude)
     }
+}
 
-    fn register_observer<'a>(&'a self, world: &'a mut World, owner: Entity, target: Entity) {
-        let Some(mut observer) = self.evaluator.get_observer() else {
+impl<C, E> ObserveActor for MutatorDef<C, E>
+where
+    C: Component<Mutability=Mutable> + AttributeComponent,
+    E: MutatorEvaluator + Clone,
+{
+    fn register_observer<'a, O: Event>(
+        &'a self,
+        world: &'a mut World,
+        owner: Entity,
+        target: Entity,
+    ) {
+        let Some(mut observer) = self.evaluator.get_observer::<O, C>() else {
             return;
         };
         observer.watch_entity(target);
 
+        debug!("Observer registration, target {:?} for {}", target, type_name::<C>());
+        
         let mut entity_mut = world.entity_mut(owner);
         entity_mut.insert(observer);
     }
@@ -185,7 +178,7 @@ pub struct MutatorCommand<A, E> {
 
 impl<A, E> Command for MutatorCommand<A, E>
 where
-    A: AttributeComponent + Component<Mutability = Mutable>,
+    A: AttributeComponent + Component<Mutability=Mutable>,
     E: MutatorEvaluator + Clone,
 {
     fn apply(self, world: &mut World) -> () {
@@ -194,9 +187,12 @@ where
 
         // We attach an observer to the mutator targeting the parent entity
         let mutator_entity = world.spawn_empty().id();
-        info!("Created mutator entity {}", mutator_entity);
-        self.mutator
-            .register_observer(world, mutator_entity, self.actor_entity);
+        debug!("Spawned mutator entity {}", mutator_entity);
+        self.mutator.register_observer::<OnCurrentValueChanged>(
+            world,
+            mutator_entity,
+            self.actor_entity,
+        );
 
         let mut entity_mut = world.entity_mut(mutator_entity);
         entity_mut.insert((
@@ -215,7 +211,7 @@ pub enum ModType {
     Overrule,
 }
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, Reflect)]
 pub struct ModAggregator {
     pub additive: f32,
     pub multi: f32,
@@ -314,7 +310,7 @@ impl SubAssign for ModAggregator {
 }
 
 impl Sum for ModAggregator {
-    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+    fn sum<I: Iterator<Item=Self>>(iter: I) -> Self {
         iter.fold(
             Self {
                 additive: 0.0,
@@ -339,20 +335,5 @@ impl Neg for ModAggregator {
             multi: -self.multi,
             overrule: self.overrule,
         }
-    }
-}
-
-#[derive(Component, Debug, Deref, DerefMut, TypePath)]
-pub struct Mutator(pub Box<dyn EvaluateMutator>);
-
-impl Clone for Mutator {
-    fn clone(&self) -> Self {
-        Self(EvaluateMutator::clone_value(&*self.0))
-    }
-}
-
-impl Mutator {
-    pub fn new(effect: impl EvaluateMutator) -> Self {
-        Self(Box::new(effect))
     }
 }

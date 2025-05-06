@@ -1,10 +1,11 @@
+use crate::Mutator;
 use crate::effects::Effect;
 use crate::{ActorEntityMut, OnBaseValueChanged};
 
 use crate::attributes::AttributeComponent;
-use crate::evaluators::FixedEvaluator;
-use crate::mutator::ModType::Additive;
-use crate::mutator::{Mutator, MutatorHelper};
+use crate::evaluators::fixed::FixedEvaluator;
+use crate::mutators::mutator::ModType::Additive;
+use crate::mutators::mutator::MutatorHelper;
 use bevy::ecs::component::Mutable;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;

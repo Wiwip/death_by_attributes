@@ -1,19 +1,9 @@
-use crate::OnCurrentValueChanged;
 use crate::attributes::AttributeComponent;
-use crate::mutator::{ModAggregator, ModType, Mutator};
+use crate::evaluators::MutatorEvaluator;
+use crate::mutators::mutator::{ModAggregator, ModType};
 use bevy::ecs::component::Mutable;
-use bevy::log::info;
-use bevy::prelude::{Component, Observer, Query, Reflect, Trigger};
-use std::any::type_name;
-use std::fmt::{Debug, Formatter};
-use std::marker::PhantomData;
-
-pub trait MutatorEvaluator: Debug + Send + Sync + 'static {
-    fn get_magnitude(&self) -> f32;
-    fn set_magnitude(&mut self, magnitude: f32);
-    fn get_aggregator(&self) -> ModAggregator;
-    fn get_observer(&self) -> Option<Observer>;
-}
+use bevy::prelude::{Component, Event, Observer, Reflect};
+use std::fmt::{Debug, Display, Formatter};
 
 /// A data type that returns a float value when evaluated.
 ///
@@ -30,6 +20,12 @@ impl FixedEvaluator {
             magnitude,
             mod_type,
         }
+    }
+}
+
+impl Display for FixedEvaluator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {:?}", &self.magnitude, &self.mod_type)
     }
 }
 
@@ -50,130 +46,24 @@ impl MutatorEvaluator for FixedEvaluator {
         }
     }
 
-    fn get_observer(&self) -> Option<Observer> {
+    fn get_observer<O: Event, T: Component<Mutability = Mutable> + AttributeComponent>(
+        &self,
+    ) -> Option<Observer> {
         // No need for an observer on fixed mutators
         None
     }
 }
 
-/// Retrieves the value of an [AttributeDef][`crate::attributes::AttributeDef`] on an Attribute [`Component`]
-/// to determine the magnitude of the evaluated mutator.
-///
-#[derive(Reflect)]
-pub struct MetaEvaluator<A>
-where
-    A: Component<Mutability = Mutable> + AttributeComponent,
-{
-    magnitude: Option<f32>,
-    scale: f32,
-    _phantom: PhantomData<A>,
-    mod_type: ModType,
-}
-
-impl<A> MetaEvaluator<A>
-where
-    A: Component<Mutability = Mutable> + AttributeComponent,
-{
-    pub fn new(scale: f32, mod_type: ModType) -> Self {
-        Self {
-            magnitude: None,
-            mod_type,
-            _phantom: Default::default(),
-            scale,
-        }
-    }
-}
-
-impl<A> Clone for MetaEvaluator<A>
-where
-    A: Component<Mutability = Mutable> + AttributeComponent,
-{
-    fn clone(&self) -> Self {
-        Self {
-            magnitude: self.magnitude,
-            scale: self.scale,
-            _phantom: Default::default(),
-            mod_type: self.mod_type,
-        }
-    }
-}
-
-impl<A> Debug for MetaEvaluator<A>
-where
-    A: AttributeComponent + Component<Mutability = Mutable>,
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("MetaEvaluator")
-            .field("target", &type_name::<A>())
-            .field("magnitude", &self.magnitude)
-            .field("scale", &self.scale)
-            .field("mod_type", &self.mod_type)
-            .finish()
-    }
-}
-
-impl<A> MutatorEvaluator for MetaEvaluator<A>
-where
-    A: Component<Mutability = Mutable> + AttributeComponent,
-{
-    fn get_magnitude(&self) -> f32 {
-        let magnitude = self.magnitude.expect("No magnitude set for evaluator yet.");
-        magnitude * self.scale
-    }
-
-    fn set_magnitude(&mut self, magnitude: f32) {
-        self.magnitude = Some(magnitude)
-    }
-
-    fn get_aggregator(&self) -> ModAggregator {
-        match self.mod_type {
-            ModType::Additive => ModAggregator::additive(self.get_magnitude()),
-            ModType::Multiplicative => ModAggregator::multiplicative(self.get_magnitude()),
-            ModType::Overrule => ModAggregator::overrule(self.get_magnitude()),
-        }
-    }
-
-    fn get_observer(&self) -> Option<Observer> {
-        Some(Observer::new(meta_mutator_update::<A>))
-    }
-}
-
-fn meta_mutator_update<T>(
-    trigger: Trigger<OnCurrentValueChanged>,
-    attributes: Query<&T>,
-    mut mutators: Query<&mut Mutator>,
-) where
-    T: Component<Mutability = Mutable> + AttributeComponent, // The target attribute
-{
-    let actor_entity = trigger.target();
-    let mutator_entity = trigger.observer();
-
-    let Ok(attribute) = attributes.get(actor_entity) else {
-        return;
-    };
-    let Ok(mut mutator) = mutators.get_mut(mutator_entity) else {
-        return;
-    };
-
-    let new_val = attribute.get_current_value();
-    mutator.0.set_magnitude(new_val);
-
-    info!(
-        "MetaMutator: [{}] changed to [{}]",
-        type_name::<T>(),
-        new_val,
-    );
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::GameAbilityContainer;
+    use crate::ModAggregator;
     use crate::attribute;
     use crate::attributes::AttributeComponent;
     use crate::effects::EffectBuilder;
-    use crate::mutator::ModType::Additive;
-    use crate::mutator::{EvaluateMutator, Mutator, MutatorHelper};
+    use crate::mutators::EvaluateMutator;
+    use crate::mutators::mutator::ModType::Additive;
+    use crate::mutators::mutator::MutatorHelper;
     use crate::*;
     use bevy::ecs::system::RunSystemOnce;
 
