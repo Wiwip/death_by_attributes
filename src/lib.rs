@@ -1,9 +1,6 @@
-use crate::effects::{Effect, EffectDuration, EffectPeriodicTimer, EffectTarget};
+use crate::effects::{Effect, EffectDuration, EffectPeriodicTimer};
 use crate::systems::{
-    check_duration_effect_expiry, on_attribute_mutation_changed, on_base_value_changed,
-    on_duration_effect_applied, on_duration_effect_removed, on_instant_effect_applied,
-    tick_ability_cooldowns, tick_effects_duration_timer, tick_effects_periodic_timer,
-    trigger_periodic_effects,
+    despawn_instant_effect, tick_effects_duration_timer, tick_effects_periodic_timer,
 };
 use bevy::ecs::schedule::ScheduleLabel;
 use bevy::prelude::*;
@@ -11,38 +8,34 @@ use std::any::TypeId;
 use std::marker::PhantomData;
 
 pub mod abilities;
+pub mod actors;
 pub mod attributes;
 pub mod effects;
 pub mod evaluators;
-pub mod mutators;
+pub mod modifiers;
 pub mod systems;
 
 use crate::abilities::GameAbilityContainer;
-use crate::mutators::mutator::ModAggregator;
-use crate::mutators::{EffectMutators, Mutating, Mutator};
+use crate::modifiers::{ModifierOf, Modifiers};
 pub use attributes_macro::Attribute;
 use bevy::ecs::world::EntityMutExcept;
-use bevy::platform::collections::HashMap;
-use bevy::utils::TypeIdMap;
 
 pub struct DeathByAttributesPlugin;
 
 impl Plugin for DeathByAttributesPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PreUpdate, tick_ability_cooldowns)
+        app //.add_systems(PreUpdate, tick_ability_cooldowns)
             .add_systems(PreUpdate, tick_effects_duration_timer)
-            .add_systems(
-                PreUpdate,
-                (tick_effects_periodic_timer, trigger_periodic_effects).chain(),
-            )
-            .add_systems(PostUpdate, check_duration_effect_expiry)
-            .add_observer(on_instant_effect_applied)
-            .add_observer(on_duration_effect_applied)
-            .add_observer(on_base_value_changed)
-            .add_observer(on_attribute_mutation_changed)
-            .add_observer(on_duration_effect_removed)
-            .insert_resource(CachedMutations::default())
-            .insert_resource(MetaCache::default());
+            .add_systems(PreUpdate, tick_effects_periodic_timer)
+            .add_systems(PostUpdate, despawn_instant_effect)
+            .init_schedule(PreUpdate)
+            .init_schedule(PostUpdate);
+        //.add_systems(PostUpdate, check_duration_effect_expiry)
+        /*.add_observer(on_instant_effect_applied)
+        .add_observer(on_duration_effect_applied)
+        .add_observer(on_base_value_changed)
+        .add_observer(on_attribute_mutation_changed)
+        .add_observer(on_duration_effect_removed)*/
     }
 }
 
@@ -52,15 +45,42 @@ pub type ActorEntityMut<'w> = EntityMutExcept<
         GameAbilityContainer,
         // We exclude anything related to effects
         Effect,
-        EffectTarget,
-        EffectMutators,
+        ModifierOf,
+        Modifiers,
         EffectPeriodicTimer,
         EffectDuration,
-        // We exclude anything related to mutators
-        Mutator,
-        Mutating,
     ),
 >;
+
+#[derive(Component, Copy, Clone, Debug)]
+pub struct Actor;
+
+#[derive(Component, Copy, Clone, Debug)]
+pub(crate) struct ObserverMarker<T> {
+    phantom: PhantomData<T>,
+}
+
+impl<T> Default for ObserverMarker<T> {
+    fn default() -> Self {
+        Self {
+            phantom: PhantomData,
+        }
+    }
+}
+
+#[derive(Component, Copy, Clone, Debug)]
+#[component(storage = "SparseSet")]
+pub struct Dirty<T> {
+    phantom: PhantomData<T>,
+}
+
+impl<T> Default for Dirty<T> {
+    fn default() -> Self {
+        Self {
+            phantom: PhantomData,
+        }
+    }
+}
 
 #[derive(ScheduleLabel, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AttributeUpdateSchedule;
@@ -71,8 +91,6 @@ pub struct OnBaseValueChanged;
 #[derive(Event, Debug)]
 pub struct OnAttributeChanged<A> {
     phantom_data: PhantomData<A>,
-    pub aggregator: ModAggregator,
-    pub entity: Entity,
 }
 
 #[derive(Event)]
@@ -86,12 +104,15 @@ pub enum AttributeEvaluationError {
     ComponentNotPresent(TypeId),
 }
 
-#[derive(Default, Resource)]
-pub struct CachedMutations {
-    pub evaluators: HashMap<Entity, TypeIdMap<(Mutator, ModAggregator)>>,
+#[derive(Resource)]
+pub struct RegisteredSystemCache<T> {
+    phantom: PhantomData<T>,
 }
 
-/// Caller entity (mutator observer) / TypeId (Attribute)
-#[derive(Default, Resource, Deref, DerefMut)]
-#[derive(Debug)]
-pub struct MetaCache(HashMap<(Entity, TypeId), (Mutator, ModAggregator)>);
+impl<T> Default for RegisteredSystemCache<T> {
+    fn default() -> Self {
+        Self {
+            phantom: PhantomData,
+        }
+    }
+}

@@ -1,9 +1,7 @@
 use crate::attributes::AttributeComponent;
-use crate::evaluators::meta::MetaEvaluator;
-use crate::evaluators::fixed::FixedEvaluator;
-use crate::mutators::mutator::ModType;
-use crate::mutators::mutator::MutatorCommand;
-use crate::mutators::mutator::MutatorHelper;
+
+use crate::modifiers::mutator::{ModType, Modifier, MutatorCommand};
+use crate::modifiers::{EffectOf, ModifierOf};
 use bevy::ecs::component::Mutable;
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::TimerMode::{Once, Repeating};
@@ -11,17 +9,7 @@ use bevy::prelude::*;
 use std::fmt::{Debug, Formatter};
 
 #[derive(Component, Debug, Default)]
-pub struct Effect {}
-
-/// The entity that this effect is targeting.
-#[derive(Component, Reflect, Debug)]
-#[relationship(relationship_target = AffectedBy)]
-pub struct EffectTarget(Entity);
-
-/// All effects that are targeting this entity.
-#[derive(Component, Reflect, Debug)]
-#[relationship_target(relationship = EffectTarget, linked_spawn)]
-pub struct AffectedBy(Vec<Entity>);
+pub struct Effect;
 
 #[derive(Component, Reflect, Deref, DerefMut)]
 pub struct EffectPeriodicTimer(pub Timer);
@@ -57,7 +45,7 @@ impl EffectBuilder {
         }
     }
 
-    pub fn mutate_by_scalar<T: AttributeComponent + Component<Mutability = Mutable>>(
+    pub fn modify_by_scalar<T: AttributeComponent + Component<Mutability = Mutable>>(
         mut self,
         magnitude: f32,
         mod_type: ModType,
@@ -65,21 +53,22 @@ impl EffectBuilder {
         self.queue.push(MutatorCommand {
             effect_entity: self.effect_entity,
             actor_entity: self.actor_entity,
-            mutator: MutatorHelper::new::<T>(FixedEvaluator::new(magnitude, mod_type)),
+            modifier: Modifier::<T>::new(magnitude),
         });
         self
     }
 
-    pub fn mutate_by_attribute<S, D>(mut self, magnitude: f32, mod_type: ModType) -> Self
+    pub fn modify_by_ref<S, D>(mut self, magnitude: f32, mod_type: ModType) -> Self
     where
         S: AttributeComponent + Component<Mutability = Mutable>,
         D: AttributeComponent + Component<Mutability = Mutable>,
     {
-        self.queue.push(MutatorCommand {
+        todo!();
+        /*self.queue.push(MutatorCommand {
             effect_entity: self.effect_entity,
             actor_entity: self.actor_entity,
             mutator: MutatorHelper::new::<S>(MetaEvaluator::<D>::new(magnitude, mod_type)),
-        });
+        });*/
         self
     }
 
@@ -118,24 +107,31 @@ pub(crate) struct EffectCommand {
 impl Command for EffectCommand {
     fn apply(mut self, world: &mut World) -> () {
         assert_ne!(Entity::PLACEHOLDER, self.builder.effect_entity);
+        {
+            let mut entity_mut = world.entity_mut(self.builder.effect_entity);
+            entity_mut.insert((
+                Name::new("Effect"),
+                ModifierOf(self.builder.actor_entity),
+                self.builder.effect,
+            ));
 
-        // Spawn mutators before the effects
+            if let Some(duration) = self.builder.duration {
+                entity_mut.insert(duration);
+            }
+            if let Some(period) = self.builder.period {
+                entity_mut.insert((
+                    ModifierOf(self.builder.actor_entity),
+                    EffectPeriodicTimer(period),
+                ));
+            } else {
+                // Ensures that it can affect the hierarchy
+                entity_mut.insert(EffectOf(self.builder.actor_entity));
+            }
+        }
+
+        // Spawn mutators after the effects
         world.commands().append(&mut self.builder.queue);
         world.flush();
-
-        let mut entity_command = world.entity_mut(self.builder.effect_entity);
-        if let Some(duration) = self.builder.duration {
-            entity_command.insert(duration);
-        }
-        if let Some(period) = self.builder.period {
-            entity_command.insert(EffectPeriodicTimer(period));
-        }
-
-        entity_command.insert((
-            Name::new("Effect"),
-            EffectTarget(self.builder.actor_entity),
-            self.builder.effect,
-        ));
     }
 }
 

@@ -1,48 +1,56 @@
-use rand::{rng, Rng};
 use bevy::ecs::schedule::{LogLevel, ScheduleBuildSettings};
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::time::common_conditions::on_timer;
 use bevy::window::PresentMode;
+use bevy_dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin};
 use bevy_egui::EguiPlugin;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use death_by_attributes::abilities::{GameAbilityBuilder, GameAbilityContainer};
 use death_by_attributes::attributes::AttributeComponent;
-use death_by_attributes::effects::{AffectedBy, EffectBuilder, EffectPeriodicTimer, EffectTarget};
-use death_by_attributes::mutators::meta::AttributeBuilder;
-use death_by_attributes::mutators::mutator::ModType::{Additive, Multiplicative};
-use death_by_attributes::mutators::{EffectMutators, Mutating, Mutator};
-use death_by_attributes::{ActorEntityMut, DeathByAttributesPlugin, attribute, OnBaseValueChanged};
-use std::time::Duration;
+use death_by_attributes::effects::{Effect, EffectBuilder, EffectPeriodicTimer};
+use std::any::TypeId;
+
+use bevy::ecs::relationship::Relationship;
+use bevy::platform::collections::HashMap;
+use bevy::ui::debug::print_ui_layout_tree;
+use death_by_attributes::modifiers::{ModifierOf, Modifiers};
+use death_by_attributes::{ActorEntityMut, DeathByAttributesPlugin, OnBaseValueChanged, attribute};
+use rand::{Rng, rng};
+use std::time::{Duration, Instant};
 
 attribute!(Strength);
 attribute!(Agility);
+
 attribute!(Health);
 attribute!(MaxHealth);
 attribute!(HealthRegen);
+
 attribute!(Mana);
 attribute!(ManaRegen);
+
 attribute!(AttackPower);
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins.set(LogPlugin {
-            filter: "error,death_by_attributes=debug".into(),
+        .add_plugins(DefaultPlugins) /*.set(LogPlugin {
+            filter: "error,death_by_attributes=info".into(),
             level: bevy::log::Level::DEBUG,
             ..default()
-        }))
+        }))*/
         .add_plugins(DeathByAttributesPlugin)
         .add_plugins(EguiPlugin {
             enable_multipass_for_primary_context: true,
         })
-        .add_plugins(WorldInspectorPlugin::new())
-        //.add_plugins(FrameTimeDiagnosticsPlugin::default())
-        //.add_plugins(LogDiagnosticsPlugin::default())
+        //.add_plugins(WorldInspectorPlugin::new())
+        /*.add_plugins(FpsOverlayPlugin {
+            config: FpsOverlayConfig::default(),
+        })*/
         .add_systems(Startup, (setup_window, setup, setup_ui))
-        .add_systems(Update, sleep)
+        .add_systems(Update, do_gameplay_stuff)
         .add_systems(
             Update,
-            (display_attribute, display_attribute_entity)
+            (display_attribute)
                 .chain()
                 .run_if(on_timer(Duration::from_millis(16))),
         )
@@ -53,10 +61,8 @@ fn main() {
                 ..default()
             });
         })
-        .register_type::<AffectedBy>()
-        .register_type::<EffectTarget>()
-        .register_type::<EffectMutators>()
-        .register_type::<Mutating>()
+        .register_type::<Modifiers>()
+        .register_type::<ModifierOf>()
         .register_type::<EffectPeriodicTimer>()
         .add_observer(clamp_health)
         .run();
@@ -111,8 +117,8 @@ fn setup(mut commands: Commands) {
     EffectBuilder::new(player_entity, effect_entity)
         .with_permanent_duration()
         .with_continuous_application()
-        .mutate_by_scalar::<MaxHealth>(10.0, Additive)
-        .mutate_by_scalar::<MaxHealth>(0.10, Multiplicative)
+        //.mutate_by_scalar::<MaxHealth>(10.0, Additive)
+        //.mutate_by_scalar::<MaxHealth>(0.10, Multiplicative)
         .apply(&mut commands);
 
     // Effect 2 - Periodic Health Regen
@@ -120,23 +126,23 @@ fn setup(mut commands: Commands) {
     EffectBuilder::new(player_entity, effect_entity)
         .with_permanent_duration()
         .with_periodic_application(1.0)
-        .mutate_by_scalar::<Health>(5.0, Additive)
+        //.mutate_by_scalar::<Health>(5.0, Additive)
         .apply(&mut commands);
 
     // Effect 3 - Instant
     let effect_entity = commands.spawn_empty().id();
     EffectBuilder::new(player_entity, effect_entity)
         .with_instant_application()
-        .mutate_by_scalar::<Health>(-35.0, Additive)
+        //.mutate_by_scalar::<Health>(-35.0, Additive)
         .apply(&mut commands);
 
     // Effect 4
-    AttributeBuilder::<AttackPower>::new(player_entity)
-        .mutate_by_attribute::<Strength>(1.0, Additive)
-        .mutate_by_attribute::<Health>(1.0, Additive)
-        .build(&mut commands);
+    /*AttributeBuilder::<AttackPower>::new(player_entity)
+    .mutate_by_attribute::<Strength>(1.0, Additive)
+    .mutate_by_attribute::<Health>(1.0, Additive)
+    .build(&mut commands);*/
 
-    for _ in 0..1000 {
+    /*for _ in 0..1000 {
         let effect_entity = commands.spawn_empty().id();
         let npc_entity = commands
             .spawn((
@@ -154,17 +160,13 @@ fn setup(mut commands: Commands) {
                 .mutate_by_scalar::<Health>(rng.random_range(1.0..20.0), Additive)
                 .apply(&mut commands);
         }
-    }
+    }*/
 }
 
-fn clamp_health(
-    trigger: Trigger<OnBaseValueChanged>,
-    mut query: Query<(&mut Health, &MaxHealth)>,
-) {
+fn clamp_health(trigger: Trigger<OnBaseValueChanged>, mut query: Query<(&mut Health, &MaxHealth)>) {
     if let Ok((mut health, max_health)) = query.get_mut(trigger.target()) {
         let clamped_value = health.base_value().clamp(0.0, max_health.current_value());
         health.set_base_value(clamped_value);
-        health.set_current_value(clamped_value);
     } else {
         println!("Incorrect entity target in clamp_health.")
     }
@@ -218,25 +220,6 @@ fn display_attribute(
     }
 }
 
-fn display_attribute_entity(
-    player: Query<&EffectMutators, With<Player>>,
-    mutators: Query<&Mutator>,
-    mut q_health: Query<&mut Text, With<EntityHealthMarker>>,
-) {
-    for mutator_entities in player.iter() {
-        let mut mutator_string = "".to_string();
-
-        for mutator_entity in mutator_entities.iter() {
-            let mutator = mutators.get(mutator_entity).unwrap();
-            mutator_string = format!("{mutator_string}\n{mutator}");
-        }
-
-        if let Ok(mut text) = q_health.single_mut() {
-            text.0 = format!("\nMutators:{}", mutator_string);
-        }
-    }
-}
-
 fn inputs(
     mut q_player: Query<(ActorEntityMut, &mut GameAbilityContainer), With<Player>>,
     keys: Res<ButtonInput<KeyCode>>,
@@ -244,15 +227,15 @@ fn inputs(
 ) {
     if let Ok((entity_mut, mut abilities)) = q_player.single_mut() {
         if keys.just_pressed(KeyCode::Space) {
-            abilities
-                .get_abilities_mut()
-                .get_mut("fireball")
-                .unwrap()
-                .try_activate(entity_mut, commands);
+            /*abilities
+            .get_abilities_mut()
+            .get_mut("fireball")
+            .unwrap()
+            .try_activate(entity_mut, commands);*/
         }
     }
 }
 
-fn sleep() {
-    std::thread::sleep(Duration::from_millis(5));
+fn do_gameplay_stuff() {
+    std::thread::sleep(Duration::from_millis(10));
 }

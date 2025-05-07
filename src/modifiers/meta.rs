@@ -1,9 +1,9 @@
-use crate::{OnBaseValueChanged};
+/*use crate::{OnBaseValueChanged};
 use crate::attributes::AttributeComponent;
 use crate::evaluators::MutatorEvaluator;
 use crate::evaluators::meta::MetaEvaluator;
 use crate::mutators::mutator::{ModType, MutatorDef, MutatorHelper};
-use crate::mutators::{Mutating, Mutator, ObserveActor};
+use crate::mutators::{Modifies, Mutator, ObserveActor};
 use bevy::ecs::component::Mutable;
 use bevy::ecs::world::CommandQueue;
 use bevy::log::{debug};
@@ -59,7 +59,7 @@ where
 {
     fn apply(self, world: &mut World) -> () {
         assert_ne!(Entity::PLACEHOLDER, self.actor_entity);
-        
+
         // We attach an observer to the mutator targeting the parent entity
         let mutator_entity = world.spawn_empty().id();
         debug!("Spawned mutator entity {:?}", mutator_entity);
@@ -73,8 +73,9 @@ where
         let mut entity_mut = world.entity_mut(mutator_entity);
         entity_mut.insert((
             Name::new("Mutator"),
-            Mutating(self.actor_entity),
+            Modifies(self.actor_entity),
             Mutator::new(self.mutator),
         ));
     }
 }
+*/

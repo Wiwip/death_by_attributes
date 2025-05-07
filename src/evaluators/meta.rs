@@ -1,15 +1,15 @@
-use crate::{MetaCache};
 use crate::attributes::AttributeComponent;
 use crate::evaluators::MutatorEvaluator;
-use crate::mutators::{EffectMutators, Mutator};
-use crate::mutators::mutator::{ModAggregator, ModType};
+
 use bevy::ecs::component::Mutable;
 use bevy::log::{debug, info, warn};
-use bevy::prelude::{Component, Event, Observer, Query, Reflect, RelationshipTarget, ResMut, Trigger};
+use bevy::prelude::{
+    Component, Event, Observer, Query, Reflect, RelationshipTarget, ResMut, Trigger,
+};
 use std::any::{TypeId, type_name};
 use std::fmt::{Debug, Display, Formatter};
 use std::marker::PhantomData;
-
+/*
 /// Retrieves the value of an [AttributeDef][`crate::attributes::AttributeDef`] on an Attribute [`Component`]
 /// to determine the magnitude of the evaluated mutator.
 ///
@@ -115,7 +115,7 @@ where
 fn meta_mutator_update<A, O: Event, C>(
     trigger: Trigger<O>,
     mut attributes: Query<(&A, &mut C)>,
-    entities: Query<&EffectMutators>,
+    entities: Query<&ModifiedBy>,
     mut mutators: Query<&mut Mutator>,
     mut cached_mutations: ResMut<MetaCache>,
 ) where
@@ -130,9 +130,6 @@ fn meta_mutator_update<A, O: Event, C>(
     );
     let actor_entity = trigger.target();
     let mutator_entity = trigger.observer();
-
-    println!("A {}", type_name::<A>());
-    println!("C {}", type_name::<C>());
 
     let Ok((src_attribute, mut target_attribute)) = attributes.get_mut(actor_entity) else {
         warn!(
@@ -177,3 +174,4 @@ fn meta_mutator_update<A, O: Event, C>(
 
     target_attribute.set_base_value(aggregator.evaluate(0.0));
 }
+*/

@@ -1,11 +1,7 @@
-use crate::Mutator;
 use crate::effects::Effect;
 use crate::{ActorEntityMut, OnBaseValueChanged};
 
 use crate::attributes::AttributeComponent;
-use crate::evaluators::fixed::FixedEvaluator;
-use crate::mutators::mutator::ModType::Additive;
-use crate::mutators::mutator::MutatorHelper;
 use bevy::ecs::component::Mutable;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
@@ -47,8 +43,8 @@ impl GameAbilityBuilder {
         mut self,
         cost: f32,
     ) -> Self {
-        let evaluator = FixedEvaluator::new(cost, Additive);
-        self.ability.cost = Some(Mutator::new(MutatorHelper::new::<C>(evaluator)));
+        //let evaluator = FixedEvaluator::new(cost, Additive);
+        //self.ability.cost = Some(Mutator::new(MutatorHelper::new::<C>(evaluator)));
         self
     }
 
@@ -75,13 +71,13 @@ pub enum GameEffectTarget {
 #[derive(Default)]
 pub struct GameAbility {
     pub applied_effects: Vec<(GameEffectTarget, Effect)>,
-    pub cost: Option<Mutator>,
+    //pub cost: Option<Modifier>,
     pub cooldown: Timer,
     pub ability_activation: Option<AbilityActivationFn>,
 }
 
 impl GameAbility {
-    pub fn try_activate(&mut self, mut entity_mut: ActorEntityMut, mut commands: Commands) {
+    /*pub fn try_activate(&mut self, mut entity_mut: ActorEntityMut, mut commands: Commands) {
         if self.can_activate(entity_mut.reborrow()) {
             self.commit_cost(entity_mut.reborrow());
 
@@ -121,5 +117,5 @@ impl GameAbility {
         }
 
         self.cooldown.reset();
-    }
+    }*/
 }

@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use criterion::*;
 use death_by_attributes::attributes::AttributeComponent;
 use death_by_attributes::effects::EffectBuilder;
-use death_by_attributes::mutators::mutator::ModType::Additive;
+use death_by_attributes::modifiers::mutator::ModType::Additive;
 use death_by_attributes::systems::{
     on_instant_effect_applied, tick_effects_duration_timer, tick_effects_periodic_timer,
     trigger_periodic_effects,
@@ -32,7 +32,7 @@ fn populate_world(mut command: Commands) {
             EffectBuilder::new(player, effect)
                 .with_permanent_duration()
                 .with_periodic_application(1.0)
-                .mutate_by_scalar::<Health>(rng.random_range(0.0..42.0), Additive)
+                .modify_by_scalar::<Health>(rng.random_range(0.0..42.0), Additive)
                 .apply(&mut command);
         }
     }
@@ -48,7 +48,7 @@ fn populate_instant_effects(mut command: Commands) {
             EffectBuilder::new(player, effect)
                 .with_permanent_duration()
                 .with_periodic_application(1.0)
-                .mutate_by_scalar::<Health>(rng.random_range(0.0..42.0), Additive)
+                .modify_by_scalar::<Health>(rng.random_range(0.0..42.0), Additive)
                 .apply(&mut command);
         }
     }

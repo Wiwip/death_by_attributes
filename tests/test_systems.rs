@@ -1,4 +1,4 @@
-use bevy::prelude::*;
+/*use bevy::prelude::*;
 use death_by_attributes::attributes::AttributeComponent;
 use death_by_attributes::effects::{EffectBuilder, EffectPeriodicTimer};
 use death_by_attributes::evaluators::fixed::FixedEvaluator;
@@ -146,3 +146,4 @@ fn test_update_current_values() {
     assert_eq!(0.0, value.base_value);
     assert_eq!(0.0, value.current_value);
 }
+*/

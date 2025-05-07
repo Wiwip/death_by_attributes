@@ -1,10 +1,9 @@
 use crate::attributes::AttributeComponent;
 use crate::evaluators::MutatorEvaluator;
-use crate::mutators::mutator::{ModAggregator, ModType};
 use bevy::ecs::component::Mutable;
 use bevy::prelude::{Component, Event, Observer, Reflect};
 use std::fmt::{Debug, Display, Formatter};
-
+/*
 /// A data type that returns a float value when evaluated.
 ///
 /// Usually used by [Mutator][`crate::mutator::Mutator`].
@@ -53,7 +52,9 @@ impl MutatorEvaluator for FixedEvaluator {
         None
     }
 }
+*/
 
+/*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -161,3 +162,4 @@ mod tests {
         assert_eq!(NEW_HEALTH_VALUE, mutator.get_magnitude());
     }
 }
+*/

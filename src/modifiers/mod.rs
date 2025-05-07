@@ -1,5 +1,6 @@
-pub use crate::mutators::mutator::ModAggregator;
-use crate::{ActorEntityMut, AttributeEvaluationError};
+use crate::Effect;
+
+use crate::AttributeEvaluationError;
 use bevy::prelude::{Component, Deref, DerefMut, Entity, Event, World};
 use bevy::reflect::{Reflect, TypePath};
 use std::any::TypeId;
@@ -7,7 +8,7 @@ use std::fmt::Debug;
 
 pub mod meta;
 pub mod mutator;
-
+/*
 pub trait EvaluateMutator: Debug + std::fmt::Display + Send + Sync + 'static {
     fn clone_value(&self) -> Box<dyn EvaluateMutator>;
     fn apply_mutator(&self, entity_mut: ActorEntityMut);
@@ -36,34 +37,24 @@ pub trait ObserveActor: Send + Sync + 'static {
         target: Entity,
     );
 }
+*/
 
 /// The entity that this effect is targeting.
 #[derive(Component, Reflect, Debug)]
-#[relationship(relationship_target = EffectMutators)]
-pub struct Mutating(Entity);
+#[relationship(relationship_target = Modifiers)]
+pub struct ModifierOf(pub Entity);
 
 /// All effects that are targeting this entity.
 #[derive(Component, Reflect, Debug)]
-#[relationship_target(relationship = Mutating, linked_spawn)]
-pub struct EffectMutators(Vec<Entity>);
+#[relationship_target(relationship = ModifierOf, linked_spawn)]
+pub struct Modifiers(Vec<Entity>);
 
-#[derive(Component, Debug, Deref, DerefMut, TypePath)]
-pub struct Mutator(pub Box<dyn EvaluateMutator>);
+/// The entity that this effect is targeting.
+#[derive(Component, Reflect, Debug)]
+#[relationship(relationship_target = Effects)]
+pub struct EffectOf(pub Entity);
 
-impl Clone for Mutator {
-    fn clone(&self) -> Self {
-        Self(EvaluateMutator::clone_value(&*self.0))
-    }
-}
-
-impl Mutator {
-    pub fn new(effect: impl EvaluateMutator) -> Self {
-        Self(Box::new(effect))
-    }
-}
-
-impl std::fmt::Display for Mutator {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
+/// All effects that are targeting this entity.
+#[derive(Component, Reflect, Debug)]
+#[relationship_target(relationship = EffectOf, linked_spawn)]
+pub struct Effects(Vec<Entity>);

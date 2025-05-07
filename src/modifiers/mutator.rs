@@ -1,29 +1,47 @@
+use crate::AttributeEvaluationError;
+use crate::Dirty;
+use crate::OnCurrentValueChanged;
 use crate::attributes::AttributeComponent;
 use crate::evaluators::MutatorEvaluator;
-use crate::mutators::{EvaluateMutator, Mutating, Mutator, ObserveActor};
-use crate::{ActorEntityMut, AttributeEvaluationError};
-use crate::{OnCurrentValueChanged};
+use crate::modifiers::ModifierOf;
 use bevy::ecs::component::Mutable;
 use bevy::prelude::*;
+
 use std::any::{TypeId, type_name};
 use std::fmt::{Debug, Formatter};
 use std::iter::Sum;
 use std::marker::PhantomData;
 use std::ops::{Add, AddAssign, DerefMut, Neg, SubAssign};
 
-pub struct MutatorHelper<A> {
-    _phantom: PhantomData<A>,
+#[derive(Component, Copy, Clone, Debug)]
+pub struct Modifier<T> {
+    _phantom: PhantomData<T>,
+    pub value: f32,
 }
 
-impl<E> MutatorHelper<E> {
-    pub fn new<A>(evaluator: E) -> MutatorDef<A, E> {
-        MutatorDef {
-            attribute: Default::default(),
-            evaluator,
+impl<T: 'static> Modifier<T> {
+    pub fn new(value: f32) -> Self {
+        Self {
+            _phantom: Default::default(),
+            value,
+        }
+    }
+
+    pub fn target(&self) -> TypeId {
+        TypeId::of::<T>()
+    }
+}
+
+impl<T> Default for Modifier<T> {
+    fn default() -> Self {
+        Self {
+            _phantom: Default::default(),
+            value: 0.0,
         }
     }
 }
 
+/*
 pub struct MutatorDef<A, E> {
     attribute: PhantomData<A>,
     evaluator: E,
@@ -150,7 +168,7 @@ where
         observer.watch_entity(target);
 
         debug!("Observer registration, target {:?} for {}", target, type_name::<C>());
-        
+
         let mut entity_mut = world.entity_mut(owner);
         entity_mut.insert(observer);
     }
@@ -167,39 +185,38 @@ where
         }
     }
 }
+*/
 
 /// Spawns a mutator entity on a specified effect when applied
 ///
-pub struct MutatorCommand<A, E> {
+pub struct MutatorCommand<C> {
     pub(crate) effect_entity: Entity,
     pub(crate) actor_entity: Entity,
-    pub(crate) mutator: MutatorDef<A, E>,
+    pub(crate) modifier: Modifier<C>,
 }
 
-impl<A, E> Command for MutatorCommand<A, E>
+impl<C> Command for MutatorCommand<C>
 where
-    A: AttributeComponent + Component<Mutability=Mutable>,
-    E: MutatorEvaluator + Clone,
+    C: AttributeComponent + Component<Mutability = Mutable>,
 {
     fn apply(self, world: &mut World) -> () {
         assert_ne!(Entity::PLACEHOLDER, self.effect_entity);
         assert_ne!(Entity::PLACEHOLDER, self.actor_entity);
-
         // We attach an observer to the mutator targeting the parent entity
         let mutator_entity = world.spawn_empty().id();
-        debug!("Spawned mutator entity {}", mutator_entity);
-        self.mutator.register_observer::<OnCurrentValueChanged>(
+        /*self.modifier.register_observer::<OnCurrentValueChanged>(
             world,
             mutator_entity,
             self.actor_entity,
-        );
-
+        );*/
         let mut entity_mut = world.entity_mut(mutator_entity);
         entity_mut.insert((
-            Name::new("Mutator"),
-            Mutating(self.effect_entity),
-            Mutator::new(self.mutator),
+            Name::new(format!("{}", type_name::<C>())),
+            self.modifier,
+            ModifierOf(self.effect_entity),
+            Dirty::<C>::default(),
         ));
+
     }
 }
 
@@ -310,7 +327,7 @@ impl SubAssign for ModAggregator {
 }
 
 impl Sum for ModAggregator {
-    fn sum<I: Iterator<Item=Self>>(iter: I) -> Self {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
         iter.fold(
             Self {
                 additive: 0.0,
