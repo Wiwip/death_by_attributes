@@ -1,14 +1,14 @@
 use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
 use criterion::*;
-use death_by_attributes::attributes::AttributeComponent;
-use death_by_attributes::effects::EffectBuilder;
-use death_by_attributes::modifiers::mutator::ModType::Additive;
-use death_by_attributes::systems::{
-    on_instant_effect_applied, tick_effects_duration_timer, tick_effects_periodic_timer,
-    trigger_periodic_effects,
+use root_attribute::attributes::AttributeComponent;
+use root_attribute::effects::EffectBuilder;
+use root_attribute::modifiers::scalar::ModType::Additive;
+use root_attribute::systems::{
+    tick_effects_duration_timer, tick_effects_periodic_timer,
+    
 };
-use death_by_attributes::{CachedMutations, attribute};
+use root_attribute::{attribute};
 use rand::Rng;
 
 criterion_group!(benches, criterion_benchmark);
@@ -33,7 +33,7 @@ fn populate_world(mut command: Commands) {
                 .with_permanent_duration()
                 .with_periodic_application(1.0)
                 .modify_by_scalar::<Health>(rng.random_range(0.0..42.0), Additive)
-                .apply(&mut command);
+                .commit(&mut command);
         }
     }
 }
@@ -49,25 +49,25 @@ fn populate_instant_effects(mut command: Commands) {
                 .with_permanent_duration()
                 .with_periodic_application(1.0)
                 .modify_by_scalar::<Health>(rng.random_range(0.0..42.0), Additive)
-                .apply(&mut command);
+                .commit(&mut command);
         }
     }
 }
 
 fn bench_on_instant_effect_added() -> App {
     let mut app = App::new();
-    app.insert_resource(CachedMutations::default());
+    /*app.insert_resource(CachedMutations::default());
     app.add_observer(on_instant_effect_applied);
-    app.add_systems(Startup, populate_instant_effects);
+    app.add_systems(Startup, populate_instant_effects);*/
     app
 }
 
 fn bench_update_base_values() -> App {
     let mut app = App::new();
-    app.add_plugins(MinimalPlugins);
+    /*app.add_plugins(MinimalPlugins);
     app.insert_resource(CachedMutations::default());
     app.add_systems(Startup, populate_world);
-    app.add_systems(Update, tick_effects_periodic_timer);
+    app.add_systems(Update, tick_effects_periodic_timer);*/
     app
 }
 
@@ -85,7 +85,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         let mut app = bench_update_base_values();
         app.update();
 
-        b.iter(|| app.world_mut().run_system_once(trigger_periodic_effects))
+        //b.iter(|| app.world_mut().run_system_once(trigger_periodic_effects))
     });
 
     c.bench_function("tick_effects_duration_timer", |b| {

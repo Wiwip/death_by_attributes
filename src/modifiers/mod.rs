@@ -7,7 +7,7 @@ use std::any::TypeId;
 use std::fmt::Debug;
 
 pub mod meta;
-pub mod mutator;
+pub mod scalar;
 /*
 pub trait EvaluateMutator: Debug + std::fmt::Display + Send + Sync + 'static {
     fn clone_value(&self) -> Box<dyn EvaluateMutator>;
@@ -28,7 +28,7 @@ pub trait EvaluateMutator: Debug + std::fmt::Display + Send + Sync + 'static {
     fn get_magnitude(&self) -> f32;
     fn set_magnitude(&mut self, magnitude: f32);
 }
-
+*/
 pub trait ObserveActor: Send + Sync + 'static {
     fn register_observer<'a, O: Event>(
         &'a self,
@@ -37,7 +37,7 @@ pub trait ObserveActor: Send + Sync + 'static {
         target: Entity,
     );
 }
-*/
+
 
 /// The entity that this effect is targeting.
 #[derive(Component, Reflect, Debug)]

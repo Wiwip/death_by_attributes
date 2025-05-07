@@ -1,5 +1,5 @@
 [package]
-name = "death_by_attributes"
+name = "root_attribute"
 version = "0.1.0"
 edition = "2024"
 
@@ -29,7 +29,7 @@ features = [
     "bevy_log",
     "bevy_state",
     "track_location",
-    #"dynamic_linking",
+    "dynamic_linking",
 ]
 
 [dev-dependencies]

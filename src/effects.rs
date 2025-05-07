@@ -1,6 +1,8 @@
 use crate::attributes::AttributeComponent;
+use bevy::prelude::Name;
 
-use crate::modifiers::mutator::{ModType, Modifier, MutatorCommand};
+use crate::Dirty;
+use crate::modifiers::scalar::{ModType, Modifier, MutatorCommand};
 use crate::modifiers::{EffectOf, ModifierOf};
 use bevy::ecs::component::Mutable;
 use bevy::ecs::world::CommandQueue;
@@ -20,21 +22,26 @@ impl EffectPeriodicTimer {
     }
 }
 
-pub struct EffectBuilder {
+pub struct EffectBuilder<'a> {
+    commands: &'a mut Commands<'a, 'a>,
     pub(crate) actor_entity: Entity,
     pub(crate) effect_entity: Entity,
     pub(crate) effect: Effect,
     queue: CommandQueue,
     duration: Option<EffectDuration>,
-    period: Option<Timer>,
+    period: Option<EffectPeriodicTimer>,
 }
 
-impl EffectBuilder {
-    pub fn new(actor_entity: Entity, effect_entity: Entity) -> GameEffectDurationBuilder {
-        assert_ne!(actor_entity, effect_entity);
-        info!("Created effect entity {}", effect_entity);
+impl<'a> EffectBuilder<'a> {
+    pub fn new(
+        actor_entity: Entity,
+        commands: &'a mut Commands<'a, 'a>,
+    ) -> GameEffectDurationBuilder<'a> {
+        let effect_entity = commands.spawn_empty().id();
+        debug!("Spawned effect entity {}", effect_entity);
         GameEffectDurationBuilder {
             effect_builder: EffectBuilder {
+                commands,
                 actor_entity,
                 effect_entity,
                 effect: Default::default(),
@@ -50,11 +57,13 @@ impl EffectBuilder {
         magnitude: f32,
         mod_type: ModType,
     ) -> Self {
-        self.queue.push(MutatorCommand {
+        let command = MutatorCommand {
             effect_entity: self.effect_entity,
             actor_entity: self.actor_entity,
             modifier: Modifier::<T>::new(magnitude),
-        });
+        };
+
+        self.queue.push(command);
         self
     }
 
@@ -72,27 +81,41 @@ impl EffectBuilder {
         self
     }
 
-    pub fn apply(self, commands: &mut Commands) {
-        commands.queue(EffectCommand { builder: self });
+    pub fn with_name(self, name: String) -> Self {
+        self.commands
+            .entity(self.effect_entity)
+            .insert(Name::new(name));
+        self
+    }
+
+    pub fn commit(mut self) {
+        self.commands.queue(EffectCommand {
+            effect_entity: self.effect_entity,
+            actor_entity: self.actor_entity,
+            duration: self.duration,
+            period: self.period,
+            effect: self.effect,
+        });
+        self.commands.append(&mut self.queue);
     }
 }
 
-pub struct GameEffectDurationBuilder {
-    effect_builder: EffectBuilder,
+pub struct GameEffectDurationBuilder<'a> {
+    effect_builder: EffectBuilder<'a>,
 }
 
-impl GameEffectDurationBuilder {
-    pub fn with_instant_application(self) -> EffectBuilder {
+impl<'a> GameEffectDurationBuilder<'a> {
+    pub fn with_instant_application(self) -> EffectBuilder<'a> {
         self.effect_builder
     }
-    pub fn with_duration(mut self, seconds: f32) -> GameEffectPeriodBuilder {
+    pub fn with_duration(mut self, seconds: f32) -> GameEffectPeriodBuilder<'a> {
         self.effect_builder.duration =
             Some(EffectDuration::Duration(Timer::from_seconds(seconds, Once)));
         GameEffectPeriodBuilder {
             effect_builder: self.effect_builder,
         }
     }
-    pub fn with_permanent_duration(mut self) -> GameEffectPeriodBuilder {
+    pub fn with_permanent_duration(mut self) -> GameEffectPeriodBuilder<'a> {
         self.effect_builder.duration = Some(EffectDuration::Permanent);
         GameEffectPeriodBuilder {
             effect_builder: self.effect_builder,
@@ -101,50 +124,49 @@ impl GameEffectDurationBuilder {
 }
 
 pub(crate) struct EffectCommand {
-    pub(crate) builder: EffectBuilder,
+    effect_entity: Entity,
+    actor_entity: Entity,
+    duration: Option<EffectDuration>,
+    period: Option<EffectPeriodicTimer>,
+    effect: Effect,
 }
 
 impl Command for EffectCommand {
-    fn apply(mut self, world: &mut World) -> () {
-        assert_ne!(Entity::PLACEHOLDER, self.builder.effect_entity);
+    fn apply(self, world: &mut World) -> () {
+        assert_ne!(Entity::PLACEHOLDER, self.effect_entity);
         {
-            let mut entity_mut = world.entity_mut(self.builder.effect_entity);
+            let mut entity_mut = world.entity_mut(self.effect_entity);
             entity_mut.insert((
                 Name::new("Effect"),
-                ModifierOf(self.builder.actor_entity),
-                self.builder.effect,
+                ModifierOf(self.actor_entity),
+                self.effect,
             ));
 
-            if let Some(duration) = self.builder.duration {
+            if let Some(duration) = self.duration {
                 entity_mut.insert(duration);
             }
-            if let Some(period) = self.builder.period {
-                entity_mut.insert((
-                    ModifierOf(self.builder.actor_entity),
-                    EffectPeriodicTimer(period),
-                ));
-            } else {
-                // Ensures that it can affect the hierarchy
-                entity_mut.insert(EffectOf(self.builder.actor_entity));
-            }
-        }
 
-        // Spawn mutators after the effects
-        world.commands().append(&mut self.builder.queue);
-        world.flush();
+            // Do not attach periodic event to the "Effect" hierarchy as it will passively affect the tree
+            // Add it to the Modifier hierarchy so it can modify the attributes of the targeted actor
+            match self.period {
+                None => entity_mut.insert(EffectOf(self.actor_entity)),
+                Some(period) => entity_mut.insert(period),
+            };
+        }
     }
 }
 
-pub struct GameEffectPeriodBuilder {
-    effect_builder: EffectBuilder,
+pub struct GameEffectPeriodBuilder<'a> {
+    effect_builder: EffectBuilder<'a>,
 }
 
-impl GameEffectPeriodBuilder {
-    pub fn with_periodic_application(mut self, seconds: f32) -> EffectBuilder {
-        self.effect_builder.period = Some(Timer::from_seconds(seconds, Repeating));
+impl<'a> GameEffectPeriodBuilder<'a> {
+    pub fn with_periodic_application(mut self, seconds: f32) -> EffectBuilder<'a> {
+        self.effect_builder.period =
+            Some(EffectPeriodicTimer(Timer::from_seconds(seconds, Repeating)));
         self.effect_builder
     }
-    pub fn with_continuous_application(self) -> EffectBuilder {
+    pub fn with_continuous_application(self) -> EffectBuilder<'a> {
         self.effect_builder
     }
 }

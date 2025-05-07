@@ -6,16 +6,16 @@ use bevy::window::PresentMode;
 use bevy_dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin};
 use bevy_egui::EguiPlugin;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
-use death_by_attributes::abilities::{GameAbilityBuilder, GameAbilityContainer};
-use death_by_attributes::attributes::AttributeComponent;
-use death_by_attributes::effects::{Effect, EffectBuilder, EffectPeriodicTimer};
+use root_attribute::abilities::{GameAbilityBuilder, GameAbilityContainer};
+use root_attribute::attributes::AttributeComponent;
+use root_attribute::effects::{Effect, EffectBuilder, EffectPeriodicTimer};
 use std::any::TypeId;
 
 use bevy::ecs::relationship::Relationship;
 use bevy::platform::collections::HashMap;
 use bevy::ui::debug::print_ui_layout_tree;
-use death_by_attributes::modifiers::{ModifierOf, Modifiers};
-use death_by_attributes::{ActorEntityMut, DeathByAttributesPlugin, OnBaseValueChanged, attribute};
+use root_attribute::modifiers::{ModifierOf, Modifiers};
+use root_attribute::{ActorEntityMut, DeathByAttributesPlugin, OnBaseValueChanged, attribute};
 use rand::{Rng, rng};
 use std::time::{Duration, Instant};
 
@@ -34,7 +34,7 @@ attribute!(AttackPower);
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins) /*.set(LogPlugin {
-            filter: "error,death_by_attributes=info".into(),
+            filter: "error,root_attribute=info".into(),
             level: bevy::log::Level::DEBUG,
             ..default()
         }))*/
@@ -119,7 +119,7 @@ fn setup(mut commands: Commands) {
         .with_continuous_application()
         //.mutate_by_scalar::<MaxHealth>(10.0, Additive)
         //.mutate_by_scalar::<MaxHealth>(0.10, Multiplicative)
-        .apply(&mut commands);
+        .commit(&mut commands);
 
     // Effect 2 - Periodic Health Regen
     let effect_entity = commands.spawn_empty().id();
@@ -127,14 +127,14 @@ fn setup(mut commands: Commands) {
         .with_permanent_duration()
         .with_periodic_application(1.0)
         //.mutate_by_scalar::<Health>(5.0, Additive)
-        .apply(&mut commands);
+        .commit(&mut commands);
 
     // Effect 3 - Instant
     let effect_entity = commands.spawn_empty().id();
     EffectBuilder::new(player_entity, effect_entity)
         .with_instant_application()
         //.mutate_by_scalar::<Health>(-35.0, Additive)
-        .apply(&mut commands);
+        .commit(&mut commands);
 
     // Effect 4
     /*AttributeBuilder::<AttackPower>::new(player_entity)

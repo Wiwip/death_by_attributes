@@ -3,7 +3,7 @@ use crate::Dirty;
 use crate::OnCurrentValueChanged;
 use crate::attributes::AttributeComponent;
 use crate::evaluators::MutatorEvaluator;
-use crate::modifiers::ModifierOf;
+use crate::modifiers::{EffectOf, ModifierOf};
 use bevy::ecs::component::Mutable;
 use bevy::prelude::*;
 
@@ -42,33 +42,6 @@ impl<T> Default for Modifier<T> {
 }
 
 /*
-pub struct MutatorDef<A, E> {
-    attribute: PhantomData<A>,
-    evaluator: E,
-}
-
-impl<A, E> Debug for MutatorDef<A, E>
-where
-    A: AttributeComponent + Component<Mutability=Mutable>,
-    E: MutatorEvaluator,
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("MutatorDef")
-            .field("attribute", &type_name::<A>())
-            .field("evaluator", &self.evaluator)
-            .finish()
-    }
-}
-
-impl<A, E> std::fmt::Display for MutatorDef<A, E>
-where
-    A: AttributeComponent + Component<Mutability=Mutable>,
-    E: MutatorEvaluator,
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} [{}]", &type_name::<A>(), &self.evaluator)
-    }
-}
 
 impl<P, C> EvaluateMutator for MutatorDef<P, C>
 where
@@ -213,6 +186,7 @@ where
         entity_mut.insert((
             Name::new(format!("{}", type_name::<C>())),
             self.modifier,
+            EffectOf(self.effect_entity),
             ModifierOf(self.effect_entity),
             Dirty::<C>::default(),
         ));

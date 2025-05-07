@@ -1,6 +1,6 @@
 use crate::attributes::AttributeComponent;
 use crate::effects::{Effect, EffectDuration, EffectPeriodicTimer};
-use crate::modifiers::mutator::Modifier;
+use crate::modifiers::scalar::Modifier;
 use crate::modifiers::{EffectOf, Effects, ModifierOf, Modifiers};
 use crate::{Actor, Dirty, OnBaseValueChanged};
 use bevy::ecs::component::Mutable;
@@ -80,9 +80,9 @@ fn update_attribute_tree<T: Component<Mutability = Mutable> + AttributeComponent
     let binding = Modifier::<T>::default();
     let modifier = modifiers.get(current_entity).unwrap_or(&binding);
     // Ignore clean branches of the tree
-    /*if !dirty.contains(current_entity) {
+    if !dirty.contains(current_entity) {
         return modifier.value;
-    };*/
+    };
     // Return the current value if there is no child node
     // Ignore modifier_so_far when they have a periodic timer
     let modifier_so_far = match descendants.get(current_entity) {
