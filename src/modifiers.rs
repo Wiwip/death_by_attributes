@@ -1,5 +1,6 @@
 use crate::Dirty;
 use crate::attributes::AttributeComponent;
+use crate::effects::EffectOf;
 use bevy::ecs::component::Mutable;
 use bevy::prelude::*;
 use std::any::{TypeId, type_name};
@@ -7,7 +8,7 @@ use std::fmt::Debug;
 use std::fmt::Display;
 use std::iter::Sum;
 use std::marker::PhantomData;
-use std::ops::{Add, AddAssign};
+use std::ops::{Add, AddAssign, Mul};
 
 #[derive(Component, Copy, Clone, Debug, Reflect)]
 pub struct Modifier<T> {
@@ -59,7 +60,6 @@ where
             self.modifier,
             ModAggregator::<C>::default(),
             EffectOf(self.effect_entity),
-            ModifierOf(self.effect_entity),
             Dirty::<C>::default(),
         ));
         if let Some(observer) = self.observer {
@@ -67,26 +67,6 @@ where
         }
     }
 }
-
-/// The entity that this effect is targeting.
-#[derive(Component, Reflect, Debug)]
-#[relationship(relationship_target = Modifiers)]
-pub struct ModifierOf(pub Entity);
-
-/// All effects that are targeting this entity.
-#[derive(Component, Reflect, Debug)]
-#[relationship_target(relationship = ModifierOf, linked_spawn)]
-pub struct Modifiers(Vec<Entity>);
-
-/// The entity that this effect is targeting.
-#[derive(Component, Reflect, Debug)]
-#[relationship(relationship_target = Effects)]
-pub struct EffectOf(pub Entity);
-
-/// All effects that are targeting this entity.
-#[derive(Component, Reflect, Debug)]
-#[relationship_target(relationship = EffectOf, linked_spawn)]
-pub struct Effects(Vec<Entity>);
 
 #[derive(Default, Debug, Clone, Copy, Reflect)]
 pub enum ModType {
@@ -179,6 +159,32 @@ impl<T> Add<ModAggregator<T>> for &mut ModAggregator<T> {
             additive: self.additive + rhs.additive,
             multi: self.multi + rhs.multi,
             overrule: self.overrule.or(rhs.overrule),
+        }
+    }
+}
+
+impl<T> Mul<ModAggregator<T>> for ModAggregator<T> {
+    type Output = Self;
+
+    fn mul(self, rhs: ModAggregator<T>) -> Self::Output {
+        Self {
+            phantom_data: Default::default(),
+            additive: self.additive * rhs.additive,
+            multi: self.multi * rhs.multi,
+            overrule: self.overrule.or(rhs.overrule),
+        }
+    }
+}
+
+impl<T> Mul<f32> for ModAggregator<T> {
+    type Output = Self;
+
+    fn mul(self, rhs: f32) -> Self::Output {
+        Self {
+            phantom_data: Default::default(),
+            additive: self.additive * rhs,
+            multi: self.multi * rhs,
+            overrule: self.overrule,
         }
     }
 }

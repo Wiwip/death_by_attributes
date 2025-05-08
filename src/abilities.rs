@@ -1,5 +1,5 @@
-use crate::effects::Effect;
 use crate::ActorEntityMut;
+use crate::effects::Effect;
 
 use crate::attributes::AttributeComponent;
 use bevy::ecs::component::Mutable;
@@ -40,8 +40,8 @@ impl GameAbilityBuilder {
     }
 
     pub fn with_cost<C: Component<Mutability = Mutable> + AttributeComponent>(
-        mut self,
-        cost: f32,
+        self,
+        _cost: f32,
     ) -> Self {
         //self.ability.cost = Some();
         self
@@ -76,7 +76,7 @@ pub struct GameAbility {
 }
 
 impl GameAbility {
-    pub fn try_activate(&mut self, mut entity_mut: ActorEntityMut, mut commands: Commands) {
+    pub fn try_activate(&mut self, mut entity_mut: ActorEntityMut, commands: Commands) {
         if self.can_activate(entity_mut.reborrow()) {
             self.commit_cost(entity_mut.reborrow());
 
@@ -90,7 +90,7 @@ impl GameAbility {
         }
     }
 
-    pub fn can_activate(&self, entity: ActorEntityMut) -> bool {
+    pub fn can_activate(&self, _entity: ActorEntityMut) -> bool {
         // Check cooldown first. If ability is still on cooldown, we cannot activate it yet.
         if !self.cooldown.finished() {
             return false;
@@ -111,7 +111,7 @@ impl GameAbility {
         false
     }
 
-    pub fn commit_cost(&mut self, entity_mut: ActorEntityMut) {
+    pub fn commit_cost(&mut self, _entity_mut: ActorEntityMut) {
         /*if let Some(mutator) = &self.cost {
             mutator.0.apply_mutator(entity_mut);
         }*/

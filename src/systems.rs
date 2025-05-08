@@ -1,14 +1,13 @@
 use crate::attributes::AttributeComponent;
-use crate::effects::{Effect, EffectDuration, EffectPeriodicTimer};
-use crate::modifiers::{EffectOf, Effects, ModAggregator, Modifier, ModifierOf};
-use crate::{Actor, Dirty, OnAttributeValueChanged};
+use crate::effects::{Effect, EffectDuration, EffectOf, EffectPeriodicTimer, Effects};
+use crate::modifiers::{ModAggregator, Modifier};
+use crate::{Actor, Dirty, OnAttributeValueChanged, OnModifierApplied};
 use bevy::ecs::component::Mutable;
 use bevy::ecs::relationship::Relationship;
 use bevy::prelude::*;
 use ptree::{TreeBuilder, print_tree};
 use std::any::type_name;
 use std::ops::DerefMut;
-use bevy::ecs::query::QueryEntityError;
 
 pub fn tick_effects_periodic_timer(mut query: Query<&mut EffectPeriodicTimer>, time: Res<Time>) {
     query.par_iter_mut().for_each(|mut timer| {
@@ -40,7 +39,24 @@ pub fn flag_dirty_modifier_nodes<T: Component>(
             if dirty.contains(entity) {
                 continue 'outer;
             }
+            command.entity(entity).insert(Dirty::<T>::default());
+        }
+    }
+}
 
+pub fn flag_dirty_attribute_nodes<T: Component>(
+    changed: Query<Entity, Changed<T>>,
+    parents: Query<&EffectOf>,
+    dirty: Query<&Dirty<T>>,
+    mut command: Commands,
+) {
+    'outer: for changed in changed.iter() {
+        command.entity(changed).insert(Dirty::<T>::default());
+        for entity in parents.iter_ancestors(changed) {
+            // Stop marking as the rest of the hierarchy is already dirty
+            if dirty.contains(entity) {
+                continue 'outer;
+            }
             command.entity(entity).insert(Dirty::<T>::default());
         }
     }
@@ -58,22 +74,19 @@ pub fn update_effect_tree_system<T: Component<Mutability = Mutable> + AttributeC
     mut aggregators: Query<&mut ModAggregator<T>>,
     mut commands: Commands,
 ) {
-    debug_once!(
-        "Ready: update_effect_tree_system::{}",
-        type_name::<T>()
-    );
+    debug_once!("Ready: update_effect_tree_system::{}", type_name::<T>());
     for actor_entity in actors.iter() {
         let mut visited_nodes = 0;
-            update_effect_tree(
-                &mut visited_nodes,
-                actor_entity,
-                descendants,
-                modifiers,
-                dirty,
-                periodic_effects,
-                &mut attributes,
-                &mut aggregators,
-                &mut commands,
+        update_effect_tree(
+            &mut visited_nodes,
+            actor_entity,
+            descendants,
+            modifiers,
+            dirty,
+            periodic_effects,
+            &mut attributes,
+            &mut aggregators,
+            &mut commands,
         );
     }
 }
@@ -101,7 +114,8 @@ fn update_effect_tree<T: Component<Mutability = Mutable> + AttributeComponent>(
     };
     // Return value of all the child nodes plus our own
     // Ignore modifier_so_far when they have a periodic timer
-    let modifier_so_far = modifier.value.clone() + match descendants.get(current_entity) {
+    let modifier_so_far = modifier.value.clone()
+        + match descendants.get(current_entity) {
             Ok(childrens) => childrens
                 .iter()
                 .map(|child| {
@@ -122,14 +136,18 @@ fn update_effect_tree<T: Component<Mutability = Mutable> + AttributeComponent>(
         };
     // Update the aggregator with the most-recent value
     let Ok(mut aggregator) = aggregators.get_mut(current_entity) else {
-        debug!("Could not get an aggregator on {}, this is abnormal.", current_entity);
+        debug!(
+            "Could not get an aggregator on {}, this is abnormal.",
+            current_entity
+        );
         return ModAggregator::default();
     };
     *aggregator = modifier_so_far.clone();
     // Edit the current attribute if the node has one
     if let Ok(mut attribute) = attributes.get_mut(current_entity) {
         let new_val = aggregator.evaluate(attribute.base_value());
-        attribute.set_current_value(new_val)
+        attribute.set_current_value(new_val);
+        commands.trigger_targets(OnAttributeValueChanged, current_entity);
     };
     // Cleans the node
     commands.entity(current_entity).remove::<Dirty<T>>();
@@ -181,8 +199,7 @@ pub fn trigger_instant_effect_applied<T: Component<Mutability = Mutable> + Attri
     trigger: Trigger<OnAdd, Modifier<T>>,
     effects: Query<(Entity, &Effect), Without<EffectDuration>>,
     modifiers: Query<&Modifier<T>>,
-    parents: Query<&ModifierOf>,
-    mut attributes: Query<&mut T>,
+    parents: Query<&EffectOf>,
     mut commands: Commands,
 ) {
     let modifier_entity = trigger.target();
@@ -196,13 +213,14 @@ pub fn trigger_instant_effect_applied<T: Component<Mutability = Mutable> + Attri
     let Ok(modifier) = modifiers.get(modifier_entity) else {
         return;
     };
-    apply_modifiers_to_ancestors(
-        modifier_entity,
-        modifier,
-        parents,
-        &mut attributes,
-        &mut commands,
+    commands.trigger_targets(
+        OnModifierApplied::<T> {
+            phantom_data: Default::default(),
+            value: modifier.value.clone(),
+        },
+        trigger.target(),
     );
+    commands.trigger_targets(OnAttributeValueChanged, trigger.target());
 }
 
 /// Despawn instant effects right after they were added as we cannot remove them in the triggers directly
@@ -216,13 +234,11 @@ pub fn despawn_instant_effect(
 }
 
 pub fn trigger_periodic_effect<T: Component<Mutability = Mutable> + AttributeComponent>(
-    effects: Query<(Entity, &Effect, &EffectPeriodicTimer, &Effects), With<EffectDuration>>,
+    effects: Query<(&EffectPeriodicTimer, &Effects), With<EffectDuration>>,
     modifiers: Query<&Modifier<T>>,
-    parents: Query<&ModifierOf>,
-    mut attributes: Query<&mut T>,
     mut commands: Commands,
 ) {
-    for (effect_entity, _, timer, effect_childrens) in effects.iter() {
+    for (timer, effect_childrens) in effects.iter() {
         if !timer.0.just_finished() {
             continue;
         }
@@ -231,41 +247,14 @@ pub fn trigger_periodic_effect<T: Component<Mutability = Mutable> + AttributeCom
             let Ok(modifier) = modifiers.get(children) else {
                 continue;
             };
-            apply_modifiers_to_ancestors(
-                effect_entity,
-                modifier,
-                parents,
-                &mut attributes,
-                &mut commands,
+            commands.trigger_targets(
+                OnModifierApplied::<T> {
+                    phantom_data: Default::default(),
+                    value: modifier.value.clone(),
+                },
+                children,
             );
+            commands.trigger_targets(OnAttributeValueChanged, children);
         }
     }
 }
-
-/// Traverses the tree ancestors till it reaches the root actor
-/// Applies the given modifier to all attribute T on the way up
-/// Marks nodes as dirty
-fn apply_modifiers_to_ancestors<T: Component<Mutability = Mutable> + AttributeComponent>(
-    origin_entity: Entity,
-    modifier: &Modifier<T>,
-    parents: Query<&ModifierOf>,
-    attributes: &mut Query<&mut T>,
-    commands: &mut Commands,
-) {
-    // We apply the modification to the ancestors till we reach the actor root
-    for entity in parents.iter_ancestors(origin_entity) {
-        // Assumes that the entire branch is dirty if a modifier is applied.
-        // Consider replacing with triggers given we're mostly interested in updating the current value.
-        commands.entity(entity).insert(Dirty::<T>::default());
-
-        let Ok(mut attribute) = attributes.get_mut(entity) else {
-            continue;
-        };
-        let old_value = attribute.base_value();
-        attribute.set_base_value(modifier.value.evaluate(old_value));
-
-        // Notify whenever we mutate an attribute
-        commands.trigger_targets(OnAttributeValueChanged, entity);
-    }
-}
-

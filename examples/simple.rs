@@ -1,25 +1,22 @@
-use bevy::ecs::relationship::Relationship;
 use bevy::ecs::schedule::{LogLevel, ScheduleBuildSettings};
 use bevy::log::LogPlugin;
-use bevy::platform::collections::HashMap;
+
 use bevy::prelude::*;
 use bevy::time::common_conditions::on_timer;
-use bevy::ui::debug::print_ui_layout_tree;
+
 use bevy::window::PresentMode;
-use bevy_dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin};
 use bevy_egui::EguiPlugin;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
-use ptree::{TreeBuilder, print_tree, write_tree};
-use rand::{Rng, rng};
+use ptree::{TreeBuilder, write_tree};
 use root_attribute::abilities::{GameAbilityBuilder, GameAbilityContainer};
 use root_attribute::actors::ActorBuilder;
 use root_attribute::attributes::{AttributeBuilder, AttributeComponent};
-use root_attribute::effects::{Effect, EffectBuilder, EffectPeriodicTimer};
+use root_attribute::effects::{EffectBuilder, EffectPeriodicTimer, Effects};
 use root_attribute::modifiers::ModType::{Additive, Multiplicative};
-use root_attribute::modifiers::{Effects, ModAggregator, Modifier, ModifierOf, Modifiers};
+use root_attribute::modifiers::{ModAggregator, Modifier};
 use root_attribute::systems::recursive_pretty_print;
 use root_attribute::{
-    Actor, ActorEntityMut, DeathByAttributesPlugin, OnAttributeValueChanged, attribute,
+    Actor, ActorEntityMut, DeathByAttributesPlugin, OnModifierApplied, attribute,
 };
 use std::time::Duration;
 
@@ -56,10 +53,7 @@ fn main() {
             display_attribute.run_if(on_timer(Duration::from_millis(32))),
         )
         .add_systems(Update, display_tree)
-        /*.add_systems(
-            Update,
-            agg.run_if(on_timer(Duration::from_millis(32))),
-        )*/
+        .add_systems(Update, display_modifier_tree::<Health>)
         .add_systems(PreUpdate, inputs)
         .edit_schedule(Update, |schedule| {
             schedule.set_build_settings(ScheduleBuildSettings {
@@ -67,12 +61,10 @@ fn main() {
                 ..default()
             });
         })
-        .register_type::<Modifiers>()
-        .register_type::<ModifierOf>()
+        .register_type::<Effects>()
         .register_type::<EffectPeriodicTimer>()
         .register_type::<Health>()
         .register_type::<AttackPower>()
-        .add_observer(clamp_health)
         .run();
 }
 
@@ -88,15 +80,8 @@ fn setup_window(mut query: Query<&mut Window>) {
     }
 }
 
-fn agg(query: Query<(Entity, &Name, &ModAggregator<AttackPower>)>) {
-    for (entity, name, aggregator) in query.iter() {
-        print!("[{} / {name} / {}] ", entity, aggregator.additive);
-    }
-    println!("---")
-}
-
 fn setup(mut commands: Commands) {
-    let mut rng = rand::rng();
+    let _rng = rand::rng();
     let mut ability_component = GameAbilityContainer::default();
     ability_component.grant_ability(
         "fireball".to_string(),
@@ -115,6 +100,7 @@ fn setup(mut commands: Commands) {
         .with::<Strength>(12.0)
         .with::<Agility>(7.0)
         .with::<Health>(100.0)
+        .max::<Health, MaxHealth>(0.0)
         .with::<MaxHealth>(100.0)
         .with::<HealthRegen>(2.0)
         .with::<Mana>(100.0)
@@ -139,7 +125,8 @@ fn setup(mut commands: Commands) {
     EffectBuilder::new(player_entity, effect_entity)
         .with_permanent_duration()
         .with_continuous_application()
-        .modify_by_scalar::<MaxHealth>(100.0, Additive)
+        .with_name("MaxHealth Buff".into())
+        .modify_by_scalar::<MaxHealth>(10.0, Additive)
         .modify_by_scalar::<MaxHealth>(0.10, Multiplicative)
         .commit(&mut commands);
 
@@ -148,65 +135,19 @@ fn setup(mut commands: Commands) {
     EffectBuilder::new(player_entity, effect_entity)
         .with_permanent_duration()
         .with_periodic_application(1.0)
-        .modify_by_scalar::<AttackPower>(1.0, Additive)
+        .with_name("Health Regen".into())
         .modify_by_scalar::<Health>(5.0, Additive)
-        .modify_by_scalar::<Mana>(5.0, Additive)
         .commit(&mut commands);
-
-    /*
-        // Effect 3 - Instant
-        EffectBuilder::new(player_entity, &mut commands.reborrow())
-            .with_instant_application()
-            .modify_by_scalar::<Health>(-35.0, Additive)
-            .commit();
-    */
-    // Effect 4
-    /*AttributeBuilder::<AttackPower>::new(player_entity)
-    .mutate_by_attribute::<Strength>(1.0, Additive)
-    .mutate_by_attribute::<Health>(1.0, Additive)
-    .build(&mut commands);*/
-
-    /*for _ in 0..1000 {
-        let effect_entity = commands.spawn_empty().id();
-        let npc_entity = commands
-            .spawn((
-                Health::new(100.0),
-                MaxHealth::new(1000.0),
-                HealthRegen::new(2.0),
-                Mana::new(1000.0),
-            ))
-            .id();
-
-        for _ in 0..50 {
-            EffectBuilder::new(npc_entity, effect_entity)
-                .with_duration(rng.random_range(10.0..30.0))
-                .with_periodic_application(rng.random_range(1.0..2.0))
-                .mutate_by_scalar::<Health>(rng.random_range(1.0..20.0), Additive)
-                .apply(&mut commands);
-        }
-    }*/
-}
-
-fn clamp_health(
-    trigger: Trigger<OnAttributeValueChanged>,
-    mut query: Query<(&mut Health, &MaxHealth)>,
-) {
-    if let Ok((mut health, max_health)) = query.get_mut(trigger.target()) {
-        let clamped_value = health.base_value().clamp(0.0, max_health.current_value());
-        health.set_base_value(clamped_value);
-    } else {
-        println!("Incorrect entity target in clamp_health.")
-    }
 }
 
 #[derive(Component)]
 struct Player;
-
 #[derive(Component)]
 struct PlayerHealthMarker;
-
 #[derive(Component)]
-struct EntityHealthMarker;
+pub struct EntityHealthMarker;
+#[derive(Component)]
+pub struct ModifierTree;
 
 fn setup_ui(mut commands: Commands) {
     commands.spawn(Camera2d::default());
@@ -224,6 +165,17 @@ fn setup_ui(mut commands: Commands) {
             builder.spawn((Text::new("Health"), PlayerHealthMarker));
             builder.spawn((Text::new(""), EntityHealthMarker));
         });
+
+    commands.spawn((
+        ModifierTree,
+        Text::new("Modifier Tree"),
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(15.0),
+            right: Val::Px(30.0),
+            ..default()
+        },
+    ));
 }
 
 fn display_attribute(
@@ -253,13 +205,31 @@ MP: {:.1} [{:.1}]",
 
 pub fn display_tree(
     actors: Query<Entity, With<Actor>>,
-    descendants: Query<&Effects>,
+    effects: Query<&Effects>,
     entities: Query<&Name>,
     mut text: Query<&mut Text, With<EntityHealthMarker>>,
 ) {
-    let mut builder = TreeBuilder::new("Actor-Attribute Tree".into());
+    let mut builder = TreeBuilder::new("Effects Tree".into());
     for actor in actors.iter() {
-        recursive_pretty_print(actor, &mut builder, descendants, entities);
+        recursive_pretty_print(actor, &mut builder, effects, entities);
+    }
+    let tree = builder.build();
+    if let Ok(mut text) = text.single_mut() {
+        let mut w = Vec::new();
+        let _ = write_tree(&tree, &mut w);
+        text.0 = String::from_utf8(w).unwrap();
+    }
+}
+
+pub fn display_modifier_tree<T: Component + AttributeComponent>(
+    actors: Query<Entity, With<Actor>>,
+    modifiers: Query<&Effects>,
+    entities: Query<(&Name, Option<&Modifier<T>>, Option<&ModAggregator<T>>)>,
+    mut text: Query<&mut Text, With<ModifierTree>>,
+) {
+    let mut builder = TreeBuilder::new("Modifiers Tree".into());
+    for actor in actors.iter() {
+        print_modifier_hierarchy(actor, &mut builder, modifiers, entities);
     }
     let tree = builder.build();
     if let Ok(mut text) = text.single_mut() {
@@ -270,28 +240,83 @@ pub fn display_tree(
 }
 
 fn inputs(
-    mut q_player: Query<(Entity), With<Player>>,
+    mut players: Query<Entity, With<Player>>,
     keys: Res<ButtonInput<KeyCode>>,
     mut commands: Commands,
 ) {
-    if let Ok((player_entity)) = q_player.single_mut() {
+    if let Ok(player_entity) = players.single_mut() {
         if keys.just_pressed(KeyCode::Space) {
-            let effect_entity = commands.spawn_empty().id();
-
-            EffectBuilder::new(player_entity, effect_entity)
-                .with_instant_application()
-                .modify_by_scalar::<Health>(-18.0, Additive)
-                .commit(&mut commands);
-
-            /*abilities
-            .get_abilities_mut()
-            .get_mut("fireball")
-            .unwrap()
-            .try_activate(entity_mut, commands);*/
+            commands.trigger_targets(
+                OnModifierApplied::<Health> {
+                    phantom_data: Default::default(),
+                    value: ModAggregator::<Health>::additive(-12.0),
+                },
+                player_entity,
+            );
         }
     }
 }
 
 fn do_gameplay_stuff() {
-    std::thread::sleep(Duration::from_millis(10));
+    std::thread::sleep(Duration::from_millis(15));
+}
+
+/// Prints the hierarchy of modifiers in a tree structure for a given `Entity` and its descendants.
+///
+/// This function recursively traverses through an entity and its descendants to construct a
+/// string representation of the modifiers associated with each entity. The result is added to a given
+/// `TreeBuilder` instance to visualize the hierarchy.
+///
+/// # Type Parameters
+/// - `T`: A type that implements both `Component` and `AttributeComponent`. Represents the specific
+///   type of modifier being used.
+///
+/// # Notes
+/// - This function will gracefully return if it fails to fetch the required data (e.g., if an entity doesn't exist).
+/// - For entities without modifiers or aggregators, the corresponding strings will be empty.
+///
+/// # Examples
+/// ```rust
+/// let mut builder = TreeBuilder::new();
+/// let current_entity = some_entity_id;
+/// print_modifier_hierarchy::<MyComponent>(
+///     current_entity,
+///     &mut builder,
+///     descendants_query,
+///     entities_query,
+/// );
+/// println!("{}", builder.build());
+/// ```
+pub fn print_modifier_hierarchy<T: Component + AttributeComponent>(
+    current_entity: Entity,
+    builder: &mut TreeBuilder,
+    descendants: Query<&Effects>,
+    entities: Query<(&Name, Option<&Modifier<T>>, Option<&ModAggregator<T>>)>,
+) {
+    let Ok((name, modifier, aggregator)) = entities.get(current_entity) else {
+        return;
+    };
+    let modifier = if let Some(modifier) = modifier {
+        format!("Mod:{}", modifier.value)
+    } else {
+        "".to_string()
+    };
+    let aggregator = if let Some(aggregator) = aggregator {
+        format!("{}", aggregator)
+    } else {
+        "".to_string()
+    };
+
+    let tree_item = format!("{} [{name}] {} {} ", current_entity, modifier, aggregator);
+
+    // Iterate recursively on all the childrens
+    if let Ok(childrens) = descendants.get(current_entity) {
+        builder.begin_child(tree_item);
+        for child in childrens.iter() {
+            print_modifier_hierarchy::<T>(child, builder, descendants, entities);
+        }
+        builder.end_child();
+    } else {
+        builder.add_empty_child(tree_item);
+    }
 }

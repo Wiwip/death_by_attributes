@@ -18,7 +18,6 @@ debug = true
 
 [dependencies]
 attributes_macro = { path = "attributes_macro" }
-bevy_dev_tools = "0.16.0"
 rand = "0.9.1"
 ptree = "0.5"
 
@@ -28,13 +27,13 @@ version = "0.16"
 default-features = false
 features = [
     "bevy_log",
-    "track_location",
 ]
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
 bevy_egui = "0.34.1"
 bevy-inspector-egui = "0.31.0"
+bevy_dev_tools = "0.16.0"
 
 [dev-dependencies.bevy]
 version = "0.16"

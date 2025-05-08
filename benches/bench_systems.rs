@@ -1,95 +1,81 @@
-use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
 use criterion::*;
 use rand::Rng;
-use root_attribute::attribute;
-use root_attribute::attributes::AttributeComponent;
+use root_attribute::actors::ActorBuilder;
+use root_attribute::attributes::AttributeBuilder;
 use root_attribute::effects::EffectBuilder;
-use root_attribute::modifiers::scalar::ModType::Additive;
-use root_attribute::systems::{tick_effects_duration_timer, tick_effects_periodic_timer};
+use root_attribute::modifiers::ModType::Additive;
+use root_attribute::{DeathByAttributesPlugin, attribute};
 
 criterion_group!(benches, criterion_benchmark);
 criterion_main!(benches);
 
 attribute!(Health);
 attribute!(HealthRegen);
-attribute!(Mana);
-attribute!(ManaRegen);
+attribute!(MaxHealth);
+attribute!(AttackPower);
 
-fn populate_world(mut command: Commands) {
+fn populate_world(mut commands: Commands, entity: u32, effects: u32) {
     let mut rng = rand::rng();
-    for _ in 0..1000 {
-        let player = command
-            .spawn((Health::new(0.0), Mana::default(), ManaRegen::default()))
-            .id();
+    for _ in 0..entity {
+        let player_entity = commands.spawn_empty().id();
+        ActorBuilder::new(player_entity)
+            .with::<Health>(12.0)
+            .with::<HealthRegen>(7.0)
+            .with::<Health>(100.0)
+            .max::<Health, MaxHealth>(0.0);
 
-        let effect = command.spawn_empty().id();
-
-        for _ in 0..50 {
-            EffectBuilder::new(player, effect)
+        for _ in 0..effects {
+            let effect = commands.spawn_empty().id();
+            EffectBuilder::new(player_entity, effect)
                 .with_permanent_duration()
-                .with_periodic_application(1.0)
+                .with_periodic_application(rng.random_range(0.5..1.5))
                 .modify_by_scalar::<Health>(rng.random_range(0.0..42.0), Additive)
-                .commit(&mut command);
+                .commit(&mut commands);
         }
     }
 }
 
-fn populate_instant_effects(mut command: Commands) {
+fn populate_world_by_ref(mut commands: Commands, entity: u32, effects: u32) {
     let mut rng = rand::rng();
-    for _ in 0..1000 {
-        let player = command.spawn(Health::new(0.0)).id();
-        let effect = command.spawn_empty().id();
+    for _ in 0..entity {
+        let player_entity = commands.spawn_empty().id();
+        ActorBuilder::new(player_entity)
+            .with::<Health>(12.0)
+            .with::<HealthRegen>(7.0)
+            .with::<Health>(100.0)
+            .max::<Health, MaxHealth>(0.0);
 
-        for _ in 0..50 {
-            EffectBuilder::new(player, effect)
+        AttributeBuilder::<AttackPower>::new(player_entity)
+            .by_ref::<Health>(0.10)
+            .by_ref::<MaxHealth>(0.25)
+            .commit(&mut commands);
+
+        for _ in 0..effects {
+            let effect = commands.spawn_empty().id();
+            EffectBuilder::new(player_entity, effect)
                 .with_permanent_duration()
-                .with_periodic_application(1.0)
-                .modify_by_scalar::<Health>(rng.random_range(0.0..42.0), Additive)
-                .commit(&mut command);
+                .with_periodic_application(rng.random_range(0.5..1.5))
+                .modify_by_ref::<Health, HealthRegen>(1.0)
+                .commit(&mut commands);
         }
     }
-}
-
-fn bench_on_instant_effect_added() -> App {
-    let mut app = App::new();
-    /*app.insert_resource(CachedMutations::default());
-    app.add_observer(on_instant_effect_applied);
-    app.add_systems(Startup, populate_instant_effects);*/
-    app
-}
-
-fn bench_update_base_values() -> App {
-    let mut app = App::new();
-    /*app.add_plugins(MinimalPlugins);
-    app.insert_resource(CachedMutations::default());
-    app.add_systems(Startup, populate_world);
-    app.add_systems(Update, tick_effects_periodic_timer);*/
-    app
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
-    let mut world = World::new();
-
-    c.bench_function("on_instant_effect_added", |b| {
-        let mut app = bench_on_instant_effect_added();
-        b.iter(|| {
-            app.update();
-        })
+    c.bench_function("populate_world", |b| {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .add_plugins(DeathByAttributesPlugin);
+        populate_world(app.world_mut().commands(), 1000, 50);
+        b.iter(|| app.update())
     });
 
-    c.bench_function("update_base_values", |b| {
-        let mut app = bench_update_base_values();
-        app.update();
-
-        //b.iter(|| app.world_mut().run_system_once(trigger_periodic_effects))
-    });
-
-    c.bench_function("tick_effects_duration_timer", |b| {
-        b.iter(|| world.run_system_once(tick_effects_duration_timer))
-    });
-
-    c.bench_function("tick_effects_periodic_timer", |b| {
-        b.iter(|| world.run_system_once(tick_effects_periodic_timer))
+    c.bench_function("populate_world_by_ref", |b| {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .add_plugins(DeathByAttributesPlugin);
+        populate_world_by_ref(app.world_mut().commands(), 1000, 50);
+        b.iter(|| app.update())
     });
 }

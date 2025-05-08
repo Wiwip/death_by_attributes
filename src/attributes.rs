@@ -1,4 +1,5 @@
-use crate::modifiers::{EffectOf, ModAggregator, Modifier, ModifierOf};
+use crate::effects::EffectOf;
+use crate::modifiers::{ModAggregator, Modifier};
 use crate::{Dirty, OnAttributeValueChanged};
 use bevy::ecs::component::Mutable;
 use bevy::ecs::world::CommandQueue;
@@ -6,6 +7,7 @@ use bevy::log::debug;
 use bevy::prelude::{Commands, Component, Entity, Name, Observer, Query, Trigger, World};
 use std::any::type_name;
 use std::marker::PhantomData;
+use std::ops::DerefMut;
 
 pub trait AttributeComponent {
     fn new(value: f32) -> Self;
@@ -18,7 +20,7 @@ pub trait AttributeComponent {
 #[macro_export]
 macro_rules! attribute {
     ( $StructName:ident) => {
-        #[derive(bevy::prelude::Component, Default, Clone, bevy::prelude::Reflect, Debug)]
+        #[derive(bevy::prelude::Component, Default, Clone, Copy, bevy::prelude::Reflect, Debug)]
         #[require($crate::abilities::GameAbilityContainer, $crate::modifiers::ModAggregator<$StructName>)]
         pub struct $StructName {
             base_value: f32,
@@ -101,7 +103,6 @@ where
                 Name::new("Derived Attributes"),
                 Modifier::<C>::default(),
                 ModAggregator::<C>::default(),
-                ModifierOf(self.actor_entity),
                 EffectOf(self.actor_entity),
                 Dirty::<C>::default(),
             ));
@@ -118,5 +119,66 @@ where
 
     pub fn commit(mut self, commands: &mut Commands) {
         commands.append(&mut self.queue);
+    }
+}
+
+#[derive(Component)]
+pub enum AttributeClamp<A> {
+    Phantom(PhantomData<A>),
+    Min(f32),
+    Max(f32),
+    MinMax(f32, f32),
+}
+
+pub(crate) fn attribute_clamp_system<A: Component<Mutability = Mutable> + AttributeComponent>(
+    mut query: Query<(&mut A, &AttributeClamp<A>)>,
+) {
+    for (mut attribute, clamp) in query.iter_mut() {
+        match clamp {
+            AttributeClamp::Min(min) => {
+                let new_base = attribute.base_value().min(*min);
+                attribute.set_base_value(new_base);
+
+                let new_current = attribute.current_value().min(*min);
+                attribute.set_current_value(new_current);
+            }
+            AttributeClamp::Max(max) => {
+                let new_base = attribute.base_value().min(*max);
+                attribute.set_base_value(new_base);
+
+                let new_current = attribute.current_value().min(*max);
+                attribute.set_current_value(new_current);
+            }
+            AttributeClamp::MinMax(min, max) => {
+                let new_base = attribute.base_value().clamp(*min, *max);
+                attribute.set_base_value(new_base);
+
+                let new_current = attribute.current_value().clamp(*min, *max);
+                attribute.set_current_value(new_current);
+            }
+            _ => {}
+        }
+    }
+}
+
+pub(crate) fn update_max_clamp_values<T, C>(
+    trigger: Trigger<OnAttributeValueChanged>,
+    attribute: Query<&C>,
+    mut query: Query<&mut AttributeClamp<T>>,
+) where
+    T: Component<Mutability = Mutable> + AttributeComponent,
+    C: Component<Mutability = Mutable> + AttributeComponent,
+{
+    let Ok(mut clamp) = query.get_mut(trigger.target()) else {
+        return;
+    };
+    let Ok(attribute) = attribute.get(trigger.target()) else {
+        return;
+    };
+    match clamp.deref_mut() {
+        AttributeClamp::Min(_) => {}
+        AttributeClamp::Max(max) => *max = attribute.current_value(),
+        AttributeClamp::MinMax(_, max) => *max = attribute.current_value(),
+        _ => {}
     }
 }

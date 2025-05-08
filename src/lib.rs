@@ -1,8 +1,9 @@
+use crate::effects::EffectOf;
 use crate::effects::{Effect, EffectDuration, EffectPeriodicTimer};
+use crate::modifiers::ModAggregator;
 use crate::systems::{
     despawn_instant_effect, tick_effects_duration_timer, tick_effects_periodic_timer,
 };
-use bevy::ecs::schedule::ScheduleLabel;
 use bevy::prelude::*;
 use std::any::TypeId;
 use std::marker::PhantomData;
@@ -11,15 +12,13 @@ pub mod abilities;
 pub mod actors;
 pub mod attributes;
 pub mod effects;
-pub mod evaluators;
 pub mod modifiers;
 pub mod systems;
 
 use crate::abilities::GameAbilityContainer;
-use crate::modifiers::{ModifierOf, Modifiers};
+use crate::attributes::AttributeComponent;
 pub use attributes_macro::Attribute;
 use bevy::ecs::world::EntityMutExcept;
-use bevy::log::tracing::span::Attributes;
 
 pub struct DeathByAttributesPlugin;
 
@@ -39,8 +38,8 @@ pub type ActorEntityMut<'w> = EntityMutExcept<
         GameAbilityContainer,
         // We exclude anything related to effects
         Effect,
-        ModifierOf,
-        Modifiers,
+        //ModifierOf,
+        //Modifiers,
         EffectPeriodicTimer,
         EffectDuration,
     ),
@@ -76,22 +75,41 @@ impl<T> Default for Dirty<T> {
     }
 }
 
-#[derive(ScheduleLabel, Debug, Clone, PartialEq, Eq, Hash)]
-pub struct AttributeUpdateSchedule;
-
-#[derive(Event)]
+#[derive(Event, Clone)]
+#[event(traversal = &'static EffectOf, auto_propagate)]
 pub struct OnAttributeValueChanged;
 
 #[derive(Event, Debug)]
-pub struct OnAttributeChanged<A> {
-    phantom_data: PhantomData<A>,
+pub struct OnBaseValueChange<A: AttributeComponent> {
+    pub phantom_data: PhantomData<A>,
+    pub old: f32,
+    pub new: f32,
+    pub entity: Entity,
+}
+
+#[derive(Event, Debug)]
+pub struct OnCurrentValueChange<A: AttributeComponent> {
+    pub phantom_data: PhantomData<A>,
+    pub old: f32,
+    pub new: f32,
+    pub entity: Entity,
 }
 
 #[derive(Event)]
-pub struct OnAttributeMutationChanged;
+#[event(traversal = &'static EffectOf, auto_propagate)]
+pub struct OnModifierApplied<T> {
+    pub phantom_data: PhantomData<T>,
+    pub value: ModAggregator<T>,
+}
 
-#[derive(Event)]
-pub struct OnCurrentValueChanged;
+impl<T> Default for OnModifierApplied<T> {
+    fn default() -> Self {
+        Self {
+            phantom_data: PhantomData,
+            value: ModAggregator::<T>::default(),
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub enum AttributeEvaluationError {

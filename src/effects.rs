@@ -1,8 +1,9 @@
-use crate::OnAttributeValueChanged;
+use crate::Dirty;
 use crate::attributes::AttributeComponent;
-use crate::modifiers::{EffectOf, ModAggregator, ModType, Modifier, ModifierCommand};
-use crate::{Dirty, ModifierOf, OnAttributeChanged};
+use crate::modifiers::{ModAggregator, ModType, Modifier, ModifierCommand};
+use crate::{ActorEntityMut, OnAttributeValueChanged};
 use bevy::ecs::component::Mutable;
+use bevy::ecs::system::IntoObserverSystem;
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::Name;
 use bevy::prelude::TimerMode::{Once, Repeating};
@@ -10,10 +11,36 @@ use bevy::prelude::*;
 use std::any::type_name;
 use std::fmt::{Debug, Formatter};
 
+/// The entity that this effect is targeting.
+#[derive(Component, Reflect, Debug)]
+#[relationship(relationship_target = Effects)]
+pub struct EffectOf(pub Entity);
+
+/// All effects that are targeting this entity.
+#[derive(Component, Reflect, Debug)]
+#[relationship_target(relationship = EffectOf, linked_spawn)]
+pub struct Effects(Vec<Entity>);
+
 #[derive(Component, Debug, Default)]
 pub struct Effect;
 
-#[derive(Component, Reflect, Deref, DerefMut)]
+#[derive(Component, Debug)]
+pub struct EffectSource(pub Entity);
+
+#[derive(Component, Debug)]
+pub struct EffectTarget(pub Entity);
+
+/*#[derive(Component)]
+pub struct EffectCondition {
+    pub is_valid: bool,
+    pub condition: fn(&ActorEntityMut) -> bool,
+}*/
+
+pub trait EffectCondition: Default {
+    fn can_apply(&self, actor: &ActorEntityMut) -> bool;
+}
+
+#[derive(Component, Reflect, Deref, DerefMut, Clone)]
 pub struct EffectPeriodicTimer(pub Timer);
 
 impl EffectPeriodicTimer {
@@ -78,6 +105,11 @@ impl EffectBuilder {
             move |trigger: Trigger<OnAttributeValueChanged>,
                   mut modifiers: Query<&mut Modifier<T>>,
                   attributes: Query<&S>| {
+                debug!(
+                    "Observer triggered on {:?} from {:?}",
+                    trigger.target(),
+                    trigger.observer()
+                );
                 let Ok(attribute) = attributes.get(trigger.target()) else {
                     return;
                 };
@@ -87,6 +119,8 @@ impl EffectBuilder {
                 modifier.value.additive = scaling_factor * attribute.current_value();
             },
         );
+        let duration = self.duration.clone();
+        let period = self.period.clone();
         observer.watch_entity(self.actor_entity);
         self.queue.push(move |world: &mut World| {
             let entity = world.spawn_empty().id();
@@ -95,17 +129,49 @@ impl EffectBuilder {
                 Name::new(format!("{}", type_name::<T>())),
                 Modifier::<T>::default(),
                 ModAggregator::<T>::default(),
-                EffectOf(self.effect_entity),
-                ModifierOf(self.effect_entity),
                 Dirty::<T>::default(),
                 observer,
             ));
+            match duration {
+                // The effect is instant. It must modify parents.
+                None => {
+                    entity_mut.insert(EffectOf(self.effect_entity));
+                }
+                Some(_) => match period {
+                    // The effect has a duration but doesn't tick. Permanent buff.
+                    None => {
+                        entity_mut.insert(EffectOf(self.effect_entity));
+                    }
+                    // The effect is a periodic event with a duration but no permanent stats buff.
+                    Some(_) => {
+                        entity_mut.insert(EffectOf(self.effect_entity));
+                    }
+                },
+            };
+
             world
                 .entity_mut(self.effect_entity)
                 .insert(ModAggregator::<T>::default());
         });
         self.queue.push(move |world: &mut World| {
             world.trigger_targets(OnAttributeValueChanged, self.actor_entity);
+        });
+        self
+    }
+
+    pub fn with_trigger<E: Event, B: Bundle, M>(
+        mut self,
+        observer: impl IntoObserverSystem<E, B, M>,
+    ) -> Self {
+        self.queue.push(move |world: &mut World| {
+            world.entity_mut(self.effect_entity).observe(observer);
+        });
+        self
+    }
+
+    pub fn with_conditions<C: Component + EffectCondition>(mut self) -> Self {
+        self.queue.push(move |world: &mut World| {
+            world.entity_mut(self.effect_entity).insert(C::default());
         });
         self
     }
@@ -121,10 +187,6 @@ impl EffectBuilder {
         self.queue.push(move |world: &mut World| {
             world.entity_mut(self.actor_entity).insert(component);
         });
-        self
-    }
-
-    pub fn with_custom_calculations(mut self, command: impl Command) -> Self {
         self
     }
 
@@ -176,7 +238,7 @@ impl Command for EffectCommand {
     fn apply(self, world: &mut World) -> () {
         assert_ne!(Entity::PLACEHOLDER, self.effect_entity);
         let mut entity_mut = world.entity_mut(self.effect_entity);
-        entity_mut.insert((ModifierOf(self.actor_entity), self.effect));
+        entity_mut.insert((EffectOf(self.actor_entity), self.effect));
         if let Some(duration) = self.duration {
             entity_mut.insert(duration);
         }
@@ -207,7 +269,7 @@ impl GameEffectPeriodBuilder {
     }
 }
 
-#[derive(Component)]
+#[derive(Component, Clone)]
 pub enum EffectDuration {
     Permanent,
     Duration(Timer),
