@@ -1,11 +1,5 @@
-use bevy::prelude::Bundle;
-
 pub trait AttributeComponent {
-    fn new(value: f32) -> Self
-    where
-        Self: Sized;
-    fn get(self) -> impl Bundle;
-
+    fn new(value: f32) -> Self;
     fn base_value(&self) -> f32;
     fn set_base_value(&mut self, value: f32);
     fn current_value(&self) -> f32;
@@ -16,10 +10,10 @@ pub trait AttributeComponent {
 macro_rules! attribute {
     ( $StructName:ident) => {
         #[derive(bevy::prelude::Component, Default, Clone, bevy::prelude::Reflect, Debug)]
-        #[require($crate::abilities::GameAbilityContainer)]
+        #[require($crate::abilities::GameAbilityContainer, $crate::modifiers::ModAggregator<$StructName>)]
         pub struct $StructName {
-            pub(crate) base_value: f32,
-            pub(crate) current_value: f32,
+            base_value: f32,
+            current_value: f32,
         }
 
         impl $crate::attributes::AttributeComponent for $StructName {
@@ -28,9 +22,6 @@ macro_rules! attribute {
                     base_value: value,
                     current_value: value,
                 }
-            }
-            fn get(self) -> $StructName {
-                self
             }
             fn base_value(&self) -> f32 {
                 self.base_value

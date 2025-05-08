@@ -1,15 +1,12 @@
 use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
 use criterion::*;
+use rand::Rng;
+use root_attribute::attribute;
 use root_attribute::attributes::AttributeComponent;
 use root_attribute::effects::EffectBuilder;
 use root_attribute::modifiers::scalar::ModType::Additive;
-use root_attribute::systems::{
-    tick_effects_duration_timer, tick_effects_periodic_timer,
-    
-};
-use root_attribute::{attribute};
-use rand::Rng;
+use root_attribute::systems::{tick_effects_duration_timer, tick_effects_periodic_timer};
 
 criterion_group!(benches, criterion_benchmark);
 criterion_main!(benches);

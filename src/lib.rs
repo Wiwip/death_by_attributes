@@ -19,23 +19,17 @@ use crate::abilities::GameAbilityContainer;
 use crate::modifiers::{ModifierOf, Modifiers};
 pub use attributes_macro::Attribute;
 use bevy::ecs::world::EntityMutExcept;
+use bevy::log::tracing::span::Attributes;
 
 pub struct DeathByAttributesPlugin;
 
 impl Plugin for DeathByAttributesPlugin {
     fn build(&self, app: &mut App) {
-        app //.add_systems(PreUpdate, tick_ability_cooldowns)
-            .add_systems(PreUpdate, tick_effects_duration_timer)
+        app.add_systems(PreUpdate, tick_effects_duration_timer)
             .add_systems(PreUpdate, tick_effects_periodic_timer)
             .add_systems(PostUpdate, despawn_instant_effect)
             .init_schedule(PreUpdate)
             .init_schedule(PostUpdate);
-        //.add_systems(PostUpdate, check_duration_effect_expiry)
-        /*.add_observer(on_instant_effect_applied)
-        .add_observer(on_duration_effect_applied)
-        .add_observer(on_base_value_changed)
-        .add_observer(on_attribute_mutation_changed)
-        .add_observer(on_duration_effect_removed)*/
     }
 }
 
@@ -86,7 +80,7 @@ impl<T> Default for Dirty<T> {
 pub struct AttributeUpdateSchedule;
 
 #[derive(Event)]
-pub struct OnBaseValueChanged;
+pub struct OnValueChanged;
 
 #[derive(Event, Debug)]
 pub struct OnAttributeChanged<A> {

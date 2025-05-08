@@ -1,5 +1,5 @@
 use crate::effects::Effect;
-use crate::{ActorEntityMut, OnBaseValueChanged};
+use crate::{ActorEntityMut, OnValueChanged};
 
 use crate::attributes::AttributeComponent;
 use bevy::ecs::component::Mutable;

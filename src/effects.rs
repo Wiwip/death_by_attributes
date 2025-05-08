@@ -1,14 +1,13 @@
+use crate::ModifierOf;
 use crate::attributes::AttributeComponent;
-use bevy::prelude::Name;
-
-use crate::Dirty;
-use crate::modifiers::scalar::{ModType, Modifier, MutatorCommand};
-use crate::modifiers::{EffectOf, ModifierOf};
+use crate::{OnValueChanged};
 use bevy::ecs::component::Mutable;
 use bevy::ecs::world::CommandQueue;
+use bevy::prelude::Name;
 use bevy::prelude::TimerMode::{Once, Repeating};
 use bevy::prelude::*;
 use std::fmt::{Debug, Formatter};
+use crate::modifiers::{EffectOf, ModAggregator, ModType, Modifier, ModifierCommand};
 
 #[derive(Component, Debug, Default)]
 pub struct Effect;
@@ -22,8 +21,7 @@ impl EffectPeriodicTimer {
     }
 }
 
-pub struct EffectBuilder<'a> {
-    commands: &'a mut Commands<'a, 'a>,
+pub struct EffectBuilder {
     pub(crate) actor_entity: Entity,
     pub(crate) effect_entity: Entity,
     pub(crate) effect: Effect,
@@ -32,16 +30,11 @@ pub struct EffectBuilder<'a> {
     period: Option<EffectPeriodicTimer>,
 }
 
-impl<'a> EffectBuilder<'a> {
-    pub fn new(
-        actor_entity: Entity,
-        commands: &'a mut Commands<'a, 'a>,
-    ) -> GameEffectDurationBuilder<'a> {
-        let effect_entity = commands.spawn_empty().id();
+impl EffectBuilder {
+    pub fn new(actor_entity: Entity, effect_entity: Entity) -> GameEffectDurationBuilder {
         debug!("Spawned effect entity {}", effect_entity);
         GameEffectDurationBuilder {
             effect_builder: EffectBuilder {
-                commands,
                 actor_entity,
                 effect_entity,
                 effect: Default::default(),
@@ -57,65 +50,100 @@ impl<'a> EffectBuilder<'a> {
         magnitude: f32,
         mod_type: ModType,
     ) -> Self {
-        let command = MutatorCommand {
+        let command = ModifierCommand {
             effect_entity: self.effect_entity,
             actor_entity: self.actor_entity,
-            modifier: Modifier::<T>::new(magnitude),
+            modifier: Modifier::<T>::new(magnitude, mod_type),
+            observer: None,
         };
-
+        self.queue.push(move |world: &mut World| {
+            world
+                .entity_mut(self.effect_entity)
+                .insert(ModAggregator::<T>::default());
+        });
         self.queue.push(command);
         self
     }
 
-    pub fn modify_by_ref<S, D>(mut self, magnitude: f32, mod_type: ModType) -> Self
+    /// Spawns an observer watching the actor's attributes on the modifier entity. 
+    /// When OnValueChanged is triggered, it takes the current value of the attribute, 
+    /// it applies the scaling factor and updates the modifier's value to the new value.  
+    pub fn modify_by_ref<T, S>(mut self, scaling_factor: f32) -> Self
     where
+        T: AttributeComponent + Component<Mutability = Mutable>,
         S: AttributeComponent + Component<Mutability = Mutable>,
-        D: AttributeComponent + Component<Mutability = Mutable>,
     {
-        todo!();
-        /*self.queue.push(MutatorCommand {
+        let mut observer = Observer::new(
+            move |trigger: Trigger<OnValueChanged>,
+                  mut modifiers: Query<&mut Modifier<T>>,
+                  attributes: Query<&S>| {
+                let Ok(attribute) = attributes.get(trigger.target()) else {
+                    return;
+                };
+                let Ok(mut modifier) = modifiers.get_mut(trigger.observer()) else {
+                    return;
+                };
+                modifier.value.additive = scaling_factor * attribute.current_value();
+            },
+        );
+        observer.watch_entity(self.actor_entity);
+        self.queue.push(ModifierCommand {
             effect_entity: self.effect_entity,
             actor_entity: self.actor_entity,
-            mutator: MutatorHelper::new::<S>(MetaEvaluator::<D>::new(magnitude, mod_type)),
-        });*/
+            modifier: Modifier::<T>::default(),
+            observer: Some(observer),
+        });
         self
     }
 
-    pub fn with_name(self, name: String) -> Self {
-        self.commands
-            .entity(self.effect_entity)
-            .insert(Name::new(name));
+    pub fn with_name(mut self, name: String) -> Self {
+        self.queue.push(move |world: &mut World| {
+            world.entity_mut(self.effect_entity).insert(Name::new(name));
+        });
         self
     }
 
-    pub fn commit(mut self) {
-        self.commands.queue(EffectCommand {
+    pub fn with_component(mut self, component: impl Bundle) -> Self {
+        self.queue.push(move |world: &mut World| {
+            world.entity_mut(self.actor_entity).insert(component);
+        });
+        self
+    }
+
+    pub fn with_custom_calculations(mut self, command: impl Command) -> Self {
+        
+        self
+    }
+    
+    pub fn commit(mut self, commands: &mut Commands) -> Entity {
+        commands.queue(EffectCommand {
             effect_entity: self.effect_entity,
             actor_entity: self.actor_entity,
             duration: self.duration,
             period: self.period,
             effect: self.effect,
         });
-        self.commands.append(&mut self.queue);
+        commands.append(&mut self.queue);
+        self.effect_entity
     }
 }
 
-pub struct GameEffectDurationBuilder<'a> {
-    effect_builder: EffectBuilder<'a>,
+pub struct GameEffectDurationBuilder {
+    effect_builder: EffectBuilder,
 }
 
-impl<'a> GameEffectDurationBuilder<'a> {
-    pub fn with_instant_application(self) -> EffectBuilder<'a> {
+impl GameEffectDurationBuilder {
+    pub fn with_instant_application(self) -> EffectBuilder {
         self.effect_builder
     }
-    pub fn with_duration(mut self, seconds: f32) -> GameEffectPeriodBuilder<'a> {
+    pub fn with_duration(mut self, seconds: f32) -> GameEffectPeriodBuilder {
         self.effect_builder.duration =
             Some(EffectDuration::Duration(Timer::from_seconds(seconds, Once)));
         GameEffectPeriodBuilder {
             effect_builder: self.effect_builder,
         }
     }
-    pub fn with_permanent_duration(mut self) -> GameEffectPeriodBuilder<'a> {
+    pub fn with_permanent_duration(mut self) -> GameEffectPeriodBuilder {
         self.effect_builder.duration = Some(EffectDuration::Permanent);
         GameEffectPeriodBuilder {
             effect_builder: self.effect_builder,
@@ -134,39 +162,34 @@ pub(crate) struct EffectCommand {
 impl Command for EffectCommand {
     fn apply(self, world: &mut World) -> () {
         assert_ne!(Entity::PLACEHOLDER, self.effect_entity);
-        {
-            let mut entity_mut = world.entity_mut(self.effect_entity);
-            entity_mut.insert((
-                Name::new("Effect"),
-                ModifierOf(self.actor_entity),
-                self.effect,
-            ));
-
-            if let Some(duration) = self.duration {
-                entity_mut.insert(duration);
-            }
-
-            // Do not attach periodic event to the "Effect" hierarchy as it will passively affect the tree
-            // Add it to the Modifier hierarchy so it can modify the attributes of the targeted actor
-            match self.period {
-                None => entity_mut.insert(EffectOf(self.actor_entity)),
-                Some(period) => entity_mut.insert(period),
-            };
+        let mut entity_mut = world.entity_mut(self.effect_entity);
+        entity_mut.insert((ModifierOf(self.actor_entity), self.effect));
+        if let Some(duration) = self.duration {
+            entity_mut.insert(duration);
         }
+        if !entity_mut.contains::<Name>() {
+            entity_mut.insert(Name::new("Effect"));
+        }
+        // Do not attach periodic event to the "Effect" hierarchy as it will passively affect the tree
+        // Add it to the Modifier hierarchy so it can modify the attributes of the targeted entity
+        match self.period {
+            None => entity_mut.insert(EffectOf(self.actor_entity)),
+            Some(period) => entity_mut.insert(period),
+        };
     }
 }
 
-pub struct GameEffectPeriodBuilder<'a> {
-    effect_builder: EffectBuilder<'a>,
+pub struct GameEffectPeriodBuilder {
+    effect_builder: EffectBuilder,
 }
 
-impl<'a> GameEffectPeriodBuilder<'a> {
-    pub fn with_periodic_application(mut self, seconds: f32) -> EffectBuilder<'a> {
+impl GameEffectPeriodBuilder {
+    pub fn with_periodic_application(mut self, seconds: f32) -> EffectBuilder {
         self.effect_builder.period =
             Some(EffectPeriodicTimer(Timer::from_seconds(seconds, Repeating)));
         self.effect_builder
     }
-    pub fn with_continuous_application(self) -> EffectBuilder<'a> {
+    pub fn with_continuous_application(self) -> EffectBuilder {
         self.effect_builder
     }
 }

@@ -13,7 +13,7 @@ use root_attribute::modifiers::EffectOf;
 use root_attribute::modifiers::scalar::ModType::{Additive, Multiplicative};
 use root_attribute::modifiers::scalar::Modifier;
 use root_attribute::systems::{
-    flag_dirty_modifier_nodes, pretty_print_tree, update_attribute_tree_system,
+    flag_dirty_modifier_nodes, pretty_print_tree_system, update_attribute_tree_system,
 };
 use root_attribute::{
     Actor, DeathByAttributesPlugin, Dirty, OnAttributeChanged, OnCurrentValueChanged, attribute,
@@ -44,7 +44,7 @@ fn main() {
         //.add_systems(Update, modify_tree)
         .add_systems(
             PostUpdate,
-            pretty_print_tree::<Health>.run_if(on_timer(Duration::from_millis(1000))),
+            pretty_print_tree_system::<Health>.run_if(on_timer(Duration::from_millis(1000))),
         )
         .run();
 }
@@ -71,85 +71,83 @@ fn setup(mut commands: Commands) {
             .with_attribute::<MaxHealth>(0.0)
             .commit();
 
-        commands
-            .entity(player)
-            .insert(Name::new("Player"));
-            //.with_related_entities::<EffectOf>(|commands| {
+        commands.entity(player).insert(Name::new("Player"));
+        //.with_related_entities::<EffectOf>(|commands| {
 
-                /*
-                    .spawn((
-                        Name::new("E1"),
-                        Dirty::<Health>::default(),
-                        Health::new(0.0),
-                    ))
-                   .with_related_entities::<EffectOf>(|commands| {
-                        commands.spawn((
-                            Name::new("E1-M1"),
-                            Dirty::<Health>::default(),
-                            Modifier::<Health>::new(2.0),
-                        ));
-                        commands.spawn((
-                            Name::new("E1-M2"),
-                            Dirty::<Health>::default(),
-                            Modifier::<Health>::new(6.0),
-                        ));
-                        commands.spawn((
-                            Name::new("E1-M3"),
-                            Dirty::<Health>::default(),
-                            Modifier::<Health>::new(11.0),
-                        ));
-                        commands
-                            .spawn((
-                                Name::new("E1-E1"),
-                                Dirty::<Health>::default(),
-                                Health::new(0.0),
-                            ))
-                            .with_related_entities::<EffectOf>(|commands| {
-                                commands.spawn((
-                                    Name::new("E1-E1-M1"),
-                                    Dirty::<Health>::default(),
-                                    Modifier::<Health>::new(1.0),
-                                ));
-                                commands.spawn((
-                                    Name::new("E1-E1-M2"),
-                                    Dirty::<Health>::default(),
-                                    Modifier::<Health>::new(1.0),
-                                ));
-                            });
-                    });
-                commands.spawn((
-                    Name::new("E2"),
+        /*
+                .spawn((
+                    Name::new("E1"),
                     Dirty::<Health>::default(),
-                    Modifier::<Health>::new(100.0),
-                ));
-                commands
-                    .spawn((
-                        Name::new("E3"),
+                    Health::new(0.0),
+                ))
+               .with_related_entities::<EffectOf>(|commands| {
+                    commands.spawn((
+                        Name::new("E1-M1"),
                         Dirty::<Health>::default(),
-                        Health::new(0.0),
-                    ))
-                    .with_related_entities::<EffectOf>(|commands| {
-                        commands.spawn((
-                            Name::new("E3-M1"),
+                        Modifier::<Health>::new(2.0),
+                    ));
+                    commands.spawn((
+                        Name::new("E1-M2"),
+                        Dirty::<Health>::default(),
+                        Modifier::<Health>::new(6.0),
+                    ));
+                    commands.spawn((
+                        Name::new("E1-M3"),
+                        Dirty::<Health>::default(),
+                        Modifier::<Health>::new(11.0),
+                    ));
+                    commands
+                        .spawn((
+                            Name::new("E1-E1"),
                             Dirty::<Health>::default(),
-                            Modifier::<Health>::new(1.0),
-                        ));
-                        commands.spawn((
-                            Name::new("E3-M2"),
-                            Dirty::<Health>::default(),
-                            Modifier::<Health>::new(1.0),
-                        ));
-                    });
-            });*/
+                            Health::new(0.0),
+                        ))
+                        .with_related_entities::<EffectOf>(|commands| {
+                            commands.spawn((
+                                Name::new("E1-E1-M1"),
+                                Dirty::<Health>::default(),
+                                Modifier::<Health>::new(1.0),
+                            ));
+                            commands.spawn((
+                                Name::new("E1-E1-M2"),
+                                Dirty::<Health>::default(),
+                                Modifier::<Health>::new(1.0),
+                            ));
+                        });
+                });
+            commands.spawn((
+                Name::new("E2"),
+                Dirty::<Health>::default(),
+                Modifier::<Health>::new(100.0),
+            ));
+            commands
+                .spawn((
+                    Name::new("E3"),
+                    Dirty::<Health>::default(),
+                    Health::new(0.0),
+                ))
+                .with_related_entities::<EffectOf>(|commands| {
+                    commands.spawn((
+                        Name::new("E3-M1"),
+                        Dirty::<Health>::default(),
+                        Modifier::<Health>::new(1.0),
+                    ));
+                    commands.spawn((
+                        Name::new("E3-M2"),
+                        Dirty::<Health>::default(),
+                        Modifier::<Health>::new(1.0),
+                    ));
+                });
+        });*/
 
         // Effect 1 - Passive Max Health Boost
         /*EffectBuilder::new(player, &mut commands.reborrow())
-            .with_permanent_duration()
-            .with_continuous_application()
-            .with_name("Health Regen".into())
-            .modify_by_scalar::<Health>(9.0, Additive)
-            .modify_by_scalar::<Health>(0.10, Multiplicative)
-            .commit();*/
+        .with_permanent_duration()
+        .with_continuous_application()
+        .with_name("Health Regen".into())
+        .modify_by_scalar::<Health>(9.0, Additive)
+        .modify_by_scalar::<Health>(0.10, Multiplicative)
+        .commit();*/
 
         // Effect 2 - Periodic Health Regen
         EffectBuilder::new(player, &mut commands.reborrow())
@@ -158,7 +156,7 @@ fn setup(mut commands: Commands) {
             .modify_by_scalar::<Health>(5.0, Additive)
             .modify_by_scalar::<MaxHealth>(5.0, Additive)
             .commit();
-/*
+        /*
         // Effect 3 - Instant
         let effect_entity = commands.spawn_empty().id();
         EffectBuilder::new(player, effect_entity)

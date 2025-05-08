@@ -20,6 +20,8 @@ debug = true
 attributes_macro = { path = "attributes_macro" }
 bevy_dev_tools = "0.16.0"
 rand = "0.9.1"
+ptree = "0.5"
+
 
 [dependencies.bevy]
 version = "0.16"

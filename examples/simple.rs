@@ -1,23 +1,27 @@
+use bevy::ecs::relationship::Relationship;
 use bevy::ecs::schedule::{LogLevel, ScheduleBuildSettings};
 use bevy::log::LogPlugin;
+use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::time::common_conditions::on_timer;
+use bevy::ui::debug::print_ui_layout_tree;
 use bevy::window::PresentMode;
 use bevy_dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin};
 use bevy_egui::EguiPlugin;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
+use ptree::{TreeBuilder, print_tree, write_tree};
+use rand::{Rng, rng};
 use root_attribute::abilities::{GameAbilityBuilder, GameAbilityContainer};
+use root_attribute::actors::ActorBuilder;
 use root_attribute::attributes::AttributeComponent;
 use root_attribute::effects::{Effect, EffectBuilder, EffectPeriodicTimer};
-use std::any::TypeId;
-
-use bevy::ecs::relationship::Relationship;
-use bevy::platform::collections::HashMap;
-use bevy::ui::debug::print_ui_layout_tree;
-use root_attribute::modifiers::{ModifierOf, Modifiers};
-use root_attribute::{ActorEntityMut, DeathByAttributesPlugin, OnBaseValueChanged, attribute};
-use rand::{Rng, rng};
-use std::time::{Duration, Instant};
+use root_attribute::modifiers::ModType::{Additive};
+use root_attribute::modifiers::{Effects, ModifierOf, Modifiers};
+use root_attribute::systems::{recursive_pretty_print};
+use root_attribute::{
+    Actor, ActorEntityMut, DeathByAttributesPlugin, OnValueChanged, attribute,
+};
+use std::time::{Duration};
 
 attribute!(Strength);
 attribute!(Agility);
@@ -33,11 +37,11 @@ attribute!(AttackPower);
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins) /*.set(LogPlugin {
-            filter: "error,root_attribute=info".into(),
+        .add_plugins(DefaultPlugins.set(LogPlugin {
+            filter: "error,root_attribute=debug".into(),
             level: bevy::log::Level::DEBUG,
             ..default()
-        }))*/
+        }))
         .add_plugins(DeathByAttributesPlugin)
         .add_plugins(EguiPlugin {
             enable_multipass_for_primary_context: true,
@@ -50,9 +54,11 @@ fn main() {
         .add_systems(Update, do_gameplay_stuff)
         .add_systems(
             Update,
-            (display_attribute)
-                .chain()
-                .run_if(on_timer(Duration::from_millis(16))),
+            display_attribute.run_if(on_timer(Duration::from_millis(32))),
+        )
+        .add_systems(
+            Update,
+            display_tree.run_if(on_timer(Duration::from_millis(32))),
         )
         .add_systems(PreUpdate, inputs)
         .edit_schedule(Update, |schedule| {
@@ -95,30 +101,24 @@ fn setup(mut commands: Commands) {
             .build(),
     );
 
-    let player_entity = commands
-        .spawn((
-            Player,
-            ability_component,
-            Health::new(100.0),
-            MaxHealth::new(100.0),
-            HealthRegen::new(8.0),
-            Mana::new(1000.0),
-            ManaRegen::new(12.0),
-            Strength::new(8.0),
-            Agility::new(12.0),
-        ))
-        .insert(Name::new("Player"))
-        .id();
-
-    info!("Created Player entity {}", player_entity);
+    let player_entity = commands.spawn_empty().id();
+    ActorBuilder::new(player_entity)
+        .with_attribute::<Health>(100.0)
+        .with_attribute::<MaxHealth>(1000.0)
+        .with_attribute::<HealthRegen>(2.0)
+        .with_attribute::<Mana>(100.0)
+        .with_attribute::<ManaRegen>(8.0)
+        .with_attribute::<AttackPower>(0.0)
+        .with_component((Name::new("Player"), Player))
+        .commit(&mut commands);
 
     // Effect 1 - Passive Max Health Boost
     let effect_entity = commands.spawn_empty().id();
     EffectBuilder::new(player_entity, effect_entity)
         .with_permanent_duration()
         .with_continuous_application()
-        //.mutate_by_scalar::<MaxHealth>(10.0, Additive)
-        //.mutate_by_scalar::<MaxHealth>(0.10, Multiplicative)
+        .modify_by_scalar::<MaxHealth>(100.0, Additive)
+        //.modify_by_scalar::<MaxHealth>(0.10, Multiplicative)
         .commit(&mut commands);
 
     // Effect 2 - Periodic Health Regen
@@ -126,16 +126,17 @@ fn setup(mut commands: Commands) {
     EffectBuilder::new(player_entity, effect_entity)
         .with_permanent_duration()
         .with_periodic_application(1.0)
-        //.mutate_by_scalar::<Health>(5.0, Additive)
+        //.modify_by_scalar::<Health>(5.0, Additive)
+        .modify_by_ref::<Health, MaxHealth>(0.01)
         .commit(&mut commands);
 
-    // Effect 3 - Instant
-    let effect_entity = commands.spawn_empty().id();
-    EffectBuilder::new(player_entity, effect_entity)
-        .with_instant_application()
-        //.mutate_by_scalar::<Health>(-35.0, Additive)
-        .commit(&mut commands);
-
+    /*
+        // Effect 3 - Instant
+        EffectBuilder::new(player_entity, &mut commands.reborrow())
+            .with_instant_application()
+            .modify_by_scalar::<Health>(-35.0, Additive)
+            .commit();
+    */
     // Effect 4
     /*AttributeBuilder::<AttackPower>::new(player_entity)
     .mutate_by_attribute::<Strength>(1.0, Additive)
@@ -163,7 +164,7 @@ fn setup(mut commands: Commands) {
     }*/
 }
 
-fn clamp_health(trigger: Trigger<OnBaseValueChanged>, mut query: Query<(&mut Health, &MaxHealth)>) {
+fn clamp_health(trigger: Trigger<OnValueChanged>, mut query: Query<(&mut Health, &MaxHealth)>) {
     if let Ok((mut health, max_health)) = query.get_mut(trigger.target()) {
         let clamped_value = health.base_value().clamp(0.0, max_health.current_value());
         health.set_base_value(clamped_value);
@@ -195,28 +196,45 @@ fn setup_ui(mut commands: Commands) {
         })
         .with_children(|builder| {
             builder.spawn((Text::new("Health"), PlayerHealthMarker));
-            builder.spawn((Text::new("Entity Health"), EntityHealthMarker));
+            builder.spawn((Text::new(""), EntityHealthMarker));
         });
 }
 
 fn display_attribute(
-    q_player: Query<(&Health, &MaxHealth, &AttackPower), With<Player>>,
+    q_player: Query<(&Health, &MaxHealth), With<Player>>,
     mut q_health: Query<&mut Text, With<PlayerHealthMarker>>,
 ) {
-    for (health, max_health, attack) in q_player.iter() {
+    for (health, max_health) in q_player.iter() {
         if let Ok(mut text) = q_health.single_mut() {
             text.0 = format!(
                 "Values: Current [Base]
-                Health: {:.1} [{:.1}]
-                Max Health: {:.1} [{:.1}]
-                {:?}",
+Health: {:.1} [{:.1}]
+Max Health: {:.1} [{:.1}]",
                 health.current_value(),
                 health.base_value(),
                 max_health.current_value(),
                 max_health.base_value(),
-                attack,
             );
         }
+    }
+}
+
+pub fn display_tree(
+    actors: Query<Entity, With<Actor>>,
+    descendants: Query<&Effects>,
+    entities: Query<&Name>,
+    mut text: Query<&mut Text, With<EntityHealthMarker>>,
+) {
+    let mut builder = TreeBuilder::new("Actor-Attribute Tree".into());
+    for actor in actors.iter() {
+        recursive_pretty_print(actor, &mut builder, descendants, entities);
+    }
+    let tree = builder.build();
+    //let _ = print_tree(&tree);
+    if let Ok(mut text) = text.single_mut() {
+        let mut w = Vec::new();
+        let _ = write_tree(&tree, &mut w);
+        text.0 = String::from_utf8(w).unwrap();
     }
 }
 
