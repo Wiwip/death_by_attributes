@@ -1,7 +1,7 @@
 use crate::attributes::AttributeComponent;
 use crate::systems::{
     flag_dirty_modifier_nodes, tick_effects_periodic_timer, trigger_instant_effect_applied,
-    trigger_periodic_effect, update_attribute_tree_system,
+    trigger_periodic_effect, update_effect_tree_system,
 };
 use crate::{Actor, ObserverMarker, RegisteredSystemCache};
 use bevy::app::{PostUpdate, PreUpdate};
@@ -29,7 +29,7 @@ impl ActorBuilder {
         }
     }
 
-    pub fn with_attribute<T>(mut self, value: f32) -> ActorBuilder
+    pub fn with<T>(mut self, value: f32) -> ActorBuilder
     where
         T: Component<Mutability = Mutable> + AttributeComponent,
     {
@@ -43,7 +43,7 @@ impl ActorBuilder {
         });
         self
     }
-
+    
     pub fn with_command(mut self, command: impl Command) -> ActorBuilder {
         self.queue.push(command);
         self
@@ -72,7 +72,7 @@ impl<T: Component<Mutability = Mutable> + AttributeComponent> Command for Attrib
             debug!("Registered Systems for: {}.", type_name::<T>());
             world.schedule_scope(PreUpdate, |_, schedule| {
                 schedule.add_systems(
-                    update_attribute_tree_system::<T>.after(trigger_periodic_effect::<T>),
+                    update_effect_tree_system::<T>.after(trigger_periodic_effect::<T>),
                 );
                 schedule
                     .add_systems(trigger_periodic_effect::<T>.after(tick_effects_periodic_timer));

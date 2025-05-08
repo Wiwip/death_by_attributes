@@ -1,16 +1,17 @@
-use std::fmt::Display;
-use std::any::{type_name, TypeId};
+use crate::Dirty;
+use crate::attributes::AttributeComponent;
+use bevy::ecs::component::Mutable;
+use bevy::prelude::*;
+use std::any::{TypeId, type_name};
 use std::fmt::Debug;
+use std::fmt::Display;
 use std::iter::Sum;
 use std::marker::PhantomData;
 use std::ops::{Add, AddAssign};
-use bevy::ecs::component::Mutable;
-use bevy::prelude::*;
-use crate::attributes::AttributeComponent;
-use crate::Dirty;
 
-#[derive(Component, Copy, Clone, Debug)]
+#[derive(Component, Copy, Clone, Debug, Reflect)]
 pub struct Modifier<T> {
+    #[reflect(ignore)]
     _phantom: PhantomData<T>,
     pub value: ModAggregator<T>,
 }
@@ -53,9 +54,7 @@ where
         assert_ne!(Entity::PLACEHOLDER, self.effect_entity);
         assert_ne!(Entity::PLACEHOLDER, self.actor_entity);
         // We attach an observer to the mutator targeting the parent entity
-        let entity = world.spawn_empty().id();
-        let mut entity_mut = world.entity_mut(entity);
-        entity_mut.insert((
+        let mut entity = world.spawn((
             Name::new(format!("{}", type_name::<C>())),
             self.modifier,
             ModAggregator::<C>::default(),
@@ -64,11 +63,10 @@ where
             Dirty::<C>::default(),
         ));
         if let Some(observer) = self.observer {
-            entity_mut.insert(observer);
+            entity.insert(observer);
         }
     }
 }
-
 
 /// The entity that this effect is targeting.
 #[derive(Component, Reflect, Debug)]
@@ -166,7 +164,7 @@ impl<T> Add for &ModAggregator<T> {
         ModAggregator::<T> {
             phantom_data: PhantomData,
             additive: self.additive + rhs.additive,
-            multi: self.additive + rhs.additive,
+            multi: self.multi + rhs.multi,
             overrule: self.overrule.or(rhs.overrule),
         }
     }
@@ -179,7 +177,7 @@ impl<T> Add<ModAggregator<T>> for &mut ModAggregator<T> {
         ModAggregator::<T> {
             phantom_data: PhantomData,
             additive: self.additive + rhs.additive,
-            multi: self.additive + rhs.additive,
+            multi: self.multi + rhs.multi,
             overrule: self.overrule.or(rhs.overrule),
         }
     }

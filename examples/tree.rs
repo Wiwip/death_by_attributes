@@ -8,7 +8,7 @@ use root_attribute::modifiers::ModType::Additive;
 use root_attribute::modifiers::scalar::Modifier;
 use root_attribute::modifiers::{EffectOf, ModAggregator, ModifierOf};
 use root_attribute::systems::{
-    flag_dirty_modifier_nodes, pretty_print_tree_system, update_attribute_tree_system,
+    flag_dirty_modifier_nodes, pretty_print_tree_system, update_effect_tree_system,
 };
 use root_attribute::{Actor, DeathByAttributesPlugin, attribute};
 
@@ -27,7 +27,7 @@ fn main() {
             (
                 flag_dirty_modifier_nodes::<Health>,
                 pretty_print_tree_system::<Health>,
-                update_attribute_tree_system::<Health>,
+                update_effect_tree_system::<Health>,
                 pretty_print_tree_system::<Health>,
             )
                 .chain(),
@@ -42,7 +42,7 @@ fn main() {
 fn setup(mut commands: Commands) {
     let player = commands.spawn_empty().id();
     ActorBuilder::new(player)
-        .with_attribute::<Health>(0.0)
+        .with::<Health>(0.0)
         .with_component(Name::new("Player"))
         .commit(&mut commands);
 

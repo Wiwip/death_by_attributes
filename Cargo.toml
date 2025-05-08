@@ -25,13 +25,10 @@ ptree = "0.5"
 
 [dependencies.bevy]
 version = "0.16"
-default-features = true
+default-features = false
 features = [
-    "bevy_core_pipeline",
     "bevy_log",
-    "bevy_state",
     "track_location",
-    "dynamic_linking",
 ]
 
 [dev-dependencies]
@@ -39,17 +36,17 @@ criterion = { version = "0.5", features = ["html_reports"] }
 bevy_egui = "0.34.1"
 bevy-inspector-egui = "0.31.0"
 
-#[dev-dependencies.bevy]
-#version = "0.16"
-#default-features = true
-#features = [
-#    "bevy_core_pipeline",
-#    "bevy_log",
-#    "bevy_state",
-#    "bevy_ui",
-#    "default_font",
-#    "dynamic_linking",
-#]
+[dev-dependencies.bevy]
+version = "0.16"
+default-features = true
+features = [
+    "bevy_core_pipeline",
+    "bevy_log",
+    "bevy_state",
+    "bevy_ui",
+    "default_font",
+    #"dynamic_linking",
+]
 
 [[bench]]
 name = "bench_systems"

@@ -1,13 +1,14 @@
-use crate::ModifierOf;
+use crate::OnAttributeValueChanged;
 use crate::attributes::AttributeComponent;
-use crate::{OnValueChanged};
+use crate::modifiers::{EffectOf, ModAggregator, ModType, Modifier, ModifierCommand};
+use crate::{Dirty, ModifierOf, OnAttributeChanged};
 use bevy::ecs::component::Mutable;
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::Name;
 use bevy::prelude::TimerMode::{Once, Repeating};
 use bevy::prelude::*;
+use std::any::type_name;
 use std::fmt::{Debug, Formatter};
-use crate::modifiers::{EffectOf, ModAggregator, ModType, Modifier, ModifierCommand};
 
 #[derive(Component, Debug, Default)]
 pub struct Effect;
@@ -65,8 +66,8 @@ impl EffectBuilder {
         self
     }
 
-    /// Spawns an observer watching the actor's attributes on the modifier entity. 
-    /// When OnValueChanged is triggered, it takes the current value of the attribute, 
+    /// Spawns an observer watching the actor's attributes on the modifier entity.
+    /// When OnValueChanged is triggered, it takes the current value of the attribute,
     /// it applies the scaling factor and updates the modifier's value to the new value.  
     pub fn modify_by_ref<T, S>(mut self, scaling_factor: f32) -> Self
     where
@@ -74,7 +75,7 @@ impl EffectBuilder {
         S: AttributeComponent + Component<Mutability = Mutable>,
     {
         let mut observer = Observer::new(
-            move |trigger: Trigger<OnValueChanged>,
+            move |trigger: Trigger<OnAttributeValueChanged>,
                   mut modifiers: Query<&mut Modifier<T>>,
                   attributes: Query<&S>| {
                 let Ok(attribute) = attributes.get(trigger.target()) else {
@@ -87,11 +88,24 @@ impl EffectBuilder {
             },
         );
         observer.watch_entity(self.actor_entity);
-        self.queue.push(ModifierCommand {
-            effect_entity: self.effect_entity,
-            actor_entity: self.actor_entity,
-            modifier: Modifier::<T>::default(),
-            observer: Some(observer),
+        self.queue.push(move |world: &mut World| {
+            let entity = world.spawn_empty().id();
+            let mut entity_mut = world.entity_mut(entity);
+            entity_mut.insert((
+                Name::new(format!("{}", type_name::<T>())),
+                Modifier::<T>::default(),
+                ModAggregator::<T>::default(),
+                EffectOf(self.effect_entity),
+                ModifierOf(self.effect_entity),
+                Dirty::<T>::default(),
+                observer,
+            ));
+            world
+                .entity_mut(self.effect_entity)
+                .insert(ModAggregator::<T>::default());
+        });
+        self.queue.push(move |world: &mut World| {
+            world.trigger_targets(OnAttributeValueChanged, self.actor_entity);
         });
         self
     }
@@ -111,10 +125,9 @@ impl EffectBuilder {
     }
 
     pub fn with_custom_calculations(mut self, command: impl Command) -> Self {
-        
         self
     }
-    
+
     pub fn commit(mut self, commands: &mut Commands) -> Entity {
         commands.queue(EffectCommand {
             effect_entity: self.effect_entity,

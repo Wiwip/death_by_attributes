@@ -13,7 +13,7 @@ use root_attribute::modifiers::EffectOf;
 use root_attribute::modifiers::scalar::ModType::{Additive, Multiplicative};
 use root_attribute::modifiers::scalar::Modifier;
 use root_attribute::systems::{
-    flag_dirty_modifier_nodes, pretty_print_tree_system, update_attribute_tree_system,
+    flag_dirty_modifier_nodes, pretty_print_tree_system, update_effect_tree_system,
 };
 use root_attribute::{
     Actor, DeathByAttributesPlugin, Dirty, OnAttributeChanged, OnCurrentValueChanged, attribute,
@@ -67,8 +67,8 @@ fn modify_tree(
 fn setup(mut commands: Commands) {
     for _ in 0..1 {
         let player = ActorBuilder::new(&mut commands.reborrow())
-            .with_attribute::<Health>(0.0)
-            .with_attribute::<MaxHealth>(0.0)
+            .with::<Health>(0.0)
+            .with::<MaxHealth>(0.0)
             .commit();
 
         commands.entity(player).insert(Name::new("Player"));

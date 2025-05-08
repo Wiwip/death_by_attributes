@@ -80,7 +80,7 @@ impl<T> Default for Dirty<T> {
 pub struct AttributeUpdateSchedule;
 
 #[derive(Event)]
-pub struct OnValueChanged;
+pub struct OnAttributeValueChanged;
 
 #[derive(Event, Debug)]
 pub struct OnAttributeChanged<A> {

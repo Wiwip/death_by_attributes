@@ -1,13 +1,14 @@
 use crate::attributes::AttributeComponent;
 use crate::effects::{Effect, EffectDuration, EffectPeriodicTimer};
 use crate::modifiers::{EffectOf, Effects, ModAggregator, Modifier, ModifierOf};
-use crate::{Actor, Dirty, OnValueChanged};
+use crate::{Actor, Dirty, OnAttributeValueChanged};
 use bevy::ecs::component::Mutable;
 use bevy::ecs::relationship::Relationship;
 use bevy::prelude::*;
 use ptree::{TreeBuilder, print_tree};
 use std::any::type_name;
 use std::ops::DerefMut;
+use bevy::ecs::query::QueryEntityError;
 
 pub fn tick_effects_periodic_timer(mut query: Query<&mut EffectPeriodicTimer>, time: Res<Time>) {
     query.par_iter_mut().for_each(|mut timer| {
@@ -47,35 +48,38 @@ pub fn flag_dirty_modifier_nodes<T: Component>(
 
 /// Navigates the tree descendants to update the tree attribute values
 /// Effects that have a periodic timer application must be ignored in the current value calculations
-pub fn update_attribute_tree_system<T: Component<Mutability = Mutable> + AttributeComponent>(
+pub fn update_effect_tree_system<T: Component<Mutability = Mutable> + AttributeComponent>(
     actors: Query<Entity, (With<Actor>, With<Dirty<T>>)>,
     descendants: Query<&Effects, Without<EffectPeriodicTimer>>,
     modifiers: Query<&Modifier<T>>,
     dirty: Query<&Dirty<T>>,
     periodic_effects: Query<&Effect, With<EffectPeriodicTimer>>,
     mut attributes: Query<&mut T>,
-    mut aggregator: Query<&mut ModAggregator<T>>,
+    mut aggregators: Query<&mut ModAggregator<T>>,
     mut commands: Commands,
 ) {
     debug_once!(
-        "Installed: update_attribute_tree_system::{}",
+        "Ready: update_effect_tree_system::{}",
         type_name::<T>()
     );
     for actor_entity in actors.iter() {
-        update_attribute_tree(
-            actor_entity,
-            descendants,
-            modifiers,
-            dirty,
-            periodic_effects,
-            &mut attributes,
-            &mut aggregator,
-            &mut commands,
+        let mut visited_nodes = 0;
+            update_effect_tree(
+                &mut visited_nodes,
+                actor_entity,
+                descendants,
+                modifiers,
+                dirty,
+                periodic_effects,
+                &mut attributes,
+                &mut aggregators,
+                &mut commands,
         );
     }
 }
 
-fn update_attribute_tree<T: Component<Mutability = Mutable> + AttributeComponent>(
+fn update_effect_tree<T: Component<Mutability = Mutable> + AttributeComponent>(
+    visited_nodes: &mut usize,
     current_entity: Entity,
     descendants: Query<&Effects, Without<EffectPeriodicTimer>>,
     modifiers: Query<&Modifier<T>>,
@@ -97,12 +101,12 @@ fn update_attribute_tree<T: Component<Mutability = Mutable> + AttributeComponent
     };
     // Return value of all the child nodes plus our own
     // Ignore modifier_so_far when they have a periodic timer
-    let modifier_so_far = modifier.value.clone()
-        + match descendants.get(current_entity) {
+    let modifier_so_far = modifier.value.clone() + match descendants.get(current_entity) {
             Ok(childrens) => childrens
                 .iter()
                 .map(|child| {
-                    update_attribute_tree::<T>(
+                    update_effect_tree::<T>(
+                        visited_nodes,
                         child,
                         descendants,
                         modifiers,
@@ -114,10 +118,11 @@ fn update_attribute_tree<T: Component<Mutability = Mutable> + AttributeComponent
                     )
                 })
                 .sum(),
-            Err(_) => ModAggregator::default(),
+            Err(_) => ModAggregator::default(), // No childrens
         };
     // Update the aggregator with the most-recent value
     let Ok(mut aggregator) = aggregators.get_mut(current_entity) else {
+        debug!("Could not get an aggregator on {}, this is abnormal.", current_entity);
         return ModAggregator::default();
     };
     *aggregator = modifier_so_far.clone();
@@ -128,6 +133,7 @@ fn update_attribute_tree<T: Component<Mutability = Mutable> + AttributeComponent
     };
     // Cleans the node
     commands.entity(current_entity).remove::<Dirty<T>>();
+    *visited_nodes += 1;
     // Return the value of the modifier so far so we can update the current values
     modifier_so_far
 }
@@ -151,7 +157,9 @@ pub fn recursive_pretty_print(
     descendants: Query<&Effects>,
     entities: Query<&Name>,
 ) {
-    let name = entities.get(current_entity).unwrap();
+    let Ok(name) = entities.get(current_entity) else {
+        return;
+    };
     let tree_item = format!("{name}[{}] ", current_entity);
     // Iterate recursively on all the childrens
     if let Ok(childrens) = descendants.get(current_entity) {
@@ -257,195 +265,7 @@ fn apply_modifiers_to_ancestors<T: Component<Mutability = Mutable> + AttributeCo
         attribute.set_base_value(modifier.value.evaluate(old_value));
 
         // Notify whenever we mutate an attribute
-        commands.trigger_targets(OnValueChanged, entity);
+        commands.trigger_targets(OnAttributeValueChanged, entity);
     }
 }
 
-/*
-
-pub fn trigger_periodic_effects(
-    mut entities: Query<ActorEntityMut, (Without<Effect>, Without<Mutator>)>,
-    effects: Query<
-        (
-            &Modifies,
-            &ModifiedBy,
-            &Effect,
-            &EffectPeriodicTimer,
-        ),
-        With<EffectDuration>,
-    >,
-    mutators: Query<&Mutator>,
-    mut cache: ResMut<CachedMutations>,
-    mut commands: Commands,
-) {
-    let mut updated_entities: Vec<Entity> = Vec::new();
-
-    for (actor_entity, mutator_entities, _, periodic_timer) in effects.iter() {
-        if !periodic_timer.just_finished() {
-            continue;
-        }
-
-        let type_map = cache.evaluators.entry(actor_entity.get()).or_default();
-        updated_entities.push(actor_entity.get());
-
-        for mutator_entity in mutator_entities.iter() {
-            let Ok(mutator) = mutators.get(mutator_entity) else {
-                continue;
-            };
-
-            // Necessary for the cache to be initialized. Kind of a hack...
-            let _ = type_map
-                .entry(mutator.0.target())
-                .or_insert((mutator.clone(), ModAggregator::default()));
-
-            // Once recovered, apply the aggregator
-            let aggregator = mutator.to_aggregator();
-            if let Ok(entity_mut) = entities.get_mut(actor_entity.get()) {
-                let _ = mutator.apply_aggregator(entity_mut, aggregator);
-            }
-        }
-    }
-
-    // Notify updated entities that their base values has changed.
-    if !updated_entities.is_empty() {
-        commands.trigger_targets(OnBaseValueChanged, updated_entities);
-    }
-}
-
-pub fn on_base_value_changed(
-    trigger: Trigger<OnBaseValueChanged>,
-    mut entities: Query<ActorEntityMut, (Without<Effect>, Without<Mutator>)>,
-    cache: Res<CachedMutations>,
-    mut commands: Commands,
-) {
-    let updated_entity = trigger.target();
-
-    let Ok(mut entity_mut) = entities.get_mut(updated_entity) else {
-        println!("update_current_values failed for {}", updated_entity);
-        return;
-    };
-    let Some(type_map) = cache.evaluators.get(&updated_entity) else {
-        println!(
-            "cache.evaluators.get(&updated_entity) {:?}\n{:#?}",
-            updated_entity, cache.evaluators
-        );
-        return;
-    };
-
-    let mut updated_value = false;
-
-    for (stored_mutator, stored_aggregator) in type_map.values() {
-        let result = stored_mutator.update_current_value(entity_mut.reborrow(), *stored_aggregator);
-        if updated_value == false && result == true {
-            updated_value = true;
-        }
-    }
-
-    // Notify entity of the changed attributes
-    if updated_value {
-        commands.trigger_targets(OnCurrentValueChanged, updated_entity);
-    }
-}
-
-pub fn on_attribute_mutation_changed(
-    trigger: Trigger<OnAttributeMutationChanged>,
-    mut entities: Query<ActorEntityMut, (Without<Effect>, Without<Mutator>)>,
-    cache: Res<CachedMutations>,
-    mut commands: Commands,
-) {
-    let updated_entity = trigger.target();
-
-    let Ok(mut entity_mut) = entities.get_mut(updated_entity) else {
-        println!("update_current_values failed for {}", updated_entity);
-        return;
-    };
-    let Some(type_map) = cache.evaluators.get(&updated_entity) else {
-        println!(
-            "cache.evaluators.get(&updated_entity) {:?}\n{:#?}",
-            updated_entity, cache.evaluators
-        );
-        return;
-    };
-
-    let mut updated_value = false;
-
-    for (stored_mutator, stored_aggregator) in type_map.values() {
-        let result = stored_mutator.update_current_value(entity_mut.reborrow(), *stored_aggregator);
-        if updated_value == false && result == true {
-            updated_value = true;
-        }
-    }
-
-    // Notify entity of the changed attributes
-    if updated_value {
-        commands.trigger_targets(OnCurrentValueChanged, updated_entity);
-    }
-}
-
-pub(crate) fn tick_ability_cooldowns(mut query: Query<&mut GameAbilityContainer>, time: Res<Time>) {
-    for mut abilities in &mut query {
-        for (_, ability) in abilities.get_abilities_mut().iter_mut() {
-            ability.cooldown.tick(time.delta());
-        }
-    }
-}
-
-pub fn check_duration_effect_expiry(
-    query: Query<(Entity, &EffectDuration)>,
-    mut commands: Commands,
-) {
-    for (entity, duration) in query.iter() {
-        let EffectDuration::Duration(duration) = duration else {
-            continue;
-        };
-
-        if !duration.finished() {
-            continue;
-        }
-
-        debug!("Effect expired {:?}", entity);
-        commands.entity(entity).despawn();
-    }
-}
-
-pub fn on_duration_effect_removed(
-    trigger: Trigger<OnRemove, Effect>,
-    effects: Query<
-        (&Modifies, &ModifiedBy, &Effect),
-        (With<EffectDuration>, Without<EffectPeriodicTimer>),
-    >,
-    mutators: Query<&Mutator>,
-    mut cache: ResMut<CachedMutations>,
-    mut commands: Commands,
-) {
-    let mut updated = false;
-    let effect_entity = trigger.target();
-    let Ok((actor_entity, mutator_entities, _)) = effects.get(effect_entity) else {
-        warn_once!("on_effect_removed failed for {}", effect_entity);
-        return;
-    };
-
-    let type_map = cache.evaluators.entry(actor_entity.get()).or_default();
-
-    for mutator_entity in mutator_entities.iter() {
-        let Ok(mutator) = mutators.get(mutator_entity) else {
-            warn_once!("failed to retrieve a mutator for {}", mutator_entity);
-            continue;
-        };
-
-        // Query and update the cached aggregators
-        let (_, stored_aggregator) = type_map
-            .entry(mutator.0.target())
-            .or_insert((mutator.clone(), ModAggregator::default()));
-        let aggregator = mutator.0.to_aggregator();
-        *stored_aggregator -= aggregator;
-
-        updated = true;
-    }
-
-    // Notify updated entities that their base values has changed.
-    if updated {
-        commands.trigger_targets(OnBaseValueChanged, actor_entity.get());
-    }
-}
-*/

@@ -13,15 +13,15 @@ use ptree::{TreeBuilder, print_tree, write_tree};
 use rand::{Rng, rng};
 use root_attribute::abilities::{GameAbilityBuilder, GameAbilityContainer};
 use root_attribute::actors::ActorBuilder;
-use root_attribute::attributes::AttributeComponent;
+use root_attribute::attributes::{AttributeBuilder, AttributeComponent};
 use root_attribute::effects::{Effect, EffectBuilder, EffectPeriodicTimer};
-use root_attribute::modifiers::ModType::{Additive};
-use root_attribute::modifiers::{Effects, ModifierOf, Modifiers};
-use root_attribute::systems::{recursive_pretty_print};
+use root_attribute::modifiers::ModType::{Additive, Multiplicative};
+use root_attribute::modifiers::{Effects, ModAggregator, Modifier, ModifierOf, Modifiers};
+use root_attribute::systems::recursive_pretty_print;
 use root_attribute::{
-    Actor, ActorEntityMut, DeathByAttributesPlugin, OnValueChanged, attribute,
+    Actor, ActorEntityMut, DeathByAttributesPlugin, OnAttributeValueChanged, attribute,
 };
-use std::time::{Duration};
+use std::time::Duration;
 
 attribute!(Strength);
 attribute!(Agility);
@@ -31,9 +31,11 @@ attribute!(MaxHealth);
 attribute!(HealthRegen);
 
 attribute!(Mana);
+attribute!(ManaPool);
 attribute!(ManaRegen);
 
 attribute!(AttackPower);
+attribute!(MagicPower);
 
 fn main() {
     App::new()
@@ -46,20 +48,18 @@ fn main() {
         .add_plugins(EguiPlugin {
             enable_multipass_for_primary_context: true,
         })
-        //.add_plugins(WorldInspectorPlugin::new())
-        /*.add_plugins(FpsOverlayPlugin {
-            config: FpsOverlayConfig::default(),
-        })*/
+        .add_plugins(WorldInspectorPlugin::new())
         .add_systems(Startup, (setup_window, setup, setup_ui))
         .add_systems(Update, do_gameplay_stuff)
         .add_systems(
             Update,
             display_attribute.run_if(on_timer(Duration::from_millis(32))),
         )
-        .add_systems(
+        .add_systems(Update, display_tree)
+        /*.add_systems(
             Update,
-            display_tree.run_if(on_timer(Duration::from_millis(32))),
-        )
+            agg.run_if(on_timer(Duration::from_millis(32))),
+        )*/
         .add_systems(PreUpdate, inputs)
         .edit_schedule(Update, |schedule| {
             schedule.set_build_settings(ScheduleBuildSettings {
@@ -70,6 +70,8 @@ fn main() {
         .register_type::<Modifiers>()
         .register_type::<ModifierOf>()
         .register_type::<EffectPeriodicTimer>()
+        .register_type::<Health>()
+        .register_type::<AttackPower>()
         .add_observer(clamp_health)
         .run();
 }
@@ -86,6 +88,13 @@ fn setup_window(mut query: Query<&mut Window>) {
     }
 }
 
+fn agg(query: Query<(Entity, &Name, &ModAggregator<AttackPower>)>) {
+    for (entity, name, aggregator) in query.iter() {
+        print!("[{} / {name} / {}] ", entity, aggregator.additive);
+    }
+    println!("---")
+}
+
 fn setup(mut commands: Commands) {
     let mut rng = rand::rng();
     let mut ability_component = GameAbilityContainer::default();
@@ -100,16 +109,29 @@ fn setup(mut commands: Commands) {
             })
             .build(),
     );
-
     let player_entity = commands.spawn_empty().id();
+
     ActorBuilder::new(player_entity)
-        .with_attribute::<Health>(100.0)
-        .with_attribute::<MaxHealth>(1000.0)
-        .with_attribute::<HealthRegen>(2.0)
-        .with_attribute::<Mana>(100.0)
-        .with_attribute::<ManaRegen>(8.0)
-        .with_attribute::<AttackPower>(0.0)
+        .with::<Strength>(12.0)
+        .with::<Agility>(7.0)
+        .with::<Health>(100.0)
+        .with::<MaxHealth>(100.0)
+        .with::<HealthRegen>(2.0)
+        .with::<Mana>(100.0)
+        .with::<ManaPool>(100.0)
+        .with::<ManaRegen>(8.0)
+        .with::<MagicPower>(0.0)
+        .with::<AttackPower>(0.0)
         .with_component((Name::new("Player"), Player))
+        .commit(&mut commands);
+
+    AttributeBuilder::<AttackPower>::new(player_entity)
+        .by_ref::<Health>(0.10)
+        .by_ref::<MaxHealth>(0.25)
+        .commit(&mut commands);
+    AttributeBuilder::<MagicPower>::new(player_entity)
+        .by_ref::<MaxHealth>(1.0)
+        .by_ref::<AttackPower>(1.0)
         .commit(&mut commands);
 
     // Effect 1 - Passive Max Health Boost
@@ -118,7 +140,7 @@ fn setup(mut commands: Commands) {
         .with_permanent_duration()
         .with_continuous_application()
         .modify_by_scalar::<MaxHealth>(100.0, Additive)
-        //.modify_by_scalar::<MaxHealth>(0.10, Multiplicative)
+        .modify_by_scalar::<MaxHealth>(0.10, Multiplicative)
         .commit(&mut commands);
 
     // Effect 2 - Periodic Health Regen
@@ -126,8 +148,9 @@ fn setup(mut commands: Commands) {
     EffectBuilder::new(player_entity, effect_entity)
         .with_permanent_duration()
         .with_periodic_application(1.0)
-        //.modify_by_scalar::<Health>(5.0, Additive)
-        .modify_by_ref::<Health, MaxHealth>(0.01)
+        .modify_by_scalar::<AttackPower>(1.0, Additive)
+        .modify_by_scalar::<Health>(5.0, Additive)
+        .modify_by_scalar::<Mana>(5.0, Additive)
         .commit(&mut commands);
 
     /*
@@ -164,7 +187,10 @@ fn setup(mut commands: Commands) {
     }*/
 }
 
-fn clamp_health(trigger: Trigger<OnValueChanged>, mut query: Query<(&mut Health, &MaxHealth)>) {
+fn clamp_health(
+    trigger: Trigger<OnAttributeValueChanged>,
+    mut query: Query<(&mut Health, &MaxHealth)>,
+) {
     if let Ok((mut health, max_health)) = query.get_mut(trigger.target()) {
         let clamped_value = health.base_value().clamp(0.0, max_health.current_value());
         health.set_base_value(clamped_value);
@@ -201,19 +227,25 @@ fn setup_ui(mut commands: Commands) {
 }
 
 fn display_attribute(
-    q_player: Query<(&Health, &MaxHealth), With<Player>>,
+    q_player: Query<(&Health, &MaxHealth, &AttackPower, &MagicPower), With<Player>>,
     mut q_health: Query<&mut Text, With<PlayerHealthMarker>>,
 ) {
-    for (health, max_health) in q_player.iter() {
+    for (health, max_health, ap, mp) in q_player.iter() {
         if let Ok(mut text) = q_health.single_mut() {
             text.0 = format!(
                 "Values: Current [Base]
 Health: {:.1} [{:.1}]
-Max Health: {:.1} [{:.1}]",
+Max Health: {:.1} [{:.1}]
+AP: {:.1} [{:.1}]
+MP: {:.1} [{:.1}]",
                 health.current_value(),
                 health.base_value(),
                 max_health.current_value(),
                 max_health.base_value(),
+                ap.current_value(),
+                ap.base_value(),
+                mp.current_value(),
+                mp.base_value(),
             );
         }
     }
@@ -230,7 +262,6 @@ pub fn display_tree(
         recursive_pretty_print(actor, &mut builder, descendants, entities);
     }
     let tree = builder.build();
-    //let _ = print_tree(&tree);
     if let Ok(mut text) = text.single_mut() {
         let mut w = Vec::new();
         let _ = write_tree(&tree, &mut w);
@@ -239,12 +270,19 @@ pub fn display_tree(
 }
 
 fn inputs(
-    mut q_player: Query<(ActorEntityMut, &mut GameAbilityContainer), With<Player>>,
+    mut q_player: Query<(Entity), With<Player>>,
     keys: Res<ButtonInput<KeyCode>>,
-    commands: Commands,
+    mut commands: Commands,
 ) {
-    if let Ok((entity_mut, mut abilities)) = q_player.single_mut() {
+    if let Ok((player_entity)) = q_player.single_mut() {
         if keys.just_pressed(KeyCode::Space) {
+            let effect_entity = commands.spawn_empty().id();
+
+            EffectBuilder::new(player_entity, effect_entity)
+                .with_instant_application()
+                .modify_by_scalar::<Health>(-18.0, Additive)
+                .commit(&mut commands);
+
             /*abilities
             .get_abilities_mut()
             .get_mut("fireball")

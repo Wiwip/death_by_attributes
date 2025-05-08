@@ -1,5 +1,5 @@
 use crate::effects::Effect;
-use crate::{ActorEntityMut, OnValueChanged};
+use crate::ActorEntityMut;
 
 use crate::attributes::AttributeComponent;
 use bevy::ecs::component::Mutable;
@@ -43,8 +43,7 @@ impl GameAbilityBuilder {
         mut self,
         cost: f32,
     ) -> Self {
-        //let evaluator = FixedEvaluator::new(cost, Additive);
-        //self.ability.cost = Some(Mutator::new(MutatorHelper::new::<C>(evaluator)));
+        //self.ability.cost = Some();
         self
     }
 
@@ -77,12 +76,12 @@ pub struct GameAbility {
 }
 
 impl GameAbility {
-    /*pub fn try_activate(&mut self, mut entity_mut: ActorEntityMut, mut commands: Commands) {
+    pub fn try_activate(&mut self, mut entity_mut: ActorEntityMut, mut commands: Commands) {
         if self.can_activate(entity_mut.reborrow()) {
             self.commit_cost(entity_mut.reborrow());
 
             // Trigger update of the current value
-            commands.trigger_targets(OnBaseValueChanged, entity_mut.id());
+            //commands.trigger_targets(OnBaseValueChanged, entity_mut.id());
             //commands.trigger_targets(OnCurrentValueChanged, entity_mut.id());
 
             if let Some(activation_function) = self.ability_activation {
@@ -98,24 +97,25 @@ impl GameAbility {
         }
 
         // If there's no cost, the ability is free and usable.
-        let Some(modifier) = &self.cost else {
+        /*let Some(modifier) = &self.cost else {
             return true;
-        };
+        };*/
 
-        let current_value = match modifier.0.get_current_value(entity) {
+        /*let current_value = match modifier.0.get_current_value(entity) {
             Ok(value) => value,
             Err(_) => return false,
         };
         let cost_magnitude = modifier.0.get_magnitude();
 
-        f32::abs(cost_magnitude) <= current_value
+        f32::abs(cost_magnitude) <= current_value*/
+        false
     }
 
     pub fn commit_cost(&mut self, entity_mut: ActorEntityMut) {
-        if let Some(mutator) = &self.cost {
+        /*if let Some(mutator) = &self.cost {
             mutator.0.apply_mutator(entity_mut);
-        }
+        }*/
 
         self.cooldown.reset();
-    }*/
+    }
 }
