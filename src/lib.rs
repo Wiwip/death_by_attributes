@@ -2,7 +2,8 @@ use crate::effects::EffectOf;
 use crate::effects::{Effect, EffectDuration, EffectPeriodicTimer};
 use crate::modifiers::ModAggregator;
 use crate::systems::{
-    despawn_instant_effect, tick_effects_duration_timer, tick_effects_periodic_timer,
+    despawn_instant_effect, tick_ability_cooldown, tick_effects_duration_timer,
+    tick_effects_periodic_timer,
 };
 use bevy::prelude::*;
 use std::any::TypeId;
@@ -15,17 +16,18 @@ pub mod effects;
 pub mod modifiers;
 pub mod systems;
 
-use crate::abilities::GameAbilityContainer;
+use crate::abilities::{Abilities, AbilityActivation, AbilityCooldown, AbilityCost, AbilityOf};
 use crate::attributes::AttributeComponent;
 pub use attributes_macro::Attribute;
 use bevy::ecs::world::EntityMutExcept;
 
-pub struct DeathByAttributesPlugin;
+pub struct AttributesPlugin;
 
-impl Plugin for DeathByAttributesPlugin {
+impl Plugin for AttributesPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(PreUpdate, tick_effects_duration_timer)
             .add_systems(PreUpdate, tick_effects_periodic_timer)
+            .add_systems(PreUpdate, tick_ability_cooldown)
             .add_systems(PostUpdate, despawn_instant_effect)
             .init_schedule(PreUpdate)
             .init_schedule(PostUpdate);
@@ -35,13 +37,16 @@ impl Plugin for DeathByAttributesPlugin {
 pub type ActorEntityMut<'w> = EntityMutExcept<
     'w,
     (
-        GameAbilityContainer,
         // We exclude anything related to effects
+        ChildOf,
         Effect,
-        //ModifierOf,
-        //Modifiers,
         EffectPeriodicTimer,
         EffectDuration,
+        Abilities,
+        AbilityOf,
+        AbilityActivation,
+        AbilityCost,
+        AbilityCooldown,
     ),
 >;
 
@@ -77,7 +82,17 @@ impl<T> Default for Dirty<T> {
 
 #[derive(Event, Clone)]
 #[event(traversal = &'static EffectOf, auto_propagate)]
-pub struct OnAttributeValueChanged;
+pub struct OnAttributeValueChanged<T> {
+    _marker: PhantomData<T>,
+}
+
+impl<T> Default for OnAttributeValueChanged<T> {
+    fn default() -> Self {
+        Self {
+            _marker: PhantomData,
+        }
+    }
+}
 
 #[derive(Event, Debug)]
 pub struct OnBaseValueChange<A: AttributeComponent> {
@@ -117,11 +132,11 @@ pub enum AttributeEvaluationError {
 }
 
 #[derive(Resource)]
-pub struct RegisteredSystemCache<T> {
+pub struct RegisteredPhantomSystem<T> {
     phantom: PhantomData<T>,
 }
 
-impl<T> Default for RegisteredSystemCache<T> {
+impl<T> Default for RegisteredPhantomSystem<T> {
     fn default() -> Self {
         Self {
             phantom: PhantomData,

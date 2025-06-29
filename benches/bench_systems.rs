@@ -23,7 +23,7 @@ fn populate_world(mut commands: Commands, entity: u32, effects: u32) {
             .with::<Health>(12.0)
             .with::<HealthRegen>(7.0)
             .with::<Health>(100.0)
-            .max::<Health, MaxHealth>(0.0);
+            .clamp_max::<Health, MaxHealth>(0.0);
 
         for _ in 0..effects {
             let effect = commands.spawn_empty().id();
@@ -44,7 +44,7 @@ fn populate_world_by_ref(mut commands: Commands, entity: u32, effects: u32) {
             .with::<Health>(12.0)
             .with::<HealthRegen>(7.0)
             .with::<Health>(100.0)
-            .max::<Health, MaxHealth>(0.0);
+            .clamp_max::<Health, MaxHealth>(0.0);
 
         AttributeBuilder::<AttackPower>::new(player_entity)
             .by_ref::<Health>(0.10)

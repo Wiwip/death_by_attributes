@@ -20,6 +20,7 @@ debug = true
 attributes_macro = { path = "attributes_macro" }
 rand = "0.9.1"
 ptree = "0.5"
+log = "0.4.27"
 
 
 [dependencies.bevy]
@@ -44,7 +45,7 @@ features = [
     "bevy_state",
     "bevy_ui",
     "default_font",
-    #"dynamic_linking",
+    "dynamic_linking",
 ]
 
 [[bench]]

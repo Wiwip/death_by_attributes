@@ -30,12 +30,6 @@ pub struct EffectSource(pub Entity);
 #[derive(Component, Debug)]
 pub struct EffectTarget(pub Entity);
 
-/*#[derive(Component)]
-pub struct EffectCondition {
-    pub is_valid: bool,
-    pub condition: fn(&ActorEntityMut) -> bool,
-}*/
-
 pub trait EffectCondition: Default {
     fn can_apply(&self, actor: &ActorEntityMut) -> bool;
 }
@@ -75,7 +69,7 @@ impl EffectBuilder {
 
     pub fn modify_by_scalar<T: AttributeComponent + Component<Mutability = Mutable>>(
         mut self,
-        magnitude: f32,
+        magnitude: f64,
         mod_type: ModType,
     ) -> Self {
         let command = ModifierCommand {
@@ -96,17 +90,20 @@ impl EffectBuilder {
     /// Spawns an observer watching the actor's attributes on the modifier entity.
     /// When OnValueChanged is triggered, it takes the current value of the attribute,
     /// it applies the scaling factor and updates the modifier's value to the new value.  
-    pub fn modify_by_ref<T, S>(mut self, scaling_factor: f32) -> Self
+    pub fn modify_by_ref<T, S>(mut self, scaling_factor: f64) -> Self
     where
         T: AttributeComponent + Component<Mutability = Mutable>,
         S: AttributeComponent + Component<Mutability = Mutable>,
     {
         let mut observer = Observer::new(
-            move |trigger: Trigger<OnAttributeValueChanged>,
-                  mut modifiers: Query<&mut Modifier<T>>,
-                  attributes: Query<&S>| {
+            // When the source attribute changes, update the modifier of the target attribute.
+            move |trigger: Trigger<OnAttributeValueChanged<S>>,
+                  attributes: Query<&S>,
+                  mut modifiers: Query<&mut Modifier<T>>| {
                 debug!(
-                    "Observer triggered on {:?} from {:?}",
+                    "Observer <{}->{}> triggered: {} -> {}",
+                    type_name::<S>(),
+                    type_name::<T>(),
                     trigger.target(),
                     trigger.observer()
                 );
@@ -119,18 +116,20 @@ impl EffectBuilder {
                 modifier.value.additive = scaling_factor * attribute.current_value();
             },
         );
+        observer.watch_entity(self.actor_entity);
+
         let duration = self.duration.clone();
         let period = self.period.clone();
-        observer.watch_entity(self.actor_entity);
+
         self.queue.push(move |world: &mut World| {
             let entity = world.spawn_empty().id();
             let mut entity_mut = world.entity_mut(entity);
             entity_mut.insert((
+                observer,
                 Name::new(format!("{}", type_name::<T>())),
                 Modifier::<T>::default(),
                 ModAggregator::<T>::default(),
                 Dirty::<T>::default(),
-                observer,
             ));
             match duration {
                 // The effect is instant. It must modify parents.
@@ -153,8 +152,9 @@ impl EffectBuilder {
                 .entity_mut(self.effect_entity)
                 .insert(ModAggregator::<T>::default());
         });
+        
         self.queue.push(move |world: &mut World| {
-            world.trigger_targets(OnAttributeValueChanged, self.actor_entity);
+            world.trigger_targets(OnAttributeValueChanged::<S>::default(), self.actor_entity);
         });
         self
     }

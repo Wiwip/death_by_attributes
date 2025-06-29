@@ -7,17 +7,15 @@ use bevy::time::common_conditions::on_timer;
 use bevy::window::PresentMode;
 use bevy_egui::EguiPlugin;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
-use ptree::{TreeBuilder, write_tree};
-use root_attribute::abilities::{GameAbilityBuilder, GameAbilityContainer};
+use ptree::{write_tree, TreeBuilder};
+use root_attribute::abilities::{AbilityBuilder, TryActivateAbility};
 use root_attribute::actors::ActorBuilder;
 use root_attribute::attributes::{AttributeBuilder, AttributeComponent};
-use root_attribute::effects::{EffectBuilder, EffectPeriodicTimer, Effects};
+use root_attribute::effects::{Effect, EffectBuilder, EffectOf, EffectPeriodicTimer, Effects};
 use root_attribute::modifiers::ModType::{Additive, Multiplicative};
 use root_attribute::modifiers::{ModAggregator, Modifier};
 use root_attribute::systems::recursive_pretty_print;
-use root_attribute::{
-    Actor, ActorEntityMut, DeathByAttributesPlugin, OnModifierApplied, attribute,
-};
+use root_attribute::{attribute, Actor, ActorEntityMut, AttributesPlugin};
 use std::time::Duration;
 
 attribute!(Strength);
@@ -41,7 +39,7 @@ fn main() {
             level: bevy::log::Level::DEBUG,
             ..default()
         }))
-        .add_plugins(DeathByAttributesPlugin)
+        .add_plugins(AttributesPlugin)
         .add_plugins(EguiPlugin {
             enable_multipass_for_primary_context: true,
         })
@@ -53,8 +51,9 @@ fn main() {
             display_attribute.run_if(on_timer(Duration::from_millis(32))),
         )
         .add_systems(Update, display_tree)
-        .add_systems(Update, display_modifier_tree::<Health>)
+        .add_systems(Update, display_modifier_tree::<MagicPower>)
         .add_systems(PreUpdate, inputs)
+        .add_systems(PostUpdate, display_components)
         .edit_schedule(Update, |schedule| {
             schedule.set_build_settings(ScheduleBuildSettings {
                 ambiguity_detection: LogLevel::Warn,
@@ -65,6 +64,9 @@ fn main() {
         .register_type::<EffectPeriodicTimer>()
         .register_type::<Health>()
         .register_type::<AttackPower>()
+        .register_type::<Mana>()
+        .register_type::<ManaPool>()
+        .register_type::<EffectOf>()
         .run();
 }
 
@@ -80,28 +82,29 @@ fn setup_window(mut query: Query<&mut Window>) {
     }
 }
 
+#[derive(Resource)]
+struct FireballAbility(Entity);
+
 fn setup(mut commands: Commands) {
     let _rng = rand::rng();
-    let mut ability_component = GameAbilityContainer::default();
-    ability_component.grant_ability(
-        "fireball".to_string(),
-        GameAbilityBuilder::default()
-            .with_cooldown(0.100)
-            .with_cost::<Health>(-12.0)
-            .with_activation(|_: ActorEntityMut, mut commands: Commands| {
-                info!("fireball!");
-                commands.spawn(Fireball);
-            })
-            .build(),
-    );
     let player_entity = commands.spawn_empty().id();
+    let ability = commands.spawn_empty().id();
+    commands.insert_resource(FireballAbility(ability));
+
+    AbilityBuilder::new(ability, player_entity)
+        .with_activation(|_: ActorEntityMut, _: Commands| {
+            info!("fireball!");
+        })
+        .with_cooldown(1.0)
+        .with_cost::<Mana>(12.0)
+        .build(&mut commands);
 
     ActorBuilder::new(player_entity)
         .with::<Strength>(12.0)
         .with::<Agility>(7.0)
         .with::<Health>(100.0)
-        .max::<Health, MaxHealth>(0.0)
-        .with::<MaxHealth>(100.0)
+        .clamp_max::<Health, MaxHealth>(0.0)
+        .with::<MaxHealth>(1000.0)
         .with::<HealthRegen>(2.0)
         .with::<Mana>(100.0)
         .with::<ManaPool>(100.0)
@@ -111,13 +114,22 @@ fn setup(mut commands: Commands) {
         .with_component((Name::new("Player"), Player))
         .commit(&mut commands);
 
-    AttributeBuilder::<AttackPower>::new(player_entity)
+    /*AttributeBuilder::<AttackPower>::new(player_entity)
         .by_ref::<Health>(0.10)
         .by_ref::<MaxHealth>(0.25)
         .commit(&mut commands);
     AttributeBuilder::<MagicPower>::new(player_entity)
-        .by_ref::<MaxHealth>(1.0)
-        .by_ref::<AttackPower>(1.0)
+        .by_ref::<ManaPool>(0.5)
+        .by_ref::<MaxHealth>(0.01)
+        .commit(&mut commands);*/
+
+    let effect_entity = commands.spawn_empty().id();
+    EffectBuilder::new(player_entity, effect_entity)
+        .with_permanent_duration()
+        .with_continuous_application()
+        .with_name("MagicPower Increase".into())
+        .modify_by_ref::<MagicPower, ManaPool>(0.15)
+        //.modify_by_scalar::<MaxHealth>(0.10, Multiplicative)
         .commit(&mut commands);
 
     // Effect 1 - Passive Max Health Boost
@@ -125,8 +137,7 @@ fn setup(mut commands: Commands) {
     EffectBuilder::new(player_entity, effect_entity)
         .with_permanent_duration()
         .with_continuous_application()
-        .with_name("MaxHealth Buff".into())
-        .modify_by_scalar::<MaxHealth>(10.0, Additive)
+        .with_name("MaxHealth Increase".into())
         .modify_by_scalar::<MaxHealth>(0.10, Multiplicative)
         .commit(&mut commands);
 
@@ -136,7 +147,16 @@ fn setup(mut commands: Commands) {
         .with_permanent_duration()
         .with_periodic_application(1.0)
         .with_name("Health Regen".into())
-        .modify_by_scalar::<Health>(5.0, Additive)
+        .modify_by_scalar::<Health>(1.0, Additive)
+        .modify_by_ref::<Health, HealthRegen>(1.0)
+        .commit(&mut commands);
+
+    // Effect 3 - Instant Damage Taken
+    let effect_entity = commands.spawn_empty().id();
+    EffectBuilder::new(player_entity, effect_entity)
+        .with_instant_application()
+        .with_name("Damage Hit".into())
+        .modify_by_scalar::<Health>(-35.0, Additive)
         .commit(&mut commands);
 }
 
@@ -179,17 +199,19 @@ fn setup_ui(mut commands: Commands) {
 }
 
 fn display_attribute(
-    q_player: Query<(&Health, &MaxHealth, &AttackPower, &MagicPower), With<Player>>,
+    q_player: Query<(&Health, &MaxHealth, &AttackPower, &MagicPower, &Mana, &ManaPool), With<Player>>,
     mut q_health: Query<&mut Text, With<PlayerHealthMarker>>,
 ) {
-    for (health, max_health, ap, mp) in q_player.iter() {
+    for (health, max_health, ap, mp, mana, mana_pool) in q_player.iter() {
         if let Ok(mut text) = q_health.single_mut() {
             text.0 = format!(
                 "Values: Current [Base]
 Health: {:.1} [{:.1}]
 Max Health: {:.1} [{:.1}]
 AP: {:.1} [{:.1}]
-MP: {:.1} [{:.1}]",
+MP: {:.1} [{:.1}]
+Mana: {:.1} [{:.1}]
+Mana Pool: {:.1} [{:.1}]",
                 health.current_value(),
                 health.base_value(),
                 max_health.current_value(),
@@ -198,6 +220,10 @@ MP: {:.1} [{:.1}]",
                 ap.base_value(),
                 mp.current_value(),
                 mp.base_value(),
+                mana.current_value(),
+                mana.base_value(),
+                mana_pool.current_value(),
+                mana_pool.base_value(),
             );
         }
     }
@@ -239,26 +265,56 @@ pub fn display_modifier_tree<T: Component + AttributeComponent>(
     }
 }
 
+pub fn display_components(
+    // Get the world for introspection
+    world: &World,
+    // Get the entity ID of our player
+    effects: Query<Entity, With<Effect>>,
+    input: Res<ButtonInput<KeyCode>>,
+) {
+    // We only run this once when Space is pressed
+    if !input.just_pressed(KeyCode::KeyP) {
+        return;
+    }
+
+    for effect in effects.iter() {
+        let Ok(effect_ref) = world.get_entity(effect) else {
+            continue;
+        };
+
+        let archetype = effect_ref.archetype();
+        for component_id in archetype.components() {
+            // Using the component_id, we can get ComponentInfo, which has the name
+            if let Some(component_info) = world.components().get_info(component_id) {
+                println!("  - {}", component_info.name());
+            }
+        }
+    }
+}
+
 fn inputs(
     mut players: Query<Entity, With<Player>>,
     keys: Res<ButtonInput<KeyCode>>,
+    ability: Res<FireballAbility>,
     mut commands: Commands,
 ) {
     if let Ok(player_entity) = players.single_mut() {
         if keys.just_pressed(KeyCode::Space) {
-            commands.trigger_targets(
+            /*commands.trigger_targets(
                 OnModifierApplied::<Health> {
                     phantom_data: Default::default(),
                     value: ModAggregator::<Health>::additive(-12.0),
                 },
                 player_entity,
-            );
+            );*/
+
+            commands.trigger_targets(TryActivateAbility, ability.0);
         }
     }
 }
 
 fn do_gameplay_stuff() {
-    std::thread::sleep(Duration::from_millis(15));
+    std::thread::sleep(Duration::from_millis(12));
 }
 
 /// Prints the hierarchy of modifiers in a tree structure for a given `Entity` and its descendants.

@@ -7,8 +7,8 @@ use root_attribute::attributes::AttributeComponent;
 use root_attribute::effects::{EffectBuilder, EffectOf, Effects};
 use root_attribute::modifiers::ModType::Additive;
 use root_attribute::modifiers::{ModAggregator, Modifier};
-use root_attribute::systems::{flag_dirty_modifier_nodes, update_effect_tree_system};
-use root_attribute::{Actor, DeathByAttributesPlugin, OnModifierApplied, attribute};
+use root_attribute::systems::{flag_dirty_attribute, update_effect_tree_system};
+use root_attribute::{Actor, OnModifierApplied, attribute, AttributesPlugin};
 
 #[derive(Component)]
 struct Mark;
@@ -20,12 +20,12 @@ attribute!(Damage);
 fn main() {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
-        .add_plugins(DeathByAttributesPlugin)
+        .add_plugins(AttributesPlugin)
         .add_systems(Startup, setup)
         .add_systems(
             PreUpdate,
             (
-                flag_dirty_modifier_nodes::<Health>,
+                flag_dirty_attribute::<Health>,
                 print_effect_hierarchy_system::<Health>,
                 update_effect_tree_system::<Health>,
                 print_effect_hierarchy_system::<Health>,

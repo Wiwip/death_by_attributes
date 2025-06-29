@@ -1,13 +1,10 @@
 use crate::attributes::{
-    AttributeClamp, AttributeComponent, attribute_clamp_system, update_max_clamp_values,
+    attribute_clamp_system, update_max_clamp_values, AttributeClamp, AttributeComponent,
 };
-use crate::systems::{
-    flag_dirty_attribute_nodes, flag_dirty_modifier_nodes, tick_effects_periodic_timer,
-    trigger_instant_effect_applied, trigger_periodic_effect, update_effect_tree_system,
-};
+use crate::systems::{flag_dirty_attribute, flag_dirty_modifier, tick_effects_periodic_timer, trigger_instant_effect_applied, trigger_periodic_effect, update_effect_tree_system};
 use crate::{
     Actor, ObserverMarker, OnAttributeValueChanged, OnBaseValueChange, OnModifierApplied,
-    RegisteredSystemCache,
+    RegisteredPhantomSystem,
 };
 use bevy::app::{PostUpdate, PreUpdate};
 use bevy::ecs::component::Mutable;
@@ -38,7 +35,7 @@ impl ActorBuilder {
         }
     }
 
-    pub fn with<T>(mut self, value: f32) -> ActorBuilder
+    pub fn with<T>(mut self, value: f64) -> ActorBuilder
     where
         T: Component<Mutability = Mutable> + AttributeComponent,
     {
@@ -66,7 +63,7 @@ impl ActorBuilder {
         self
     }
 
-    pub fn max<T, C>(mut self, min: f32) -> ActorBuilder
+    pub fn clamp_max<T, C>(mut self, min: f64) -> ActorBuilder
     where
         T: Component<Mutability = Mutable> + AttributeComponent,
         C: Component<Mutability = Mutable> + AttributeComponent,
@@ -74,9 +71,9 @@ impl ActorBuilder {
         self.queue.push(move |world: &mut World| {
             world
                 .entity_mut(self.entity)
-                .insert(AttributeClamp::<T>::MinMax(min, f32::MAX))
+                .insert(AttributeClamp::<T>::MinMax(min, f64::MAX))
                 .observe(update_max_clamp_values::<T, C>);
-            world.trigger_targets(OnAttributeValueChanged, self.entity);
+            world.trigger_targets(OnAttributeValueChanged::<T>::default(), self.entity);
         });
         self
     }
@@ -116,9 +113,9 @@ struct AttributeInitCommand<T> {
 impl<T: Component<Mutability = Mutable> + AttributeComponent> Command for AttributeInitCommand<T> {
     fn apply(self, world: &mut World) -> () {
         // Systems cannot be added multiple time. We use a resource as a 'marker'.
-        if !world.contains_resource::<RegisteredSystemCache<T>>() {
+        if !world.contains_resource::<RegisteredPhantomSystem<T>>() {
             debug!("Registered Systems for: {}.", type_name::<T>());
-            world.init_resource::<RegisteredSystemCache<T>>();
+            world.init_resource::<RegisteredPhantomSystem<T>>();
             if !world.contains_resource::<Events<OnBaseValueChange<T>>>() {
                 EventRegistry::register_event::<OnBaseValueChange<T>>(world);
             }
@@ -130,8 +127,8 @@ impl<T: Component<Mutability = Mutable> + AttributeComponent> Command for Attrib
                     .add_systems(trigger_periodic_effect::<T>.after(tick_effects_periodic_timer));
             });
             world.schedule_scope(PostUpdate, |_, schedule| {
-                schedule.add_systems(flag_dirty_modifier_nodes::<T>);
-                schedule.add_systems(flag_dirty_attribute_nodes::<T>);
+                schedule.add_systems(flag_dirty_attribute::<T>);
+                schedule.add_systems(flag_dirty_modifier::<T>);
                 schedule.add_systems(attribute_clamp_system::<T>);
             });
         }

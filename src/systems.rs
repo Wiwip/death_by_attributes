@@ -8,6 +8,7 @@ use bevy::prelude::*;
 use ptree::{TreeBuilder, print_tree};
 use std::any::type_name;
 use std::ops::DerefMut;
+use crate::abilities::AbilityCooldown;
 
 pub fn tick_effects_periodic_timer(mut query: Query<&mut EffectPeriodicTimer>, time: Res<Time>) {
     query.par_iter_mut().for_each(|mut timer| {
@@ -26,38 +27,44 @@ pub fn tick_effects_duration_timer(mut query: Query<&mut EffectDuration>, time: 
     });
 }
 
-pub fn flag_dirty_modifier_nodes<T: Component>(
+pub fn tick_ability_cooldown(mut query: Query<&mut AbilityCooldown>, time: Res<Time>) {
+    query.par_iter_mut().for_each(|mut cooldown| {
+        cooldown.0.tick(time.delta());
+    });   
+}
+
+pub fn flag_dirty_modifier<T: Component>(
     changed: Query<Entity, Changed<Modifier<T>>>,
     parents: Query<&EffectOf>,
     dirty: Query<&Dirty<T>>,
     mut command: Commands,
 ) {
     'outer: for changed in changed.iter() {
-        command.entity(changed).insert(Dirty::<T>::default());
+        command.entity(changed).try_insert(Dirty::<T>::default());
         for entity in parents.iter_ancestors(changed) {
             // Stop marking as the rest of the hierarchy is already dirty
             if dirty.contains(entity) {
                 continue 'outer;
             }
-            command.entity(entity).insert(Dirty::<T>::default());
+            command.entity(entity).try_insert(Dirty::<T>::default());
         }
     }
 }
 
-pub fn flag_dirty_attribute_nodes<T: Component>(
+pub fn flag_dirty_attribute<T: Component>(
     changed: Query<Entity, Changed<T>>,
     parents: Query<&EffectOf>,
     dirty: Query<&Dirty<T>>,
     mut command: Commands,
 ) {
     'outer: for changed in changed.iter() {
-        command.entity(changed).insert(Dirty::<T>::default());
+        command.entity(changed).try_insert(Dirty::<T>::default());
         for entity in parents.iter_ancestors(changed) {
             // Stop marking as the rest of the hierarchy is already dirty
             if dirty.contains(entity) {
                 continue 'outer;
             }
-            command.entity(entity).insert(Dirty::<T>::default());
+            command.entity(entity).try_insert(Dirty::<T>::default());
         }
     }
 }
@@ -80,6 +87,7 @@ pub fn update_effect_tree_system<T: Component<Mutability = Mutable> + AttributeC
         update_effect_tree(
             &mut visited_nodes,
             actor_entity,
+            actor_entity,
             descendants,
             modifiers,
             dirty,
@@ -93,6 +101,7 @@ pub fn update_effect_tree_system<T: Component<Mutability = Mutable> + AttributeC
 
 fn update_effect_tree<T: Component<Mutability = Mutable> + AttributeComponent>(
     visited_nodes: &mut usize,
+    actor_entity: Entity,
     current_entity: Entity,
     descendants: Query<&Effects, Without<EffectPeriodicTimer>>,
     modifiers: Query<&Modifier<T>>,
@@ -121,6 +130,7 @@ fn update_effect_tree<T: Component<Mutability = Mutable> + AttributeComponent>(
                 .map(|child| {
                     update_effect_tree::<T>(
                         visited_nodes,
+                        actor_entity,
                         child,
                         descendants,
                         modifiers,
@@ -146,8 +156,11 @@ fn update_effect_tree<T: Component<Mutability = Mutable> + AttributeComponent>(
     // Edit the current attribute if the node has one
     if let Ok(mut attribute) = attributes.get_mut(current_entity) {
         let new_val = aggregator.evaluate(attribute.base_value());
-        attribute.set_current_value(new_val);
-        commands.trigger_targets(OnAttributeValueChanged, current_entity);
+        
+        if (new_val - &attribute.current_value()).abs() > f64::EPSILON {
+            commands.trigger_targets(OnAttributeValueChanged::<T>::default(), actor_entity);
+            attribute.set_current_value(new_val);
+        }
     };
     // Cleans the node
     commands.entity(current_entity).remove::<Dirty<T>>();
@@ -220,7 +233,7 @@ pub fn trigger_instant_effect_applied<T: Component<Mutability = Mutable> + Attri
         },
         trigger.target(),
     );
-    commands.trigger_targets(OnAttributeValueChanged, trigger.target());
+    commands.trigger_targets(OnAttributeValueChanged::<T>::default(), trigger.target());
 }
 
 /// Despawn instant effects right after they were added as we cannot remove them in the triggers directly
@@ -229,7 +242,7 @@ pub fn despawn_instant_effect(
     mut commands: Commands,
 ) {
     for effect in effects.iter() {
-        commands.entity(effect).despawn();
+        commands.entity(effect).try_despawn();
     }
 }
 
@@ -254,7 +267,7 @@ pub fn trigger_periodic_effect<T: Component<Mutability = Mutable> + AttributeCom
                 },
                 children,
             );
-            commands.trigger_targets(OnAttributeValueChanged, children);
+            commands.trigger_targets(OnAttributeValueChanged::<T>::default(), children);
         }
     }
 }

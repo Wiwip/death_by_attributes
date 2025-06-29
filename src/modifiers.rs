@@ -18,7 +18,7 @@ pub struct Modifier<T> {
 }
 
 impl<T: 'static> Modifier<T> {
-    pub fn new(value: f32, mod_type: ModType) -> Self {
+    pub fn new(value: f64, mod_type: ModType) -> Self {
         Self {
             _phantom: Default::default(),
             value: ModAggregator::new(value, mod_type),
@@ -79,9 +79,9 @@ pub enum ModType {
 #[derive(Component, Copy, Reflect)]
 pub struct ModAggregator<T> {
     phantom_data: PhantomData<T>,
-    pub additive: f32,
-    pub multi: f32,
-    pub overrule: Option<f32>,
+    pub additive: f64,
+    pub multi: f64,
+    pub overrule: Option<f64>,
 }
 
 impl<T> Default for ModAggregator<T> {
@@ -96,7 +96,7 @@ impl<T> Default for ModAggregator<T> {
 }
 
 impl<T> ModAggregator<T> {
-    pub(crate) fn new(magnitude: f32, mod_type: ModType) -> ModAggregator<T> {
+    pub(crate) fn new(magnitude: f64, mod_type: ModType) -> ModAggregator<T> {
         match mod_type {
             ModType::Additive => ModAggregator::<T>::additive(magnitude),
             ModType::Multiplicative => ModAggregator::<T>::multiplicative(magnitude),
@@ -104,14 +104,14 @@ impl<T> ModAggregator<T> {
         }
     }
 
-    pub fn evaluate(&self, value: f32) -> f32 {
+    pub fn evaluate(&self, value: f64) -> f64 {
         match self.overrule {
             None => (value + self.additive) * (1.0 + self.multi),
             Some(value) => value,
         }
     }
 
-    pub fn additive(value: f32) -> Self {
+    pub fn additive(value: f64) -> Self {
         ModAggregator::<T> {
             phantom_data: PhantomData,
             additive: value,
@@ -119,7 +119,7 @@ impl<T> ModAggregator<T> {
             overrule: None,
         }
     }
-    pub fn multiplicative(value: f32) -> Self {
+    pub fn multiplicative(value: f64) -> Self {
         ModAggregator::<T> {
             phantom_data: PhantomData,
             additive: 0.0,
@@ -127,7 +127,7 @@ impl<T> ModAggregator<T> {
             overrule: None,
         }
     }
-    pub fn overrule(value: f32) -> Self {
+    pub fn overrule(value: f64) -> Self {
         ModAggregator::<T> {
             phantom_data: PhantomData,
             additive: 0.0,
@@ -176,10 +176,10 @@ impl<T> Mul<ModAggregator<T>> for ModAggregator<T> {
     }
 }
 
-impl<T> Mul<f32> for ModAggregator<T> {
+impl<T> Mul<f64> for ModAggregator<T> {
     type Output = Self;
 
-    fn mul(self, rhs: f32) -> Self::Output {
+    fn mul(self, rhs: f64) -> Self::Output {
         Self {
             phantom_data: Default::default(),
             additive: self.additive * rhs,
