@@ -1,5 +1,4 @@
-use crate::effects::{observe_effect_application, Effect, EffectDuration, EffectPeriodicTimer};
-use crate::effects::{EffectOf, Effects};
+use crate::effects::{Effect, EffectDuration, EffectPeriodicTimer, OnAddStackEffect, observe_effect_application, read_add_stack_event, EffectSource, EffectTarget, EffectTargetedBy, EffectSources};
 use crate::modifiers::ModAggregator;
 use crate::systems::{
     tick_ability_cooldown, tick_effect_duration_timers, tick_effects_periodic_timer,
@@ -12,7 +11,7 @@ pub mod abilities;
 pub mod actors;
 pub mod assets;
 pub mod attributes;
-pub mod condition;
+pub mod conditions;
 pub mod context;
 pub mod effects;
 pub mod modifiers;
@@ -22,7 +21,7 @@ pub mod systems;
 use crate::abilities::{Abilities, AbilityActivation, AbilityCooldown, AbilityCost, AbilityOf};
 use crate::assets::GameEffect;
 use crate::attributes::Attribute;
-use crate::condition::evaluate_effect_conditions;
+use crate::conditions::evaluate_effect_conditions;
 pub use attributes_macro::Attribute;
 use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
 
@@ -35,9 +34,11 @@ impl Plugin for AttributesPlugin {
             .add_systems(PreUpdate, tick_ability_cooldown)
             .add_systems(PreUpdate, evaluate_effect_conditions)
             .add_observer(observe_effect_application)
+            .add_systems(PostUpdate, read_add_stack_event)
             .init_schedule(PreUpdate)
             .init_schedule(PostUpdate)
-            .init_asset::<GameEffect>();
+            .init_asset::<GameEffect>()
+            .add_event::<OnAddStackEffect>();
     }
 }
 
@@ -47,7 +48,10 @@ pub type ActorEntityMut<'w> = EntityMutExcept<
         // We exclude anything related to effects
         ChildOf,
         Effect,
-        Effects,
+        EffectSource,
+        EffectTarget,
+        EffectTargetedBy,
+        EffectSources,
         EffectPeriodicTimer,
         EffectDuration,
         Abilities,
@@ -64,7 +68,10 @@ pub type ActorEntityRef<'w> = EntityRefExcept<
         // We exclude anything related to effects
         ChildOf,
         Effect,
-        Effects,
+        EffectSource,
+        EffectTarget,
+        EffectTargetedBy,
+        EffectSources,
         EffectPeriodicTimer,
         EffectDuration,
         Abilities,
@@ -93,7 +100,7 @@ impl<T> Default for Dirty<T> {
 }
 
 #[derive(Event, Clone)]
-#[event(traversal = &'static EffectOf, auto_propagate)]
+#[event(traversal = &'static EffectTarget, auto_propagate)]
 pub struct OnAttributeValueChanged<T> {
     _marker: PhantomData<T>,
 }
@@ -123,7 +130,7 @@ pub struct OnCurrentValueChange<A: Attribute> {
 }
 
 #[derive(Event)]
-#[event(traversal = &'static EffectOf, auto_propagate)]
+#[event(traversal = &'static EffectTarget, auto_propagate)]
 pub struct ApplyModifier<T> {
     pub phantom_data: PhantomData<T>,
     pub value: ModAggregator<T>,

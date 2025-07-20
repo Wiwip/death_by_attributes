@@ -1,8 +1,11 @@
 use crate::attributes::{
-    AttributeClamp, Attribute, attribute_clamp_system, update_max_clamp_values,
+    Attribute, AttributeClamp, clamp_attributes_system, update_max_clamp_values,
 };
 use crate::modifiers::ModAggregator;
-use crate::systems::{flag_dirty_attribute, flag_dirty_modifier, tick_effects_periodic_timer, apply_periodic_effect, update_effect_tree_system, apply_modifier_on_trigger};
+use crate::systems::{
+    apply_modifier_on_trigger, apply_periodic_effect, flag_dirty_attribute, flag_dirty_modifier,
+    tick_effects_periodic_timer, update_effect_tree_system,
+};
 use crate::{
     Actor, ApplyModifier, OnAttributeValueChanged, OnBaseValueChange, RegisteredPhantomSystem,
 };
@@ -99,7 +102,6 @@ impl ActorBuilder {
     }
 }
 
-
 struct AttributeInitCommand<T> {
     phantom: PhantomData<T>,
 }
@@ -114,16 +116,14 @@ impl<T: Component<Mutability = Mutable> + Attribute> Command for AttributeInitCo
                 EventRegistry::register_event::<OnBaseValueChange<T>>(world);
             }
             world.schedule_scope(PreUpdate, |_, schedule| {
-                schedule.add_systems(
-                    update_effect_tree_system::<T>.after(apply_periodic_effect::<T>),
-                );
+                schedule.add_systems(apply_periodic_effect::<T>.after(tick_effects_periodic_timer));
                 schedule
-                    .add_systems(apply_periodic_effect::<T>.after(tick_effects_periodic_timer));
+                    .add_systems(update_effect_tree_system::<T>.after(apply_periodic_effect::<T>));
             });
             world.schedule_scope(PostUpdate, |_, schedule| {
                 schedule.add_systems(flag_dirty_attribute::<T>);
                 schedule.add_systems(flag_dirty_modifier::<T>);
-                schedule.add_systems(attribute_clamp_system::<T>);
+                schedule.add_systems(clamp_attributes_system::<T>);
             });
         }
     }

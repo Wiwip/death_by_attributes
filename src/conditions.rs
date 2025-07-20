@@ -1,6 +1,6 @@
 use crate::assets::GameEffect;
 use crate::attributes::Attribute;
-use crate::effects::{Effect, EffectInactive, EffectOf};
+use crate::effects::{Effect, EffectInactive, EffectSource, EffectTarget};
 use bevy::ecs::relationship::Relationship;
 use bevy::ecs::world::EntityRefExcept;
 use bevy::prelude::*;
@@ -8,7 +8,7 @@ use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::ops::RangeBounds;
 
-pub type EffectEntityRef<'w> = EntityRefExcept<'w, (EffectOf,)>;
+pub type EffectEntityRef<'w> = EntityRefExcept<'w, (EffectTarget, EffectSource)>;
 
 #[derive(Component, Default)]
 pub struct Conditions(pub Vec<ErasedCondition>);
@@ -70,7 +70,7 @@ where
 }
 
 pub(crate) fn evaluate_effect_conditions(
-    mut query: Query<(Entity, &Effect, &EffectOf, Option<&EffectInactive>)>,
+    mut query: Query<(Entity, &Effect, &EffectTarget, Option<&EffectInactive>)>,
     parents: Query<EffectEntityRef>,
     effects: Res<Assets<GameEffect>>,
     mut commands: Commands,
@@ -88,13 +88,10 @@ pub(crate) fn evaluate_effect_conditions(
 
         // If it returns, the effect is active
         let should_activate = effect.conditions.iter().all(|condition| {
-            condition
-                .0
-                .check(entity_ref)
-                .unwrap_or_else(|err| {
-                    error!("Error checking condition: {err}");
-                    false
-                })
+            condition.0.check(entity_ref).unwrap_or_else(|err| {
+                error!("Error checking condition: {err}");
+                false
+            })
         });
 
         // Disable the effect if any of the conditions returns false
@@ -102,6 +99,7 @@ pub(crate) fn evaluate_effect_conditions(
             Some(_) => {
                 // Effect is already inactive.
                 if should_activate {
+                    println!("activating effect");
                     commands
                         .entity(effect_entity)
                         .try_remove::<EffectInactive>();
@@ -110,6 +108,7 @@ pub(crate) fn evaluate_effect_conditions(
             None => {
                 // Effect is active.
                 if !should_activate {
+                    println!("deactivating effect");
                     commands.entity(effect_entity).try_insert(EffectInactive);
                 }
             }
@@ -120,33 +119,10 @@ pub(crate) fn evaluate_effect_conditions(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::actors::ActorBuilder;
+    use crate::{AttributesPlugin, attribute};
     use bevy::prelude::*;
     use std::ops::Range;
-    use crate::actors::ActorBuilder;
-    use crate::{attribute, AttributesPlugin};
 
     attribute!(TestAttribute);
-    
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -83,7 +83,7 @@ pub enum AttributeClamp<A> {
     MinMax(f64, f64),
 }
 
-pub(crate) fn attribute_clamp_system<A: Component<Mutability = Mutable> + Attribute>(
+pub(crate) fn clamp_attributes_system<A: Component<Mutability = Mutable> + Attribute>(
     mut query: Query<(&mut A, &AttributeClamp<A>)>,
 ) {
     for (mut attribute, clamp) in query.iter_mut() {

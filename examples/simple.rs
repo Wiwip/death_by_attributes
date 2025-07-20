@@ -11,10 +11,10 @@ use root_attribute::actors::ActorBuilder;
 use root_attribute::assets::GameEffect;
 use root_attribute::attributes::Attribute;
 use root_attribute::context::EffectContext;
-use root_attribute::effects::{Effect, EffectBuilder, EffectOf, EffectPeriodicTimer, Effects};
+use root_attribute::effects::{Effect, EffectBuilder, EffectPeriodicTimer, EffectSource, EffectSources, EffectTarget, EffectTargetedBy};
 use root_attribute::modifiers::ModType::{Additive, Multiplicative};
 use root_attribute::modifiers::{AttributeModifier, ModAggregator, ModTarget, ModifierMarker};
-use root_attribute::stacks::EffectStackingPolicy;
+use root_attribute::stacks::{EffectStackingPolicy, Stacks};
 use root_attribute::systems::recursive_pretty_print;
 use root_attribute::{Actor, ActorEntityMut, AttributesPlugin, attribute};
 use std::fmt::Debug;
@@ -68,15 +68,18 @@ fn main() {
             });
         })
         .add_observer(damage_event_calculations)
-        .register_type::<Effects>()
         .register_type::<EffectPeriodicTimer>()
         .register_type::<Health>()
         .register_type::<AttackPower>()
         .register_type::<Mana>()
         .register_type::<ManaPool>()
-        .register_type::<EffectOf>()
         .register_type::<AttributeModifier<AttackPower>>()
         .register_type::<AttributeModifier<MagicPower>>()
+        .register_type::<EffectSources>()
+        .register_type::<EffectTargetedBy>()
+        .register_type::<Stacks>()
+        .register_type::<EffectSource>()
+        .register_type::<EffectTarget>()
         .run();
 }
 
@@ -121,7 +124,7 @@ fn setup_effects(mut effects: ResMut<Assets<GameEffect>>, mut commands: Commands
             .with_continuous_application()
             .with_name("MagicPower".into())
             .modify_by_scalar::<MagicPower>(10.0, Additive, ModTarget::Target)
-            .with_condition::<Health>(0.0..120.0)
+            .with_condition::<Health>(20.0..100.0)
             .with_stacking_policy(EffectStackingPolicy::Add {
                 count: 1,
                 max_stack: 10,
@@ -178,7 +181,7 @@ fn setup(mut commands: Commands, mut ctx: EffectContext, efx: Res<EffectsDatabas
         .with::<Strength>(12.0)
         .with::<Agility>(7.0)
         .with::<Intelligence>(1.0)
-        .with::<Health>(100.0)
+        .with::<Health>(85.0)
         .clamp_max::<Health, MaxHealth>(0.0)
         .with::<MaxHealth>(1000.0)
         .with::<HealthRegen>(2.0)
@@ -281,13 +284,14 @@ Mana Pool: {:.1} [{:.1}]",
 
 pub fn display_tree(
     actors: Query<Entity, With<Actor>>,
-    effects: Query<&Effects>,
+    effects: Query<&EffectTargetedBy>,
     entities: Query<&Name>,
+    stacks: Query<&Stacks>,
     mut text: Query<&mut Text, With<EntityHealthMarker>>,
 ) {
     let mut builder = TreeBuilder::new("Effects Tree".into());
     for actor in actors.iter() {
-        recursive_pretty_print(actor, &mut builder, effects, entities);
+        recursive_pretty_print(actor, &mut builder, effects, stacks, entities);
     }
     let tree = builder.build();
     if let Ok(mut text) = text.single_mut() {
@@ -299,7 +303,7 @@ pub fn display_tree(
 
 pub fn display_modifier_tree<T: Component + Attribute>(
     actors: Query<Entity, With<Actor>>,
-    modifiers: Query<&Effects>,
+    modifiers: Query<&EffectTargetedBy>,
     entities: Query<(
         &Name,
         Option<&AttributeModifier<T>>,
@@ -324,8 +328,8 @@ fn display_components(
     world: &World,
     type_registry: Res<AppTypeRegistry>,
     // Get the entity ID of our player
-    players: Query<(Entity, EntityRef, &Effects), With<Player>>,
-    effects: Query<(EntityRef, &Effects), With<Effect>>,
+    players: Query<(Entity, EntityRef, &EffectTargetedBy), With<Player>>,
+    effects: Query<(EntityRef, &EffectTargetedBy), With<Effect>>,
     modifiers: Query<EntityRef, With<ModifierMarker>>,
     input: Res<ButtonInput<KeyCode>>,
 ) {
@@ -424,7 +428,7 @@ fn do_gameplay_stuff() {
 pub fn print_modifier_hierarchy<T: Component + Attribute>(
     current_entity: Entity,
     builder: &mut TreeBuilder,
-    descendants: Query<&Effects>,
+    descendants: Query<&EffectTargetedBy>,
     entities: Query<(
         &Name,
         Option<&AttributeModifier<T>>,

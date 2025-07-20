@@ -1,20 +1,17 @@
-use crate::abilities::{Abilities, AbilityActivation, AbilityCooldown, AbilityCost, AbilityOf};
+use crate::ActorEntityMut;
 use crate::assets::GameEffect;
 use crate::attributes::Attribute;
-use crate::condition::{AttributeCondition, EffectEntityRef, ErasedCondition};
+use crate::conditions::{AttributeCondition, ErasedCondition};
 use crate::modifiers::{
-    AttributeModifier, ModAggregator, ModTarget, ModType, Modifier, ModifierFn, ModifierRef,
+    AttributeModifier, ModAggregator, ModTarget, ModType, ModifierFn, ModifierOf, ModifierRef,
+    Mutator,
 };
-use crate::stacks::EffectStackingPolicy;
 use crate::stacks::Stacks;
-use crate::{ActorEntityMut, OnAttributeValueChanged};
-use bevy::animation::AnimationTarget;
+use crate::stacks::{EffectStackingPolicy, apply_stacking_policy};
 use bevy::ecs::component::Mutable;
-use bevy::ecs::query::QueryEntityError;
 use bevy::ecs::system::IntoObserverSystem;
-use bevy::ecs::world::{CommandQueue, EntityMutExcept, EntityRefExcept, FilteredEntityMut};
 use bevy::prelude::Name;
-use bevy::prelude::TimerMode::{Once, Repeating};
+use bevy::prelude::TimerMode::Repeating;
 use bevy::prelude::*;
 use std::fmt::{Debug, Formatter};
 use std::ops::Range;
@@ -38,25 +35,29 @@ pub struct OnEffectStatusChangeEvent(pub EffectStatus);
 #[component(storage = "SparseSet")]
 pub struct EffectInactive;
 
-/// The entity that this effect is targeting.
-#[derive(Component, Reflect, Debug)]
-#[relationship(relationship_target = Effects)]
-pub struct EffectOf(pub Entity);
-
-/// All effects that are targeting this entity.
-#[derive(Component, Reflect, Debug)]
-#[relationship_target(relationship = EffectOf, linked_spawn)]
-pub struct Effects(Vec<Entity>);
-
 #[derive(Component, Debug, Default, Deref)]
 #[require(Stacks)]
 pub struct Effect(pub Handle<GameEffect>);
 
-/*#[derive(Component, Debug)]
+/// Who created this effect?
+#[derive(Component, Reflect, Debug)]
+#[relationship(relationship_target = EffectSources)]
 pub struct EffectSource(pub Entity);
 
-#[derive(Component, Debug)]
-pub struct EffectTarget(pub Entity);*/
+/// All effects originating from this entity
+#[derive(Component, Reflect, Debug)]
+#[relationship_target(relationship = EffectSource, linked_spawn)]
+pub struct EffectSources(Vec<Entity>);
+
+/// All effects targeting this entity
+#[derive(Component, Reflect, Debug)]
+#[relationship(relationship_target = EffectTargetedBy)]
+pub struct EffectTarget(pub Entity);
+
+/// All effects that are targeting this entity.
+#[derive(Component, Reflect, Debug)]
+#[relationship_target(relationship = EffectTarget, linked_spawn)]
+pub struct EffectTargetedBy(Vec<Entity>);
 
 #[derive(Component, Reflect, Deref, DerefMut, Clone)]
 pub struct EffectPeriodicTimer(pub Timer);
@@ -92,8 +93,8 @@ impl Debug for EffectDuration {
 
 pub struct EffectBuilder {
     effect_entity_commands: Vec<Box<ModifierFn>>,
-    effects: Vec<Box<dyn Modifier>>,
-    modifiers: Vec<Box<dyn Modifier>>,
+    effects: Vec<Box<dyn Mutator>>,
+    modifiers: Vec<Box<dyn Mutator>>,
     duration: EffectDurationPolicy,
     period: Option<EffectPeriodicTimer>,
     conditions: Vec<ErasedCondition>,
@@ -115,7 +116,7 @@ impl EffectBuilder {
         }
     }
 
-    pub fn modify_by_scalar<T: Attribute + Component<Mutability = Mutable>>(
+    pub fn modify_by_scalar<T: Attribute + Component<Mutability=Mutable>>(
         mut self,
         magnitude: f64,
         mod_type: ModType,
@@ -143,8 +144,8 @@ impl EffectBuilder {
         mod_target: ModTarget,
     ) -> Self
     where
-        T: Attribute + Component<Mutability = Mutable>,
-        S: Attribute + Component<Mutability = Mutable>,
+        T: Attribute + Component<Mutability=Mutable>,
+        S: Attribute + Component<Mutability=Mutable>,
     {
         self.effect_entity_commands.push(Box::new(
             move |effect_entity: &mut EntityCommands, _: Entity| {
@@ -172,7 +173,7 @@ impl EffectBuilder {
         self
     }
 
-    pub fn with_condition<T: Attribute + Component<Mutability = Mutable>>(
+    pub fn with_condition<T: Attribute + Component<Mutability=Mutable>>(
         mut self,
         condition_check: Range<f64>,
     ) -> Self {
@@ -236,7 +237,7 @@ impl EffectBuilder {
             duration: self.duration,
             period: self.period,
             conditions: self.conditions,
-            stacking_policy: EffectStackingPolicy::None,
+            stacking_policy: self.stacking_policy,
         }
     }
 }
@@ -315,7 +316,7 @@ impl ApplyEffectEvent {
     fn apply_instant_effect(
         &self,
         commands: &mut Commands,
-        actors: &mut Query<(Option<&Effects>, ActorEntityMut), Without<Effect>>,
+        actors: &mut Query<(Option<&EffectTargetedBy>, ActorEntityMut), Without<Effect>>,
         effect: &GameEffect,
     ) {
         debug!("Applying instant effect to {}", self.target);
@@ -323,7 +324,7 @@ impl ApplyEffectEvent {
         effect
             .modifiers
             .iter()
-            .for_each(|modifier| match modifier.target() {
+            .for_each(|modifier| match modifier.origin() {
                 ModTarget::Target => {
                     let (_, mut target) = actors.get_mut(self.target).unwrap();
                     modifier.apply(&mut target);
@@ -339,8 +340,9 @@ impl ApplyEffectEvent {
         &self,
         mut commands: &mut Commands,
         effect: &GameEffect,
-        actors: &mut Query<(Option<&Effects>, ActorEntityMut), Without<Effect>>,
+        actors: &mut Query<(Option<&EffectTargetedBy>, ActorEntityMut), Without<Effect>>,
         effects: &mut Query<&Effect>,
+        add_stack_event: &mut EventWriter<OnAddStackEffect>,
     ) {
         debug!("Applying duration effect to {}", self.target);
 
@@ -348,15 +350,15 @@ impl ApplyEffectEvent {
         let (optional_effects, mut actor) = actors.get_mut(self.target).unwrap();
         let effects_on_actor = match optional_effects {
             None => {
-                println!("No effects on actor");
+                println!("No Effects component yet.");
                 vec![]
             }
             Some(effects_on_actor) => {
-                println!("Found matching effect on actor");
+                println!("Found Effects component.");
                 let effects = effects_on_actor.iter().filter_map(|effect_entity| {
                     let other_effect = effects.get(effect_entity).unwrap();
                     if other_effect.0.id() == self.handle.id() {
-                        Some(other_effect)
+                        Some(effect_entity)
                     } else {
                         None
                     }
@@ -365,14 +367,22 @@ impl ApplyEffectEvent {
             }
         };
 
-        if effects_on_actor.len() > 0 {
-            println!("Effect already exists on actor");
-        }
-
         match effect.stacking_policy {
-            EffectStackingPolicy::None => {}
-            EffectStackingPolicy::Add { .. } => {}
-            EffectStackingPolicy::Override => {}
+            EffectStackingPolicy::None => {
+                // Continue spawning effect
+                debug!("Stacking policy is None");
+            }
+            EffectStackingPolicy::Add { .. } | EffectStackingPolicy::Override => {
+                debug!("Stacking policy is Add or Override");
+                if effects_on_actor.len() > 0 {
+                    debug!("Effect already exists on actor. Adding stacks per definition.");
+                    add_stack_event.write(OnAddStackEffect {
+                        effect_entity: *effects_on_actor.first().unwrap(),
+                        handle: self.handle.clone(),
+                    });
+                    return;
+                }
+            }
         }
 
         let mut effect_commands = commands.spawn_empty();
@@ -382,7 +392,12 @@ impl ApplyEffectEvent {
         }
 
         // Spawns the effect entity
-        effect_commands.insert((EffectOf(self.target), Effect(self.handle.clone())));
+        effect_commands.insert((
+            EffectTarget(self.target),
+            EffectSource(self.source),
+            Effect(self.handle.clone()),
+        ));
+
         match effect.duration {
             EffectDurationPolicy::Temporary(duration) => {
                 effect_commands.insert(EffectDuration(Timer::new(duration, TimerMode::Once)));
@@ -390,12 +405,10 @@ impl ApplyEffectEvent {
             _ => {}
         }
 
-        // Do not attach a periodic event to the "Effect" hierarchy as it will passively affect the tree
-        // Add it to the Modifier hierarchy so it can modify the attributes of the targeted entity
-        match &effect.period {
-            None => effect_commands.insert(EffectOf(self.target)),
-            Some(period) => effect_commands.insert(period.clone()),
-        };
+        // Add the periodic effect component
+        if let Some(period) = &effect.period {
+            effect_commands.insert(period.clone());
+        }
 
         // Prepare entity commands
         for effect_mod in &effect.effect_modifiers {
@@ -407,30 +420,31 @@ impl ApplyEffectEvent {
         effect
             .modifiers
             .iter()
-            .for_each(|modifier| match modifier.target() {
+            .for_each(|modifier| match modifier.origin() {
                 ModTarget::Target => {
                     let (_, target) = actors.get_mut(self.target).unwrap();
                     let mod_entity = modifier.spawn(commands, target.as_readonly());
-                    commands.entity(mod_entity).insert(EffectOf(effect_entity));
+                    commands
+                        .entity(mod_entity)
+                        .insert(ModifierOf(effect_entity));
                 }
                 ModTarget::Source => {
                     let (_, source) = actors.get_mut(self.source).unwrap();
                     let mod_entity = modifier.spawn(commands, source.as_readonly());
-                    commands.entity(mod_entity).insert(EffectOf(effect_entity));
+                    commands
+                        .entity(mod_entity)
+                        .insert(ModifierOf(effect_entity));
                 }
             })
-    }
-
-    fn add_stack_to_effect(){
-
     }
 }
 
 pub(crate) fn observe_effect_application(
     trigger: Trigger<ApplyEffectEvent>,
-    mut actors: Query<(Option<&Effects>, ActorEntityMut), Without<Effect>>,
+    mut actors: Query<(Option<&EffectTargetedBy>, ActorEntityMut), Without<Effect>>,
     mut effects: Query<&Effect>,
     effect_assets: Res<Assets<GameEffect>>,
+    mut event_writer: EventWriter<OnAddStackEffect>,
     mut commands: Commands,
 ) {
     assert_ne!(Entity::PLACEHOLDER, trigger.target);
@@ -450,7 +464,40 @@ pub(crate) fn observe_effect_application(
                 effect,
                 &mut actors,
                 &mut effects,
+                &mut event_writer,
             );
         }
+    }
+}
+
+#[derive(Event)]
+pub struct OnAddStackEffect {
+    pub effect_entity: Entity,
+    pub handle: Handle<GameEffect>,
+}
+
+pub(crate) fn read_add_stack_event(
+    mut event_reader: EventReader<OnAddStackEffect>,
+    mut stacks: Query<&mut Stacks, With<Effect>>,
+    mut durations: Query<&mut EffectDuration, With<Effect>>,
+    effect_assets: Res<Assets<GameEffect>>,
+) {
+    for ev in event_reader.read() {
+        let effect_definition = match effect_assets.get(&ev.handle) {
+            Some(effect) => effect,
+            None => {
+                panic!(
+                    "Failed to find effect definition for handle: {:?}",
+                    ev.handle
+                );
+            }
+        };
+
+        apply_stacking_policy(
+            &effect_definition.stacking_policy,
+            ev.effect_entity,
+            &mut stacks,
+            &mut durations,
+        );
     }
 }

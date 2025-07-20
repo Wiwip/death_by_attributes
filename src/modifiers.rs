@@ -1,9 +1,9 @@
 use crate::attributes::Attribute;
-use crate::effects::{EffectOf, OnEffectStatusChangeEvent};
+use crate::effects::{EffectTarget, OnEffectStatusChangeEvent};
 use crate::{ActorEntityMut, ActorEntityRef, Dirty, OnAttributeValueChanged};
 use bevy::ecs::component::Mutable;
 use bevy::prelude::*;
-use std::any::{TypeId, type_name};
+use std::any::{type_name, TypeId};
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::iter::Sum;
@@ -13,10 +13,20 @@ use std::ops::{Add, AddAssign, Mul};
 #[derive(Component, Default, Copy, Clone, Debug, Reflect)]
 pub struct ModifierMarker;
 
-pub trait Modifier: Send + Sync {
+/// The entity that this effect is targeting.
+#[derive(Component, Reflect, Debug)]
+#[relationship(relationship_target = Modifiers)]
+pub struct ModifierOf(pub Entity);
+
+/// All effects that are targeting this entity.
+#[derive(Component, Reflect, Debug)]
+#[relationship_target(relationship = ModifierOf, linked_spawn)]
+pub struct Modifiers(Vec<Entity>);
+
+pub trait Mutator: Send + Sync {
     fn spawn(&self, commands: &mut Commands, actor_entity: ActorEntityRef) -> Entity;
     fn apply(&self, actor_entity: &mut ActorEntityMut) -> bool;
-    fn target(&self) -> ModTarget;
+    fn origin(&self) -> ModTarget;
 }
 
 #[derive(Default, Copy, Clone, Debug, Reflect)]
@@ -60,7 +70,7 @@ impl<T> Display for AttributeModifier<T> {
     }
 }
 
-impl<T> Modifier for AttributeModifier<T>
+impl<T> Mutator for AttributeModifier<T>
 where
     T: Attribute + Component<Mutability = Mutable>,
 {
@@ -74,7 +84,7 @@ where
 
         let mut observer = Observer::new(
             |trigger: Trigger<OnEffectStatusChangeEvent>,
-             query: Query<&EffectOf>,
+             query: Query<&EffectTarget>,
              mut commands: Commands| {
                 println!(
                     "Observer[{}] -> Target[{}] change for {}",
@@ -126,7 +136,7 @@ where
         }
     }
 
-    fn target(&self) -> ModTarget {
+    fn origin(&self) -> ModTarget {
         self.application
     }
 }
@@ -154,7 +164,7 @@ impl<T, S> ModifierRef<T, S> {
     }
 }
 
-impl<T, S> Modifier for ModifierRef<T, S>
+impl<T, S> Mutator for ModifierRef<T, S>
 where
     T: Attribute + Component<Mutability = Mutable>,
     S: Attribute + Component<Mutability = Mutable>,
@@ -213,8 +223,7 @@ where
         AttributeModifier::<T>::new(value, ModType::Additive, self.mod_target).apply(actor_entity)
     }
 
-
-    fn target(&self) -> ModTarget {
+    fn origin(&self) -> ModTarget {
         self.mod_target
     }
 }
@@ -423,6 +432,4 @@ impl<T> Debug for ModAggregator<T> {
 }
 
 #[derive(Event)]
-pub struct ModifierEvent {
-
-}
+pub struct ModifierEvent {}
