@@ -31,7 +31,7 @@ fn populate_world(mut commands: Commands, entity: u32, effects: u32) {
                 .with_permanent_duration()
                 .with_periodic_application(rng.random_range(0.5..1.5))
                 .modify_by_scalar::<Health>(rng.random_range(0.0..42.0), Additive)
-                .commit(&mut commands);
+                .build(&mut commands);
         }
     }
 }
@@ -57,7 +57,7 @@ fn populate_world_by_ref(mut commands: Commands, entity: u32, effects: u32) {
                 .with_permanent_duration()
                 .with_periodic_application(rng.random_range(0.5..1.5))
                 .modify_by_ref::<Health, HealthRegen>(1.0)
-                .commit(&mut commands);
+                .build(&mut commands);
         }
     }
 }

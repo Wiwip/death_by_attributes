@@ -1,5 +1,5 @@
 use crate::ActorEntityMut;
-use crate::attributes::AttributeComponent;
+use crate::attributes::Attribute;
 use crate::effects::Effect;
 use bevy::ecs::component::Mutable;
 use bevy::ecs::world::CommandQueue;
@@ -48,7 +48,6 @@ pub enum GameEffectTarget {
 #[derive(Default)]
 pub struct GameAbilitySpec {
     pub applied_effects: Vec<(GameEffectTarget, Effect)>,
-    //pub cost: Option<AbilityCostFn>,
     pub cooldown: Timer,
     pub ability_activation: Option<AbilityActivationFn>,
 }
@@ -70,7 +69,7 @@ impl AbilityBuilder {
         }
     }
 
-    pub fn with_cost<C: Component<Mutability = Mutable> + AttributeComponent>(
+    pub fn with_cost<C: Component<Mutability = Mutable> + Attribute>(
         mut self,
         cost: f64,
     ) -> Self {

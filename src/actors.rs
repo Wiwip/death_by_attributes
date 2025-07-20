@@ -1,10 +1,10 @@
 use crate::attributes::{
-    attribute_clamp_system, update_max_clamp_values, AttributeClamp, AttributeComponent,
+    AttributeClamp, Attribute, attribute_clamp_system, update_max_clamp_values,
 };
-use crate::systems::{flag_dirty_attribute, flag_dirty_modifier, tick_effects_periodic_timer, trigger_instant_effect_applied, trigger_periodic_effect, update_effect_tree_system};
+use crate::modifiers::ModAggregator;
+use crate::systems::{flag_dirty_attribute, flag_dirty_modifier, tick_effects_periodic_timer, apply_periodic_effect, update_effect_tree_system, apply_modifier_on_trigger};
 use crate::{
-    Actor, ObserverMarker, OnAttributeValueChanged, OnBaseValueChange, OnModifierApplied,
-    RegisteredPhantomSystem,
+    Actor, ApplyModifier, OnAttributeValueChanged, OnBaseValueChange, RegisteredPhantomSystem,
 };
 use bevy::app::{PostUpdate, PreUpdate};
 use bevy::ecs::component::Mutable;
@@ -37,7 +37,7 @@ impl ActorBuilder {
 
     pub fn with<T>(mut self, value: f64) -> ActorBuilder
     where
-        T: Component<Mutability = Mutable> + AttributeComponent,
+        T: Component<Mutability = Mutable> + Attribute,
     {
         // Ensures that the systems related to this attribute exist in the schedule
         self.queue.push(AttributeInitCommand::<T> {
@@ -45,17 +45,21 @@ impl ActorBuilder {
         });
         // Inserts the actual T attribute on the entity
         self.queue.push(move |world: &mut World| {
-            world.entity_mut(self.entity).insert(T::new(value));
             world
                 .entity_mut(self.entity)
-                .observe(attribute_change_trigger::<T>);
+                .insert((T::new(value), ModAggregator::<T>::default()));
+
+            // TODO: Should probably be a global observer
+            world
+                .entity_mut(self.entity)
+                .observe(apply_modifier_on_trigger::<T>);
         });
         self
     }
 
     pub fn clamp<T>(mut self, clamp: AttributeClamp<T>) -> ActorBuilder
     where
-        T: Component<Mutability = Mutable> + AttributeComponent,
+        T: Component<Mutability = Mutable> + Attribute,
     {
         self.queue.push(move |world: &mut World| {
             world.entity_mut(self.entity).insert(clamp);
@@ -65,8 +69,8 @@ impl ActorBuilder {
 
     pub fn clamp_max<T, C>(mut self, min: f64) -> ActorBuilder
     where
-        T: Component<Mutability = Mutable> + AttributeComponent,
-        C: Component<Mutability = Mutable> + AttributeComponent,
+        T: Component<Mutability = Mutable> + Attribute,
+        C: Component<Mutability = Mutable> + Attribute,
     {
         self.queue.push(move |world: &mut World| {
             world
@@ -95,22 +99,12 @@ impl ActorBuilder {
     }
 }
 
-fn attribute_change_trigger<T: Component<Mutability = Mutable> + AttributeComponent>(
-    trigger: Trigger<OnModifierApplied<T>>,
-    mut query: Query<&mut T>,
-) {
-    let Ok(mut attribute) = query.get_mut(trigger.target()) else {
-        return;
-    };
-    let new_val = trigger.value.evaluate(attribute.base_value());
-    attribute.set_base_value(new_val);
-}
 
 struct AttributeInitCommand<T> {
     phantom: PhantomData<T>,
 }
 
-impl<T: Component<Mutability = Mutable> + AttributeComponent> Command for AttributeInitCommand<T> {
+impl<T: Component<Mutability = Mutable> + Attribute> Command for AttributeInitCommand<T> {
     fn apply(self, world: &mut World) -> () {
         // Systems cannot be added multiple time. We use a resource as a 'marker'.
         if !world.contains_resource::<RegisteredPhantomSystem<T>>() {
@@ -121,27 +115,16 @@ impl<T: Component<Mutability = Mutable> + AttributeComponent> Command for Attrib
             }
             world.schedule_scope(PreUpdate, |_, schedule| {
                 schedule.add_systems(
-                    update_effect_tree_system::<T>.after(trigger_periodic_effect::<T>),
+                    update_effect_tree_system::<T>.after(apply_periodic_effect::<T>),
                 );
                 schedule
-                    .add_systems(trigger_periodic_effect::<T>.after(tick_effects_periodic_timer));
+                    .add_systems(apply_periodic_effect::<T>.after(tick_effects_periodic_timer));
             });
             world.schedule_scope(PostUpdate, |_, schedule| {
                 schedule.add_systems(flag_dirty_attribute::<T>);
                 schedule.add_systems(flag_dirty_modifier::<T>);
                 schedule.add_systems(attribute_clamp_system::<T>);
             });
-        }
-        // We ensure that only one observer exist for a specific attribute
-        let mut query = world.query::<&ObserverMarker<T>>();
-        if query.iter(world).count() == 0 {
-            debug!(
-                "Observer added for {} using `fn trigger_instant_effect_applied<T>`",
-                type_name::<T>()
-            );
-            world
-                .add_observer(trigger_instant_effect_applied::<T>)
-                .insert(ObserverMarker::<T>::default());
         }
     }
 }

@@ -1,15 +1,10 @@
-use crate::effects::EffectOf;
-use crate::modifiers::{ModAggregator, Modifier};
-use crate::{Dirty, OnAttributeValueChanged, OnModifierApplied};
+use crate::OnAttributeValueChanged;
 use bevy::ecs::component::Mutable;
-use bevy::ecs::world::CommandQueue;
-use bevy::log::debug;
-use bevy::prelude::{Commands, Component, Entity, Name, Observer, Query, Trigger, World};
-use std::any::type_name;
+use bevy::prelude::{Component, Query, Trigger};
 use std::marker::PhantomData;
 use std::ops::DerefMut;
 
-pub trait AttributeComponent {
+pub trait Attribute {
     fn new(value: f64) -> Self;
     fn base_value(&self) -> f64;
     fn set_base_value(&mut self, value: f64);
@@ -27,7 +22,7 @@ macro_rules! attribute {
             current_value: f64,
         }
 
-        impl $crate::attributes::AttributeComponent for $StructName {
+        impl $crate::attributes::Attribute for $StructName {
             fn new(value: f64) -> Self {
                 Self {
                     base_value: value,
@@ -51,13 +46,13 @@ macro_rules! attribute {
 
         ( $StructName:ident, $($RequiredType:ty),+ $(,)? ) => {
         #[derive(bevy::prelude::Component, Default, Clone, Copy, bevy::prelude::Reflect, Debug)]
-        #[require($crate::abilities::GameAbilityContainer, $crate::modifiers::ModAggregator<$StructName>, $($RequiredType),+)]
+        #[require($crate::modifiers::ModAggregator<$StructName>, $($RequiredType),+)]
         pub struct $StructName {
             base_value: f64,
             current_value: f64,
         }
 
-        impl $crate::attributes::AttributeComponent for $StructName {
+        impl $crate::attributes:AttributeComponentt for $StructName {
             fn new(value: f64) -> Self {
                 Self {
                     base_value: value,
@@ -80,84 +75,6 @@ macro_rules! attribute {
     };
 }
 
-pub struct AttributeBuilder<A> {
-    actor_entity: Entity,
-    queue: CommandQueue,
-    _marker: PhantomData<A>,
-}
-
-impl<C> AttributeBuilder<C>
-where
-    C: AttributeComponent + Component<Mutability = Mutable>,
-{
-    pub fn new(actor_entity: Entity) -> Self {
-        Self {
-            actor_entity,
-            queue: Default::default(),
-            _marker: Default::default(),
-        }
-    }
-
-    pub fn by_ref<S>(mut self, scaling_factor: f64) -> Self
-    where
-        S: AttributeComponent + Component<Mutability = Mutable>,
-    {
-        let mut observer = Observer::new(
-            move |trigger: Trigger<OnAttributeValueChanged<S>>,
-                  source_attribute: Query<&S>,
-                  mut modifiers: Query<&mut Modifier<C>>,
-                  //mut commands: Commands
-        | {
-                let Ok(source_attribute) = source_attribute.get(trigger.target()) else {
-                    debug!(
-                        "Could not find source attribute [{}]. Is the attribute added to the actor already?",
-                        type_name::<S>()
-                    );
-                    return;
-                };
-                let Ok(modifier) = modifiers.get(trigger.observer()) else {
-                    debug!("Could not find modifier");
-                    return;
-                };
-
-                let new_value = source_attribute.current_value() * scaling_factor;
-                if (modifier.value.additive - new_value).abs() > f64::EPSILON {
-                    // Ensures we only deref_mut if the value actually changes
-                    let Ok(mut modifier) = modifiers.get_mut(trigger.observer()) else {
-                        return;
-                    };
-                    modifier.value.additive = source_attribute.current_value() * scaling_factor;
-                    //commands.entity(trigger.target()).insert(Dirty::<C>::default());
-                }
-            },
-        );
-        observer.watch_entity(self.actor_entity);
-        self.queue.push(move |world: &mut World| {
-            // Spawn the observer-modifier
-            world.spawn((
-                observer,
-                Name::new(format!("Derived Attributes ({})", type_name::<C>())),
-                Modifier::<C>::default(),
-                ModAggregator::<C>::default(),
-                Dirty::<C>::default(),
-                EffectOf(self.actor_entity),
-            ));
-            // Inserts the attribute on the actor
-            world
-                .entity_mut(self.actor_entity)
-                .insert((/*C::new(0.0),*/ModAggregator::<C>::default()));
-        });
-        self.queue.push(move |world: &mut World| {
-            world.trigger_targets(OnAttributeValueChanged::<C>::default(), self.actor_entity);
-        });
-        self
-    }
-
-    pub fn commit(mut self, commands: &mut Commands) {
-        commands.append(&mut self.queue);
-    }
-}
-
 #[derive(Component)]
 pub enum AttributeClamp<A> {
     Phantom(PhantomData<A>),
@@ -166,7 +83,7 @@ pub enum AttributeClamp<A> {
     MinMax(f64, f64),
 }
 
-pub(crate) fn attribute_clamp_system<A: Component<Mutability = Mutable> + AttributeComponent>(
+pub(crate) fn attribute_clamp_system<A: Component<Mutability = Mutable> + Attribute>(
     mut query: Query<(&mut A, &AttributeClamp<A>)>,
 ) {
     for (mut attribute, clamp) in query.iter_mut() {
@@ -179,10 +96,10 @@ pub(crate) fn attribute_clamp_system<A: Component<Mutability = Mutable> + Attrib
                 attribute.set_current_value(new_current);
             }
             AttributeClamp::Max(max) => {
-                let new_base = attribute.base_value().min(*max);
+                let new_base = attribute.base_value().max(*max);
                 attribute.set_base_value(new_base);
 
-                let new_current = attribute.current_value().min(*max);
+                let new_current = attribute.current_value().max(*max);
                 attribute.set_current_value(new_current);
             }
             AttributeClamp::MinMax(min, max) => {
@@ -202,8 +119,8 @@ pub(crate) fn update_max_clamp_values<T, C>(
     attribute: Query<&C>,
     mut query: Query<&mut AttributeClamp<T>>,
 ) where
-    T: Component<Mutability = Mutable> + AttributeComponent,
-    C: Component<Mutability = Mutable> + AttributeComponent,
+    T: Component<Mutability = Mutable> + Attribute,
+    C: Component<Mutability = Mutable> + Attribute,
 {
     let Ok(mut clamp) = query.get_mut(trigger.target()) else {
         return;
