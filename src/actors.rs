@@ -1,25 +1,19 @@
-use crate::attributes::{
-    Attribute, AttributeClamp, clamp_attributes_system, update_max_clamp_values,
-};
-use crate::modifiers::ModAggregator;
+use crate::attributes::{clamp_attributes_system, update_max_clamp_values, AccessAttribute, Attribute, AttributeClamp, ReflectAccessAttribute};
+use crate::modifiers::{AttributeModifier, ModAggregator};
 use crate::systems::{
     apply_modifier_on_trigger, apply_periodic_effect, flag_dirty_attribute, flag_dirty_modifier,
     tick_effects_periodic_timer, update_effect_tree_system,
 };
-use crate::{
-    Actor, ApplyModifier, OnAttributeValueChanged, OnBaseValueChange, RegisteredPhantomSystem,
-};
+use crate::{Actor, OnAttributeValueChanged, OnBaseValueChange, RegisteredPhantomSystem};
 use bevy::app::{PostUpdate, PreUpdate};
 use bevy::ecs::component::Mutable;
 use bevy::ecs::event::EventRegistry;
 use bevy::ecs::world::CommandQueue;
 use bevy::log::debug;
-use bevy::prelude::{
-    Bundle, Command, Commands, Component, Entity, Events, IntoScheduleConfigs, Query, Trigger,
-    World,
-};
+use bevy::prelude::*;
 use std::any::type_name;
 use std::marker::PhantomData;
+use bevy::reflect::GetTypeRegistration;
 
 pub struct ActorBuilder {
     entity: Entity,
@@ -106,7 +100,7 @@ struct AttributeInitCommand<T> {
     phantom: PhantomData<T>,
 }
 
-impl<T: Component<Mutability = Mutable> + Attribute> Command for AttributeInitCommand<T> {
+impl<T: Component<Mutability = Mutable> + Attribute + Reflect + TypePath + GetTypeRegistration> Command for AttributeInitCommand<T> {
     fn apply(self, world: &mut World) -> () {
         // Systems cannot be added multiple time. We use a resource as a 'marker'.
         if !world.contains_resource::<RegisteredPhantomSystem<T>>() {
@@ -114,6 +108,12 @@ impl<T: Component<Mutability = Mutable> + Attribute> Command for AttributeInitCo
             world.init_resource::<RegisteredPhantomSystem<T>>();
             if !world.contains_resource::<Events<OnBaseValueChange<T>>>() {
                 EventRegistry::register_event::<OnBaseValueChange<T>>(world);
+                world.resource_scope(|world, type_registry: Mut<AppTypeRegistry>| {
+                    type_registry.write().register::<AttributeModifier<T>>();
+                    type_registry.write().register::<T>();
+
+                    type_registry.write().register_type_data::<T, ReflectAccessAttribute>();
+                });
             }
             world.schedule_scope(PreUpdate, |_, schedule| {
                 schedule.add_systems(apply_periodic_effect::<T>.after(tick_effects_periodic_timer));

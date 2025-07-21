@@ -1,16 +1,22 @@
 use crate::abilities::AbilityCooldown;
 use crate::attributes::Attribute;
-use crate::effects::{EffectDuration, EffectInactive, EffectPeriodicTimer, EffectSource, EffectTarget, EffectTargetedBy};
-use crate::modifiers::{AttributeModifier, ModAggregator, ModTarget, Modifiers};
+use crate::effects::{
+    EffectDuration, EffectInactive, EffectPeriodicTimer, EffectSource, EffectTarget,
+    EffectTargetedBy,
+};
+use crate::modifiers::{
+    AttributeModifier, ModAggregator, ModTarget, Modifiers, aggregate_entity_modifiers,
+};
 use crate::stacks::Stacks;
 use crate::{Actor, ApplyModifier, Dirty, OnAttributeValueChanged, OnBaseValueChange};
-use bevy::ecs::component::Mutable;
+use bevy::ecs::archetype::Archetypes;
+use bevy::ecs::component::{Components, Mutable};
 use bevy::prelude::*;
 use ptree::{TreeBuilder, print_tree};
 use std::any::type_name;
 
 pub(crate) fn tick_effects_periodic_timer(
-    mut query: Query<&mut EffectPeriodicTimer /*, Without<EffectInactive>*/>,
+    mut query: Query<&mut EffectPeriodicTimer, Without<EffectInactive>>,
     time: Res<Time>,
 ) {
     query.par_iter_mut().for_each(|mut timer| {
@@ -38,7 +44,7 @@ pub(crate) fn tick_ability_cooldown(mut query: Query<&mut AbilityCooldown>, time
     });
 }
 
-pub fn flag_dirty_modifier<T: Component>(
+pub fn flag_dirty_modifier<T: Attribute>(
     changed: Query<Entity, Changed<AttributeModifier<T>>>,
     parents: Query<&EffectTarget>,
     dirty: Query<&Dirty<T>>,
@@ -56,7 +62,7 @@ pub fn flag_dirty_modifier<T: Component>(
     }
 }
 
-pub fn flag_dirty_attribute<T: Component>(
+pub fn flag_dirty_attribute<T: Attribute>(
     changed: Query<Entity, Changed<T>>,
     parents: Query<&EffectTarget>,
     dirty: Query<&Dirty<T>>,
@@ -128,31 +134,15 @@ fn update_effect_tree<T: Component<Mutability = Mutable> + Attribute>(
         };
     };*/
 
-    // Return nothing for inactive effects
-    if is_inactive.contains(current_entity) {
-        return ModAggregator::<T>::default();
-    };
-
-    // Effects that are periodic have their modifiers applied on a schedule, not as a buff to the current value
-    if is_periodic.contains(current_entity) {
+    if is_inactive.contains(current_entity) | is_periodic.contains(current_entity) {
         return ModAggregator::<T>::default();
     };
 
     // Accumulates the value of the modifiers on this node from all the attached modifiers
-    let this_node_modifiers = match modifiers_query.get(current_entity) {
-        Ok(effect_modifiers) => effect_modifiers
-            .iter()
-            .filter_map(
-                |modifier_entity| match attribute_modifier_query.get(modifier_entity) {
-                    Ok(modifier) => Some(&modifier.aggregator),
-                    Err(_) => None,
-                },
-            )
-            .fold(ModAggregator::<T>::default(), |acc, agg| &acc + &agg),
-        Err(_) => ModAggregator::<T>::default(),
-    };
+    let this_node_mod_aggregator =
+        aggregate_entity_modifiers(current_entity, modifiers_query, attribute_modifier_query);
 
-    let modifier_so_far = this_node_modifiers
+    let modifier_so_far = this_node_mod_aggregator
         + match descendants.get(current_entity) {
             Ok(child_effects) => child_effects
                 .iter()
@@ -198,24 +188,44 @@ fn update_effect_tree<T: Component<Mutability = Mutable> + Attribute>(
     modifier_so_far
 }
 
+/*
 pub fn pretty_print_tree_system(
+    components: &Components,
     actors: Query<Entity, With<Actor>>,
     descendants: Query<&EffectTargetedBy>,
+    modifiers: Query<&Modifiers>,
+    entity_refs: Query<ModifiersQuery>,
+    type_registry: Res<AppTypeRegistry>,
     stacks: Query<&Stacks>,
     entities: Query<&Name>,
 ) {
     let mut builder = TreeBuilder::new("Actor-Attribute Tree".into());
+
     for actor in actors.iter() {
-        recursive_pretty_print(actor, &mut builder, descendants, stacks, entities);
+        recursive_pretty_print(
+            components,
+            actor,
+            &mut builder,
+            descendants,
+            modifiers,
+            entity_refs,
+            &type_registry,
+            stacks,
+            entities,
+        );
     }
     let tree = builder.build();
     let _ = print_tree(&tree);
 }
 
 pub fn recursive_pretty_print(
+    components: &Components,
     current_entity: Entity,
     builder: &mut TreeBuilder,
     descendants: Query<&EffectTargetedBy>,
+    modifiers: Query<&Modifiers>,
+    entity_refs: Query<ModifiersQuery>,
+    type_registry: &Res<AppTypeRegistry>,
     stacks: Query<&Stacks>,
     entities: Query<&Name>,
 ) {
@@ -225,20 +235,48 @@ pub fn recursive_pretty_print(
     let binding = Stacks::default();
     let stack = stacks.get(current_entity).unwrap_or(&binding);
     let tree_item = format!("[{current_entity}] {name} [{}]", stack.0);
-    // Iterate recursively on all the childrens
+
+    // Iterate over owned modifiers
+    for &modifiers in modifiers.get(current_entity).iter() {
+        for modifier in modifiers.iter() {
+            let Ok(modifier_ref) = entity_refs.get(modifier) else {
+                continue;
+            };
+            modifier_ref.print_modifiers(components, &type_registry)
+        }
+    }
+
+    // Iterate recursively on all the sub effects
     if let Ok(childrens) = descendants.get(current_entity) {
         builder.begin_child(tree_item);
         for child in childrens.iter() {
-            recursive_pretty_print(child, builder, descendants, stacks, entities);
+            recursive_pretty_print(
+                components,
+                child,
+                builder,
+                descendants,
+                modifiers,
+                entity_refs,
+                type_registry,
+                stacks,
+                entities,
+            );
         }
         builder.end_child();
     } else {
         builder.add_empty_child(tree_item);
     }
 }
+*/
 
 pub fn apply_periodic_effect<T: Component<Mutability = Mutable> + Attribute>(
-    effects: Query<(&EffectPeriodicTimer, &Modifiers, &Stacks, &EffectTarget, &EffectSource)>,
+    effects: Query<(
+        &EffectPeriodicTimer,
+        &Modifiers,
+        &Stacks,
+        &EffectTarget,
+        &EffectSource,
+    )>,
     modifiers: Query<&AttributeModifier<T>>,
     mut commands: Commands,
 ) {
@@ -276,7 +314,6 @@ pub fn apply_periodic_effect<T: Component<Mutability = Mutable> + Attribute>(
                     );
                 }
             }
-
         }
     }
 }

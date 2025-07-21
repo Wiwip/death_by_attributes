@@ -1,10 +1,14 @@
 use crate::OnAttributeValueChanged;
+use crate::inspector::pretty_type_name;
 use bevy::ecs::component::Mutable;
-use bevy::prelude::{Component, Query, Trigger};
+use bevy::prelude::*;
+use bevy::reflect::GetTypeRegistration;
 use std::marker::PhantomData;
 use std::ops::DerefMut;
 
-pub trait Attribute {
+pub trait Attribute:
+    Component<Mutability = Mutable> + Reflect + TypePath + GetTypeRegistration
+{
     fn new(value: f64) -> Self;
     fn base_value(&self) -> f64;
     fn set_base_value(&mut self, value: f64);
@@ -16,6 +20,7 @@ pub trait Attribute {
 macro_rules! attribute {
     ( $StructName:ident) => {
         #[derive(bevy::prelude::Component, Default, Clone, Copy, bevy::prelude::Reflect, Debug)]
+        #[reflect(AccessAttribute)]
         #[require($crate::modifiers::ModAggregator<$StructName>)]
         pub struct $StructName {
             base_value: f64,
@@ -46,6 +51,7 @@ macro_rules! attribute {
 
         ( $StructName:ident, $($RequiredType:ty),+ $(,)? ) => {
         #[derive(bevy::prelude::Component, Default, Clone, Copy, bevy::prelude::Reflect, Debug)]
+        #[reflect(AccessAttribute)]
         #[require($crate::modifiers::ModAggregator<$StructName>, $($RequiredType),+)]
         pub struct $StructName {
             base_value: f64,
@@ -133,5 +139,29 @@ pub(crate) fn update_max_clamp_values<T, C>(
         AttributeClamp::Max(max) => *max = attribute.current_value(),
         AttributeClamp::MinMax(_, max) => *max = attribute.current_value(),
         _ => {}
+    }
+}
+
+#[reflect_trait] // Generates a `ReflectMyTrait` type
+pub trait AccessAttribute {
+    fn base_value(&self) -> f64;
+    fn current_value(&self) -> f64;
+    fn name(&self) -> String;
+}
+
+impl<T> AccessAttribute for T
+where
+    T: Attribute,
+{
+    fn base_value(&self) -> f64 {
+        self.base_value()
+    }
+
+    fn current_value(&self) -> f64 {
+        self.current_value()
+    }
+
+    fn name(&self) -> String {
+        pretty_type_name::<T>()
     }
 }

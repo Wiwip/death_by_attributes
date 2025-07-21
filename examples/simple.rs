@@ -1,24 +1,30 @@
+use root_attribute::attributes::ReflectAccessAttribute;
 use bevy::ecs::schedule::{LogLevel, ScheduleBuildSettings};
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::time::common_conditions::on_timer;
 use bevy::window::PresentMode;
-use bevy_egui::EguiPlugin;
-use bevy_inspector_egui::quick::WorldInspectorPlugin;
+use bevy_egui::{EguiContext, EguiPlugin};
+use bevy_inspector_egui::{bevy_inspector, egui, DefaultInspectorConfigPlugin};
 use ptree::{TreeBuilder, write_tree};
 use root_attribute::abilities::{AbilityBuilder, TryActivateAbility};
 use root_attribute::actors::ActorBuilder;
 use root_attribute::assets::GameEffect;
 use root_attribute::attributes::Attribute;
 use root_attribute::context::EffectContext;
-use root_attribute::effects::{Effect, EffectBuilder, EffectPeriodicTimer, EffectSource, EffectSources, EffectTarget, EffectTargetedBy};
+use root_attribute::effects::{
+    Effect, EffectBuilder, EffectPeriodicTimer, EffectSource, EffectSources, EffectTarget,
+    EffectTargetedBy,
+};
 use root_attribute::modifiers::ModType::{Additive, Multiplicative};
 use root_attribute::modifiers::{AttributeModifier, ModAggregator, ModTarget, ModifierMarker};
 use root_attribute::stacks::{EffectStackingPolicy, Stacks};
-use root_attribute::systems::recursive_pretty_print;
 use root_attribute::{Actor, ActorEntityMut, AttributesPlugin, attribute};
 use std::fmt::Debug;
 use std::time::Duration;
+use bevy_inspector_egui::quick::FilterQueryInspectorPlugin;
+use root_attribute::inspector::ActorInspectorPlugin;
+use root_attribute::inspector::test::{explore_actors_system, DebugOverlayMarker};
 
 attribute!(Strength);
 attribute!(Agility);
@@ -43,22 +49,22 @@ fn main() {
             level: bevy::log::Level::DEBUG,
             ..default()
         }))
-        .add_plugins(AttributesPlugin)
-        .add_plugins(EguiPlugin {
-            enable_multipass_for_primary_context: true,
+        .insert_resource(UiDebugOptions {
+            //enabled: true,
+            ..default()
         })
-        .add_plugins(WorldInspectorPlugin::new())
+        .add_plugins(AttributesPlugin)
+        .add_plugins(EguiPlugin::default())
+        .add_plugins(DefaultInspectorConfigPlugin)
+        .add_plugins(ActorInspectorPlugin::<With<Actor>>::default())
         .add_systems(
             Startup,
-            (setup_effects, setup_window, setup, setup_ui).chain(),
+            (setup_effects, setup_window, setup, setup_camera).chain(),
         )
         .add_systems(Update, do_gameplay_stuff)
-        .add_systems(
-            Update,
-            display_attribute.run_if(on_timer(Duration::from_millis(32))),
-        )
-        .add_systems(Update, display_tree)
-        .add_systems(Update, display_modifier_tree::<Health>)
+        //.add_systems(Update, display_tree)
+        //.add_systems(Update, pretty_print_tree_system)
+        //.add_systems(Update, display_modifier_tree::<Health>)
         .add_systems(PreUpdate, inputs)
         .add_systems(PostUpdate, display_components)
         .edit_schedule(Update, |schedule| {
@@ -114,6 +120,7 @@ fn setup_effects(mut effects: ResMut<Assets<GameEffect>>, mut commands: Commands
             .with_continuous_application()
             .with_name("AttackPower".into())
             .modify_by_ref::<AttackPower, Health>(0.10, Additive, ModTarget::Target)
+            .modify_by_ref::<Intelligence, Health>(0.10, Additive, ModTarget::Target)
             .build(),
     );
 
@@ -205,81 +212,14 @@ fn setup(mut commands: Commands, mut ctx: EffectContext, efx: Res<EffectsDatabas
 
 #[derive(Component)]
 struct Player;
-#[derive(Component)]
-struct PlayerHealthMarker;
+
 #[derive(Component)]
 pub struct EntityHealthMarker;
 #[derive(Component)]
 pub struct ModifierTree;
 
-fn setup_ui(mut commands: Commands) {
+fn setup_camera(mut commands: Commands) {
     commands.spawn(Camera2d::default());
-
-    commands
-        .spawn(Node {
-            flex_direction: FlexDirection::Column,
-            justify_content: JustifyContent::SpaceBetween,
-            align_items: AlignItems::Start,
-            flex_grow: 1.,
-            margin: UiRect::axes(Val::Px(15.), Val::Px(400.)),
-            ..default()
-        })
-        .with_children(|builder| {
-            builder.spawn((Text::new("Health"), PlayerHealthMarker));
-            builder.spawn((Text::new(""), EntityHealthMarker));
-        });
-
-    commands.spawn((
-        ModifierTree,
-        Text::new("Modifier Tree"),
-        Node {
-            position_type: PositionType::Absolute,
-            top: Val::Px(15.0),
-            right: Val::Px(30.0),
-            ..default()
-        },
-    ));
-}
-
-fn display_attribute(
-    q_player: Query<
-        (
-            &Health,
-            &MaxHealth,
-            &AttackPower,
-            &MagicPower,
-            &Mana,
-            &ManaPool,
-        ),
-        With<Player>,
-    >,
-    mut q_health: Query<&mut Text, With<PlayerHealthMarker>>,
-) {
-    for (health, max_health, ap, mp, mana, mana_pool) in q_player.iter() {
-        if let Ok(mut text) = q_health.single_mut() {
-            text.0 = format!(
-                "Values: Current [Base]
-Health: {:.1} [{:.1}]
-Max Health: {:.1} [{:.1}]
-AP: {:.1} [{:.1}]
-MP: {:.1} [{:.1}]
-Mana: {:.1} [{:.1}]
-Mana Pool: {:.1} [{:.1}]",
-                health.current_value(),
-                health.base_value(),
-                max_health.current_value(),
-                max_health.base_value(),
-                ap.current_value(),
-                ap.base_value(),
-                mp.current_value(),
-                mp.base_value(),
-                mana.current_value(),
-                mana.base_value(),
-                mana_pool.current_value(),
-                mana_pool.base_value(),
-            );
-        }
-    }
 }
 
 pub fn display_tree(
@@ -290,7 +230,7 @@ pub fn display_tree(
     mut text: Query<&mut Text, With<EntityHealthMarker>>,
 ) {
     let mut builder = TreeBuilder::new("Effects Tree".into());
-    for actor in actors.iter() {
+    /*for actor in actors.iter() {
         recursive_pretty_print(actor, &mut builder, effects, stacks, entities);
     }
     let tree = builder.build();
@@ -298,7 +238,7 @@ pub fn display_tree(
         let mut w = Vec::new();
         let _ = write_tree(&tree, &mut w);
         text.0 = String::from_utf8(w).unwrap();
-    }
+    }*/
 }
 
 pub fn display_modifier_tree<T: Component + Attribute>(

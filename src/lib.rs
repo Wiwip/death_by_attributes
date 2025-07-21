@@ -1,4 +1,7 @@
-use crate::effects::{Effect, EffectDuration, EffectPeriodicTimer, OnAddStackEffect, observe_effect_application, read_add_stack_event, EffectSource, EffectTarget, EffectTargetedBy, EffectSources};
+use crate::effects::{
+    Effect, EffectDuration, EffectPeriodicTimer, EffectSource, EffectSources, EffectTarget,
+    EffectTargetedBy, OnAddStackEffect, observe_effect_application, read_add_stack_event,
+};
 use crate::modifiers::ModAggregator;
 use crate::systems::{
     tick_ability_cooldown, tick_effect_duration_timers, tick_effects_periodic_timer,
@@ -17,6 +20,7 @@ pub mod effects;
 pub mod modifiers;
 pub mod stacks;
 pub mod systems;
+pub mod inspector;
 
 use crate::abilities::{Abilities, AbilityActivation, AbilityCooldown, AbilityCost, AbilityOf};
 use crate::assets::GameEffect;

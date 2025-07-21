@@ -1,9 +1,12 @@
 use crate::attributes::Attribute;
 use crate::effects::{EffectTarget, OnEffectStatusChangeEvent};
+use crate::inspector::pretty_type_name;
 use crate::{ActorEntityMut, ActorEntityRef, Dirty, OnAttributeValueChanged};
-use bevy::ecs::component::Mutable;
+use bevy::ecs::component::{Components, Mutable};
+use bevy::ecs::query::QueryData;
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use std::any::{type_name, TypeId};
+use std::any::{TypeId, type_name};
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::iter::Sum;
@@ -37,13 +40,17 @@ pub enum ModTarget {
 }
 
 #[derive(Component, Copy, Clone, Debug, Reflect)]
+#[reflect(AccessModifier)]
 #[require(ModifierMarker)]
-pub struct AttributeModifier<T> {
+pub struct AttributeModifier<T: Attribute> {
     pub application: ModTarget,
     pub aggregator: ModAggregator<T>,
 }
 
-impl<T: 'static> AttributeModifier<T> {
+impl<T: 'static> AttributeModifier<T>
+where
+    T: Attribute,
+{
     pub fn new(value: f64, mod_type: ModType, mod_application: ModTarget) -> Self {
         Self {
             application: mod_application,
@@ -56,7 +63,10 @@ impl<T: 'static> AttributeModifier<T> {
     }
 }
 
-impl<T> Default for AttributeModifier<T> {
+impl<T> Default for AttributeModifier<T>
+where
+    T: Attribute,
+{
     fn default() -> Self {
         Self {
             application: ModTarget::Source,
@@ -64,7 +74,10 @@ impl<T> Default for AttributeModifier<T> {
         }
     }
 }
-impl<T> Display for AttributeModifier<T> {
+impl<T> Display for AttributeModifier<T>
+where
+    T: Attribute,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Mod<{}>({:.1})", type_name::<T>(), self.aggregator)
     }
@@ -72,7 +85,7 @@ impl<T> Display for AttributeModifier<T> {
 
 impl<T> Mutator for AttributeModifier<T>
 where
-    T: Attribute + Component<Mutability = Mutable>,
+    T: Attribute,
 {
     fn spawn(&self, commands: &mut Commands, actor_entity: ActorEntityRef) -> Entity {
         debug!(
@@ -431,5 +444,45 @@ impl<T> Debug for ModAggregator<T> {
     }
 }
 
-#[derive(Event)]
-pub struct ModifierEvent {}
+/// Aggregates all modifiers for a given entity, returning a combined ModAggregator
+pub fn aggregate_entity_modifiers<T: Component<Mutability = Mutable> + Attribute>(
+    entity: Entity,
+    modifiers_query: &Query<&Modifiers>,
+    attribute_modifier_query: &mut Query<&AttributeModifier<T>>,
+) -> ModAggregator<T> {
+    // Try to get modifiers for the entity
+    modifiers_query
+        .get(entity)
+        .map(|effect_modifiers| {
+            // Map through modifiers, extract aggregators, and combine them
+            effect_modifiers
+                .iter()
+                .filter_map(|modifier_entity| {
+                    attribute_modifier_query
+                        .get(modifier_entity)
+                        .ok()
+                        .map(|modifier| &modifier.aggregator)
+                })
+                .fold(ModAggregator::<T>::default(), |acc, agg| &acc + &agg)
+        })
+        .unwrap_or_default() // Return default ModAggregator if the entity has no modifiers
+}
+
+#[reflect_trait] // Generates a `ReflectMyTrait` type
+pub trait AccessModifier {
+    fn describe(&self) -> String;
+    fn name(&self) -> String;
+}
+
+impl<T> AccessModifier for AttributeModifier<T>
+where
+    T: Attribute,
+{
+    fn name(&self) -> String {
+        pretty_type_name::<T>()
+    }
+
+    fn describe(&self) -> String {
+        format!("{}", self.aggregator)
+    }
+}

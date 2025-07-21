@@ -124,5 +124,5 @@ mod tests {
     use bevy::prelude::*;
     use std::ops::Range;
 
-    attribute!(TestAttribute);
+    //attribute!(TestAttribute);
 }
