@@ -1,4 +1,4 @@
-use crate::attributes::{clamp_attributes_system, update_max_clamp_values, AccessAttribute, Attribute, AttributeClamp, ReflectAccessAttribute};
+use crate::attributes::{clamp_attributes_system, update_max_clamp_values, Attribute, AttributeClamp, ReflectAccessAttribute};
 use crate::modifiers::{AttributeModifier, ModAggregator};
 use crate::systems::{
     apply_modifier_on_trigger, apply_periodic_effect, flag_dirty_attribute, flag_dirty_modifier,
@@ -108,7 +108,7 @@ impl<T: Component<Mutability = Mutable> + Attribute + Reflect + TypePath + GetTy
             world.init_resource::<RegisteredPhantomSystem<T>>();
             if !world.contains_resource::<Events<OnBaseValueChange<T>>>() {
                 EventRegistry::register_event::<OnBaseValueChange<T>>(world);
-                world.resource_scope(|world, type_registry: Mut<AppTypeRegistry>| {
+                world.resource_scope(|_world, type_registry: Mut<AppTypeRegistry>| {
                     type_registry.write().register::<AttributeModifier<T>>();
                     type_registry.write().register::<T>();
 

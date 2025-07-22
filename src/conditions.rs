@@ -99,7 +99,6 @@ pub(crate) fn evaluate_effect_conditions(
             Some(_) => {
                 // Effect is already inactive.
                 if should_activate {
-                    println!("activating effect");
                     commands
                         .entity(effect_entity)
                         .try_remove::<EffectInactive>();
@@ -108,7 +107,6 @@ pub(crate) fn evaluate_effect_conditions(
             None => {
                 // Effect is active.
                 if !should_activate {
-                    println!("deactivating effect");
                     commands.entity(effect_entity).try_insert(EffectInactive);
                 }
             }

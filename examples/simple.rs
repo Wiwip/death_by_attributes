@@ -1,30 +1,26 @@
-use root_attribute::attributes::ReflectAccessAttribute;
 use bevy::ecs::schedule::{LogLevel, ScheduleBuildSettings};
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
-use bevy::time::common_conditions::on_timer;
 use bevy::window::PresentMode;
-use bevy_egui::{EguiContext, EguiPlugin};
-use bevy_inspector_egui::{bevy_inspector, egui, DefaultInspectorConfigPlugin};
-use ptree::{TreeBuilder, write_tree};
+use bevy_egui::EguiPlugin;
+use bevy_inspector_egui::DefaultInspectorConfigPlugin;
+use ptree::TreeBuilder;
 use root_attribute::abilities::{AbilityBuilder, TryActivateAbility};
 use root_attribute::actors::ActorBuilder;
 use root_attribute::assets::GameEffect;
 use root_attribute::attributes::Attribute;
+use root_attribute::attributes::ReflectAccessAttribute;
 use root_attribute::context::EffectContext;
 use root_attribute::effects::{
-    Effect, EffectBuilder, EffectPeriodicTimer, EffectSource, EffectSources, EffectTarget,
-    EffectTargetedBy,
+    EffectBuilder, EffectPeriodicTimer, EffectSource, EffectSources, EffectTarget, EffectTargetedBy,
 };
+use root_attribute::inspector::ActorInspectorPlugin;
 use root_attribute::modifiers::ModType::{Additive, Multiplicative};
-use root_attribute::modifiers::{AttributeModifier, ModAggregator, ModTarget, ModifierMarker};
+use root_attribute::modifiers::{AttributeModifier, ModAggregator, ModTarget};
 use root_attribute::stacks::{EffectStackingPolicy, Stacks};
-use root_attribute::{Actor, ActorEntityMut, AttributesPlugin, attribute};
+use root_attribute::{attribute, ActorEntityMut, AttributesPlugin};
 use std::fmt::Debug;
 use std::time::Duration;
-use bevy_inspector_egui::quick::FilterQueryInspectorPlugin;
-use root_attribute::inspector::ActorInspectorPlugin;
-use root_attribute::inspector::test::{explore_actors_system, DebugOverlayMarker};
 
 attribute!(Strength);
 attribute!(Agility);
@@ -56,7 +52,7 @@ fn main() {
         .add_plugins(AttributesPlugin)
         .add_plugins(EguiPlugin::default())
         .add_plugins(DefaultInspectorConfigPlugin)
-        .add_plugins(ActorInspectorPlugin::<With<Actor>>::default())
+        .add_plugins(ActorInspectorPlugin)
         .add_systems(
             Startup,
             (setup_effects, setup_window, setup, setup_camera).chain(),
@@ -66,7 +62,6 @@ fn main() {
         //.add_systems(Update, pretty_print_tree_system)
         //.add_systems(Update, display_modifier_tree::<Health>)
         .add_systems(PreUpdate, inputs)
-        .add_systems(PostUpdate, display_components)
         .edit_schedule(Update, |schedule| {
             schedule.set_build_settings(ScheduleBuildSettings {
                 ambiguity_detection: LogLevel::Warn,
@@ -118,7 +113,7 @@ fn setup_effects(mut effects: ResMut<Assets<GameEffect>>, mut commands: Commands
         EffectBuilder::new()
             .with_permanent_duration()
             .with_continuous_application()
-            .with_name("AttackPower".into())
+            .with_name("AttackPower Buff".into())
             .modify_by_ref::<AttackPower, Health>(0.10, Additive, ModTarget::Target)
             .modify_by_ref::<Intelligence, Health>(0.10, Additive, ModTarget::Target)
             .build(),
@@ -129,7 +124,7 @@ fn setup_effects(mut effects: ResMut<Assets<GameEffect>>, mut commands: Commands
         EffectBuilder::new()
             .with_permanent_duration()
             .with_continuous_application()
-            .with_name("MagicPower".into())
+            .with_name("MagicPower Buff".into())
             .modify_by_scalar::<MagicPower>(10.0, Additive, ModTarget::Target)
             .with_condition::<Health>(20.0..100.0)
             .with_stacking_policy(EffectStackingPolicy::Add {
@@ -220,105 +215,6 @@ pub struct ModifierTree;
 
 fn setup_camera(mut commands: Commands) {
     commands.spawn(Camera2d::default());
-}
-
-pub fn display_tree(
-    actors: Query<Entity, With<Actor>>,
-    effects: Query<&EffectTargetedBy>,
-    entities: Query<&Name>,
-    stacks: Query<&Stacks>,
-    mut text: Query<&mut Text, With<EntityHealthMarker>>,
-) {
-    let mut builder = TreeBuilder::new("Effects Tree".into());
-    /*for actor in actors.iter() {
-        recursive_pretty_print(actor, &mut builder, effects, stacks, entities);
-    }
-    let tree = builder.build();
-    if let Ok(mut text) = text.single_mut() {
-        let mut w = Vec::new();
-        let _ = write_tree(&tree, &mut w);
-        text.0 = String::from_utf8(w).unwrap();
-    }*/
-}
-
-pub fn display_modifier_tree<T: Component + Attribute>(
-    actors: Query<Entity, With<Actor>>,
-    modifiers: Query<&EffectTargetedBy>,
-    entities: Query<(
-        &Name,
-        Option<&AttributeModifier<T>>,
-        Option<&ModAggregator<T>>,
-    )>,
-    mut text: Query<&mut Text, With<ModifierTree>>,
-) {
-    let mut builder = TreeBuilder::new("Modifiers Tree".into());
-    for actor in actors.iter() {
-        print_modifier_hierarchy(actor, &mut builder, modifiers, entities);
-    }
-    let tree = builder.build();
-    if let Ok(mut text) = text.single_mut() {
-        let mut w = Vec::new();
-        let _ = write_tree(&tree, &mut w);
-        text.0 = String::from_utf8(w).unwrap();
-    }
-}
-
-fn display_components(
-    // Get the world for introspection
-    world: &World,
-    type_registry: Res<AppTypeRegistry>,
-    // Get the entity ID of our player
-    players: Query<(Entity, EntityRef, &EffectTargetedBy), With<Player>>,
-    effects: Query<(EntityRef, &EffectTargetedBy), With<Effect>>,
-    modifiers: Query<EntityRef, With<ModifierMarker>>,
-    input: Res<ButtonInput<KeyCode>>,
-) {
-    // We only run this once when Space is pressed
-    if !input.just_pressed(KeyCode::KeyP) {
-        return;
-    }
-
-    for (_, player_ref, player_effects) in players.iter() {
-        for effect_entity in player_effects.iter() {
-            let Ok((effect_ref, modifier_list)) = effects.get(effect_entity) else {
-                continue;
-            };
-            for modifier in modifier_list.iter() {
-                let Ok(modifier_ref) = modifiers.get(modifier) else {
-                    continue;
-                };
-
-                let archetype = modifier_ref.archetype();
-                for component_id in archetype.components() {
-                    let Ok(comp_data) = modifier_ref.get_by_id(component_id) else {
-                        continue;
-                    };
-
-                    // Using the component_id, we can get ComponentInfo, which has the name
-                    if let Some(component_info) = world.components().get_info(component_id) {
-                        println!(" - - - {}", component_info.name());
-                    }
-                }
-            }
-
-            let archetype = effect_ref.archetype();
-            for component_id in archetype.components() {
-                // Using the component_id, we can get ComponentInfo, which has the name
-
-                if let Some(component_info) = world.components().get_info(component_id) {
-                    println!(" - {}", component_info.name());
-                }
-            }
-        }
-
-        /*let archetype = player_ref.archetype();
-        for component_id in archetype.components() {
-            // Using the component_id, we can get ComponentInfo, which has the name
-            if let Some(component_info) = world.components().get_info(component_id) {
-                println!("  - {}", component_info.name());
-            }
-        }*/
-    }
 }
 
 fn inputs(

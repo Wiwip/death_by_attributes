@@ -163,10 +163,10 @@ impl EffectBuilder {
 
     pub fn with_trigger<E: Event, B: Bundle, M>(
         mut self,
-        observer: impl IntoObserverSystem<E, B, M>,
+        _observer: impl IntoObserverSystem<E, B, M>,
     ) -> Self {
         self.effect_entity_commands.push(Box::new(
-            move |effect_entity: &mut EntityCommands, _: Entity| {
+            move |_effect_entity: &mut EntityCommands, _: Entity| {
                 //effect_entity.insert(Condition::<T>::default());
             },
         ));
@@ -315,7 +315,7 @@ pub struct ApplyEffectEvent {
 impl ApplyEffectEvent {
     fn apply_instant_effect(
         &self,
-        commands: &mut Commands,
+        _commands: &mut Commands,
         actors: &mut Query<(Option<&EffectTargetedBy>, ActorEntityMut), Without<Effect>>,
         effect: &GameEffect,
     ) {
@@ -347,14 +347,12 @@ impl ApplyEffectEvent {
         debug!("Applying duration effect to {}", self.target);
 
         // We want to know whether an effect with the same handle already exists on the actor
-        let (optional_effects, mut actor) = actors.get_mut(self.target).unwrap();
+        let (optional_effects, _) = actors.get_mut(self.target).unwrap();
         let effects_on_actor = match optional_effects {
             None => {
-                println!("No Effects component yet.");
                 vec![]
             }
             Some(effects_on_actor) => {
-                println!("Found Effects component.");
                 let effects = effects_on_actor.iter().filter_map(|effect_entity| {
                     let other_effect = effects.get(effect_entity).unwrap();
                     if other_effect.0.id() == self.handle.id() {

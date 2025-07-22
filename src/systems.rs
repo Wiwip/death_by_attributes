@@ -9,10 +9,8 @@ use crate::modifiers::{
 };
 use crate::stacks::Stacks;
 use crate::{Actor, ApplyModifier, Dirty, OnAttributeValueChanged, OnBaseValueChange};
-use bevy::ecs::archetype::Archetypes;
-use bevy::ecs::component::{Components, Mutable};
+use bevy::ecs::component::{Mutable};
 use bevy::prelude::*;
-use ptree::{TreeBuilder, print_tree};
 use std::any::type_name;
 
 pub(crate) fn tick_effects_periodic_timer(

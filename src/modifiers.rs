@@ -2,11 +2,9 @@ use crate::attributes::Attribute;
 use crate::effects::{EffectTarget, OnEffectStatusChangeEvent};
 use crate::inspector::pretty_type_name;
 use crate::{ActorEntityMut, ActorEntityRef, Dirty, OnAttributeValueChanged};
-use bevy::ecs::component::{Components, Mutable};
-use bevy::ecs::query::QueryData;
-use bevy::ecs::system::SystemParam;
+use bevy::ecs::component::Mutable;
 use bevy::prelude::*;
-use std::any::{TypeId, type_name};
+use std::any::{type_name, TypeId};
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::iter::Sum;
@@ -145,7 +143,6 @@ where
             }
         } else {
             panic!("Could not find attribute {}", type_name::<T>());
-            false
         }
     }
 
