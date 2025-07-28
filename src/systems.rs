@@ -8,10 +8,11 @@ use crate::modifiers::{
     AttributeModifier, ModAggregator, ModTarget, Modifiers, aggregate_entity_modifiers,
 };
 use crate::stacks::Stacks;
-use crate::{Actor, ApplyModifier, Dirty, OnAttributeValueChanged, OnBaseValueChange};
+use crate::{ApplyModifier, Dirty, OnAttributeValueChanged, OnBaseValueChange};
 use bevy::ecs::component::{Mutable};
 use bevy::prelude::*;
 use std::any::type_name;
+use crate::actors::Actor;
 
 pub(crate) fn tick_effects_periodic_timer(
     mut query: Query<&mut EffectPeriodicTimer, Without<EffectInactive>>,
@@ -185,87 +186,6 @@ fn update_effect_tree<T: Component<Mutability = Mutable> + Attribute>(
     // Return the value of the modifier so far so we can update the current values
     modifier_so_far
 }
-
-/*
-pub fn pretty_print_tree_system(
-    components: &Components,
-    actors: Query<Entity, With<Actor>>,
-    descendants: Query<&EffectTargetedBy>,
-    modifiers: Query<&Modifiers>,
-    entity_refs: Query<ModifiersQuery>,
-    type_registry: Res<AppTypeRegistry>,
-    stacks: Query<&Stacks>,
-    entities: Query<&Name>,
-) {
-    let mut builder = TreeBuilder::new("Actor-Attribute Tree".into());
-
-    for actor in actors.iter() {
-        recursive_pretty_print(
-            components,
-            actor,
-            &mut builder,
-            descendants,
-            modifiers,
-            entity_refs,
-            &type_registry,
-            stacks,
-            entities,
-        );
-    }
-    let tree = builder.build();
-    let _ = print_tree(&tree);
-}
-
-pub fn recursive_pretty_print(
-    components: &Components,
-    current_entity: Entity,
-    builder: &mut TreeBuilder,
-    descendants: Query<&EffectTargetedBy>,
-    modifiers: Query<&Modifiers>,
-    entity_refs: Query<ModifiersQuery>,
-    type_registry: &Res<AppTypeRegistry>,
-    stacks: Query<&Stacks>,
-    entities: Query<&Name>,
-) {
-    let Ok(name) = entities.get(current_entity) else {
-        return;
-    };
-    let binding = Stacks::default();
-    let stack = stacks.get(current_entity).unwrap_or(&binding);
-    let tree_item = format!("[{current_entity}] {name} [{}]", stack.0);
-
-    // Iterate over owned modifiers
-    for &modifiers in modifiers.get(current_entity).iter() {
-        for modifier in modifiers.iter() {
-            let Ok(modifier_ref) = entity_refs.get(modifier) else {
-                continue;
-            };
-            modifier_ref.print_modifiers(components, &type_registry)
-        }
-    }
-
-    // Iterate recursively on all the sub effects
-    if let Ok(childrens) = descendants.get(current_entity) {
-        builder.begin_child(tree_item);
-        for child in childrens.iter() {
-            recursive_pretty_print(
-                components,
-                child,
-                builder,
-                descendants,
-                modifiers,
-                entity_refs,
-                type_registry,
-                stacks,
-                entities,
-            );
-        }
-        builder.end_child();
-    } else {
-        builder.add_empty_child(tree_item);
-    }
-}
-*/
 
 pub fn apply_periodic_effect<T: Component<Mutability = Mutable> + Attribute>(
     effects: Query<(

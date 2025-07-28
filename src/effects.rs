@@ -1,7 +1,7 @@
 use crate::ActorEntityMut;
-use crate::assets::GameEffect;
+use crate::assets::EffectDef;
 use crate::attributes::Attribute;
-use crate::conditions::{AttributeCondition, ErasedCondition};
+use crate::conditions::{AttributeCondition, BoxCondition, Who};
 use crate::modifiers::{
     AttributeModifier, ModAggregator, ModTarget, ModType, ModifierFn, ModifierOf, ModifierRef,
     Mutator,
@@ -14,7 +14,7 @@ use bevy::prelude::Name;
 use bevy::prelude::TimerMode::Repeating;
 use bevy::prelude::*;
 use std::fmt::{Debug, Formatter};
-use std::ops::Range;
+use std::ops::RangeBounds;
 use std::time::Duration;
 
 pub enum EffectStatus {
@@ -37,7 +37,7 @@ pub struct EffectInactive;
 
 #[derive(Component, Debug, Default, Deref)]
 #[require(Stacks)]
-pub struct Effect(pub Handle<GameEffect>);
+pub struct Effect(pub Handle<EffectDef>);
 
 /// Who created this effect?
 #[derive(Component, Reflect, Debug)]
@@ -97,7 +97,7 @@ pub struct EffectBuilder {
     modifiers: Vec<Box<dyn Mutator>>,
     duration: EffectDurationPolicy,
     period: Option<EffectPeriodicTimer>,
-    conditions: Vec<ErasedCondition>,
+    conditions: Vec<BoxCondition>,
     stacking_policy: EffectStackingPolicy,
 }
 
@@ -116,7 +116,7 @@ impl EffectBuilder {
         }
     }
 
-    pub fn modify_by_scalar<T: Attribute + Component<Mutability=Mutable>>(
+    pub fn modify_by_scalar<T: Attribute + Component<Mutability = Mutable>>(
         mut self,
         magnitude: f64,
         mod_type: ModType,
@@ -144,8 +144,8 @@ impl EffectBuilder {
         mod_target: ModTarget,
     ) -> Self
     where
-        T: Attribute + Component<Mutability=Mutable>,
-        S: Attribute + Component<Mutability=Mutable>,
+        T: Attribute + Component<Mutability = Mutable>,
+        S: Attribute + Component<Mutability = Mutable>,
     {
         self.effect_entity_commands.push(Box::new(
             move |effect_entity: &mut EntityCommands, _: Entity| {
@@ -173,14 +173,36 @@ impl EffectBuilder {
         self
     }
 
-    pub fn with_condition<T: Attribute + Component<Mutability=Mutable>>(
+    pub fn when_condition(
         mut self,
-        condition_check: Range<f64>,
+        condition: impl crate::conditions::Condition + 'static,
     ) -> Self {
-        let condition = AttributeCondition::<T, Range<f64>>::new(condition_check);
-        self.conditions.push(ErasedCondition::new(condition));
+        self.conditions.push(BoxCondition::new(condition));
         self
     }
+
+    pub fn when_source_attribute<T: Attribute + Component<Mutability = Mutable>>(
+        mut self,
+        range: impl RangeBounds<f64> + Send + Sync + 'static,
+    ) -> Self {
+        let predicate = AttributeCondition::new::<T>(range, Who::Source);
+        self.conditions.push(BoxCondition::new(predicate));
+        self
+    }
+
+    pub fn when_target_attribute<T: Attribute + Component<Mutability = Mutable>>(
+        mut self,
+        range: impl RangeBounds<f64> + Send + Sync + 'static,
+    ) -> Self {
+        let predicate = AttributeCondition::new::<T>(range, Who::Target);
+        self.conditions.push(BoxCondition::new(predicate));
+        self
+    }
+
+    /*pub fn when_predicate(mut self, condition: impl crate::conditions::Condition + 'static) -> Self {
+        //self.conditions.push(ErasedCondition::new(condition));
+        self
+    }*/
 
     /*pub fn with_tag_requirement<T: AttributeComponent + Component<Mutability = Mutable>>(
         mut self,
@@ -193,7 +215,7 @@ impl EffectBuilder {
         self
     }*/
 
-    /*pub fn with_condition_complex<T: AttributeComponent + Component<Mutability = Mutable>>(
+    /*pub fn with_predicate<T: AttributeComponent + Component<Mutability = Mutable>>(
         mut self,
         condition_check: fn(f64) -> bool,
     ) -> Self {
@@ -229,8 +251,8 @@ impl EffectBuilder {
         self
     }
 
-    pub fn build(self) -> GameEffect {
-        GameEffect {
+    pub fn build(self) -> EffectDef {
+        EffectDef {
             effect_fn: self.effect_entity_commands,
             effect_modifiers: self.effects,
             modifiers: self.modifiers,
@@ -309,16 +331,15 @@ impl GameEffectDurationBuilder {
 pub struct ApplyEffectEvent {
     pub target: Entity,
     pub source: Entity,
-    pub handle: Handle<GameEffect>,
+    pub handle: Handle<EffectDef>,
 }
 
 impl ApplyEffectEvent {
     fn apply_instant_effect(
         &self,
-        _commands: &mut Commands,
         actors: &mut Query<(Option<&EffectTargetedBy>, ActorEntityMut), Without<Effect>>,
-        effect: &GameEffect,
-    ) {
+        effect: &EffectDef,
+    ) -> Result<(), BevyError> {
         debug!("Applying instant effect to {}", self.target);
 
         effect
@@ -333,21 +354,22 @@ impl ApplyEffectEvent {
                     let (_, mut source) = actors.get_mut(self.source).unwrap();
                     modifier.apply(&mut source);
                 }
-            })
+            });
+        Ok(())
     }
 
     fn apply_temporary_effect(
         &self,
         mut commands: &mut Commands,
-        effect: &GameEffect,
+        effect: &EffectDef,
         actors: &mut Query<(Option<&EffectTargetedBy>, ActorEntityMut), Without<Effect>>,
         effects: &mut Query<&Effect>,
         add_stack_event: &mut EventWriter<OnAddStackEffect>,
-    ) {
+    ) -> Result<(), BevyError> {
         debug!("Applying duration effect to {}", self.target);
 
         // We want to know whether an effect with the same handle already exists on the actor
-        let (optional_effects, _) = actors.get_mut(self.target).unwrap();
+        let (optional_effects, _) = actors.get_mut(self.target)?;
         let effects_on_actor = match optional_effects {
             None => {
                 vec![]
@@ -378,7 +400,9 @@ impl ApplyEffectEvent {
                         effect_entity: *effects_on_actor.first().unwrap(),
                         handle: self.handle.clone(),
                     });
-                    return;
+                    return Ok(());
+                } else {
+                    debug!("Effect does not exist on actor. Creating new effect instance.");
                 }
             }
         }
@@ -410,7 +434,7 @@ impl ApplyEffectEvent {
 
         // Prepare entity commands
         for effect_mod in &effect.effect_modifiers {
-            let (_, target) = actors.get_mut(self.target).unwrap();
+            let (_, target) = actors.get_mut(self.target)?;
             effect_mod.spawn(&mut commands, target.as_readonly());
         }
 
@@ -433,52 +457,56 @@ impl ApplyEffectEvent {
                         .entity(mod_entity)
                         .insert(ModifierOf(effect_entity));
                 }
-            })
+            });
+
+        Ok(())
     }
 }
 
-pub(crate) fn observe_effect_application(
+pub(crate) fn apply_effect_events(
     trigger: Trigger<ApplyEffectEvent>,
     mut actors: Query<(Option<&EffectTargetedBy>, ActorEntityMut), Without<Effect>>,
     mut effects: Query<&Effect>,
-    effect_assets: Res<Assets<GameEffect>>,
+    effect_assets: Res<Assets<EffectDef>>,
     mut event_writer: EventWriter<OnAddStackEffect>,
     mut commands: Commands,
-) {
+) -> Result<(), BevyError> {
     assert_ne!(Entity::PLACEHOLDER, trigger.target);
     assert_ne!(Entity::PLACEHOLDER, trigger.source);
 
-    let effect = effect_assets.get(&trigger.handle).unwrap();
+    let effect = effect_assets
+        .get(&trigger.handle)
+        .ok_or("No effect asset.")?;
 
     match effect.duration {
         EffectDurationPolicy::Instant => {
-            trigger
-                .event()
-                .apply_instant_effect(&mut commands, &mut actors, effect);
+            trigger.apply_instant_effect(&mut actors, effect)?;
         }
         EffectDurationPolicy::Permanent | EffectDurationPolicy::Temporary(_) => {
-            trigger.event().apply_temporary_effect(
+            trigger.apply_temporary_effect(
                 &mut commands,
                 effect,
                 &mut actors,
                 &mut effects,
                 &mut event_writer,
-            );
+            )?;
         }
     }
+
+    Ok(())
 }
 
 #[derive(Event)]
 pub struct OnAddStackEffect {
     pub effect_entity: Entity,
-    pub handle: Handle<GameEffect>,
+    pub handle: Handle<EffectDef>,
 }
 
 pub(crate) fn read_add_stack_event(
     mut event_reader: EventReader<OnAddStackEffect>,
     mut stacks: Query<&mut Stacks, With<Effect>>,
     mut durations: Query<&mut EffectDuration, With<Effect>>,
-    effect_assets: Res<Assets<GameEffect>>,
+    effect_assets: Res<Assets<EffectDef>>,
 ) {
     for ev in event_reader.read() {
         let effect_definition = match effect_assets.get(&ev.handle) {

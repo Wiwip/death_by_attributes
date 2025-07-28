@@ -23,7 +23,7 @@ ptree = "0.5"
 log = "0.4.27"
 bevy_egui = "0.35"
 bevy-inspector-egui = "0.32"
-disqualified = "1.0.0"
+disqualified = "1.0"
 
 [dependencies.bevy]
 version = "0.16"
@@ -33,7 +33,7 @@ features = [
 ]
 
 [dev-dependencies]
-criterion = { version = "0.6", features = ["html_reports"] }
+criterion = { version = "0.7", features = ["html_reports"] }
 bevy_dev_tools = "0.16"
 
 [dev-dependencies.bevy]

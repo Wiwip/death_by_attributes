@@ -1,16 +1,18 @@
+
 use crate::attributes::ReflectAccessAttribute;
 use crate::effects::{Effect, EffectTargetedBy};
 use crate::inspector::pretty_type_name_str;
 use crate::modifiers::{ModifierMarker, Modifiers, ReflectAccessModifier};
-use crate::Actor;
 use bevy::ecs::component::{ComponentId, Components};
 use bevy::prelude::*;
 use bevy::reflect::ReflectFromPtr;
 use bevy_inspector_egui::restricted_world_view::Error;
-use ptree::{write_tree, TreeBuilder};
+use ptree::{TreeBuilder, write_tree};
 use std::any::TypeId;
+use crate::actors::Actor;
+use crate::stacks::Stacks;
 
-#[derive(Component)]
+#[derive(Component, Copy, Clone)]
 pub struct DebugOverlayMarker;
 
 pub fn setup_debug_overlay(mut commands: Commands, asset_server: Res<AssetServer>) {
@@ -36,8 +38,8 @@ pub fn setup_debug_overlay(mut commands: Commands, asset_server: Res<AssetServer
 }
 
 pub fn explore_actors_system(
-    actors: Query<(EntityRef, &EffectTargetedBy), With<Actor>>,
-    effects: Query<(&Effect, Option<&Name>, Option<&Modifiers>)>,
+    actors: Query<(EntityRef, Option<&EffectTargetedBy>), (With<Actor>, With<DebugOverlayMarker>)>,
+    effects: Query<(&Effect, &Stacks, Option<&Name>, Option<&Modifiers>)>,
     modifiers: Query<EntityRef, With<ModifierMarker>>,
     type_registry: Res<AppTypeRegistry>,
     world_components: &Components,
@@ -64,14 +66,16 @@ pub fn explore_actors_system(
             &mut actor_components,
         );
 
-        list_effects(
-            &mut builder,
-            actor_effects,
-            effects,
-            modifiers,
-            &type_registry,
-            &world_components,
-        );
+        if let Some(actor_effects) = actor_effects {
+            list_effects(
+                &mut builder,
+                actor_effects,
+                effects,
+                modifiers,
+                &type_registry,
+                &world_components,
+            );
+        }
 
         builder.end_child();
     }
@@ -127,7 +131,6 @@ fn list_attributes(
                 attribute.current_value()
             ))
             .end_child();
-        // Do stuff with attributes
     }
     builder.end_child();
 }
@@ -135,14 +138,14 @@ fn list_attributes(
 fn list_effects(
     mut builder: &mut TreeBuilder,
     actor_effects: &EffectTargetedBy,
-    effect_query: Query<(&Effect, Option<&Name>, Option<&Modifiers>)>,
+    effect_query: Query<(&Effect, &Stacks, Option<&Name>, Option<&Modifiers>)>,
     modifier_query: Query<EntityRef, With<ModifierMarker>>,
     type_registry: &AppTypeRegistry,
     world_components: &Components,
 ) {
     builder.begin_child("Effects".to_string());
     for effect_entity in actor_effects.iter() {
-        let Ok((_, name, modifiers)) = effect_query.get(effect_entity) else {
+        let Ok((_, stacks, name, modifiers)) = effect_query.get(effect_entity) else {
             continue;
         };
         let name = match name {
@@ -150,7 +153,7 @@ fn list_effects(
             Some(name) => name,
         };
 
-        builder.begin_child(format!("[{effect_entity}] {name}"));
+        builder.begin_child(format!("[{effect_entity}] {name} [{}]", stacks.0));
 
         let Some(modifiers) = modifiers else {
             continue;
@@ -222,6 +225,7 @@ fn list_modifiers_for_effect(
             .ok_or(Error::NoTypeData(*type_id, "ReflectFromPtr"))
             .unwrap();
 
+        // SAFETY: Confirm assumptions here.
         let value = unsafe { reflect_from_ptr.as_reflect(ptr) };
         let Some(modifier) = reflect_access_modifier.get(value) else {
             continue;

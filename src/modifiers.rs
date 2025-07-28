@@ -475,11 +475,22 @@ impl<T> AccessModifier for AttributeModifier<T>
 where
     T: Attribute,
 {
+    fn describe(&self) -> String {
+        format!("{}", self.aggregator)
+    }
+
     fn name(&self) -> String {
         pretty_type_name::<T>()
     }
+}
 
-    fn describe(&self) -> String {
-        format!("{}", self.aggregator)
+
+pub struct SpawnModifierCommand {
+    pub modifier: Box<dyn Mutator>,
+}
+
+impl EntityCommand for SpawnModifierCommand {
+    fn apply(self, entity: EntityWorldMut) -> () {
+        todo!()
     }
 }

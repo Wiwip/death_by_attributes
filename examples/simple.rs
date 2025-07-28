@@ -1,13 +1,15 @@
+use root_attribute::conditions::{AttributeCondition, ConditionContext, ConditionExt, FunctionCondition, StackCondition, Who};
 use bevy::ecs::schedule::{LogLevel, ScheduleBuildSettings};
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::window::PresentMode;
 use bevy_egui::EguiPlugin;
 use bevy_inspector_egui::DefaultInspectorConfigPlugin;
+use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use ptree::TreeBuilder;
 use root_attribute::abilities::{AbilityBuilder, TryActivateAbility};
-use root_attribute::actors::ActorBuilder;
-use root_attribute::assets::GameEffect;
+use root_attribute::actors::{ActorBuilder, SpawnActorCommand};
+use root_attribute::assets::{AbilityDef, ActorDef, EffectDef};
 use root_attribute::attributes::Attribute;
 use root_attribute::attributes::ReflectAccessAttribute;
 use root_attribute::context::EffectContext;
@@ -15,10 +17,11 @@ use root_attribute::effects::{
     EffectBuilder, EffectPeriodicTimer, EffectSource, EffectSources, EffectTarget, EffectTargetedBy,
 };
 use root_attribute::inspector::ActorInspectorPlugin;
+use root_attribute::inspector::debug_overlay::DebugOverlayMarker;
 use root_attribute::modifiers::ModType::{Additive, Multiplicative};
 use root_attribute::modifiers::{AttributeModifier, ModAggregator, ModTarget};
 use root_attribute::stacks::{EffectStackingPolicy, Stacks};
-use root_attribute::{attribute, ActorEntityMut, AttributesPlugin};
+use root_attribute::{ActorEntityMut, AttributesPlugin, attribute, init_attribute};
 use std::fmt::Debug;
 use std::time::Duration;
 
@@ -49,13 +52,35 @@ fn main() {
             //enabled: true,
             ..default()
         })
-        .add_plugins(AttributesPlugin)
+        .add_plugins((
+            AttributesPlugin,
+            init_attribute::<Strength>,
+            init_attribute::<Agility>,
+            init_attribute::<Intelligence>,
+            init_attribute::<Health>,
+            init_attribute::<MaxHealth>,
+            init_attribute::<HealthRegen>,
+            init_attribute::<Mana>,
+            init_attribute::<ManaPool>,
+            init_attribute::<ManaRegen>,
+            init_attribute::<AttackPower>,
+            init_attribute::<Armour>,
+            init_attribute::<MagicPower>,
+        ))
         .add_plugins(EguiPlugin::default())
         .add_plugins(DefaultInspectorConfigPlugin)
+        .add_plugins(WorldInspectorPlugin::default())
         .add_plugins(ActorInspectorPlugin)
         .add_systems(
             Startup,
-            (setup_effects, setup_window, setup, setup_camera).chain(),
+            (
+                setup_effects,
+                setup_abilities,
+                setup_window,
+                setup_actor,
+                setup_camera,
+            )
+                .chain(),
         )
         .add_systems(Update, do_gameplay_stuff)
         //.add_systems(Update, display_tree)
@@ -97,17 +122,17 @@ fn setup_window(mut query: Query<&mut Window>) {
 }
 
 #[derive(Resource)]
-struct FireballAbility(Entity);
+struct FireballAbility(Handle<AbilityDef>);
 
 #[derive(Resource)]
 struct EffectsDatabase {
-    ap_buff: Handle<GameEffect>,
-    mp_buff: Handle<GameEffect>,
-    hp_buff: Handle<GameEffect>,
-    hp_regen: Handle<GameEffect>,
+    ap_buff: Handle<EffectDef>,
+    mp_buff: Handle<EffectDef>,
+    hp_buff: Handle<EffectDef>,
+    hp_regen: Handle<EffectDef>,
 }
 
-fn setup_effects(mut effects: ResMut<Assets<GameEffect>>, mut commands: Commands) {
+fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands) {
     // Attack Power effect
     let ap_buff = effects.add(
         EffectBuilder::new()
@@ -115,9 +140,14 @@ fn setup_effects(mut effects: ResMut<Assets<GameEffect>>, mut commands: Commands
             .with_continuous_application()
             .with_name("AttackPower Buff".into())
             .modify_by_ref::<AttackPower, Health>(0.10, Additive, ModTarget::Target)
-            .modify_by_ref::<Intelligence, Health>(0.10, Additive, ModTarget::Target)
+            .modify_by_ref::<Intelligence, Health>(0.25, Additive, ModTarget::Target)
             .build(),
     );
+
+    let a = AttributeCondition::new::<Health>(..=100.0, Who::Source);
+    let b = AttributeCondition::new::<Health>(150.0..250.0, Who::Source);
+    let c = FunctionCondition::new(|context: &ConditionContext| context.source_actor.get::<Fire>().is_some());
+    let condition = a.or(b.not()).or(c);
 
     // Magic Power effect
     let mp_buff = effects.add(
@@ -126,7 +156,8 @@ fn setup_effects(mut effects: ResMut<Assets<GameEffect>>, mut commands: Commands
             .with_continuous_application()
             .with_name("MagicPower Buff".into())
             .modify_by_scalar::<MagicPower>(10.0, Additive, ModTarget::Target)
-            .with_condition::<Health>(20.0..100.0)
+            //.when_attribute::<Health>(..=100.0)
+            .when_condition(condition)
             .with_stacking_policy(EffectStackingPolicy::Add {
                 count: 1,
                 max_stack: 10,
@@ -164,48 +195,66 @@ fn setup_effects(mut effects: ResMut<Assets<GameEffect>>, mut commands: Commands
     });
 }
 
-fn setup(mut commands: Commands, mut ctx: EffectContext, efx: Res<EffectsDatabase>) {
-    let _rng = rand::rng();
-    let player_entity = commands.spawn_empty().id();
-    let ability = commands.spawn_empty().id();
+#[derive(Component, Default)]
+struct Fire;
 
-    commands.insert_resource(FireballAbility(ability));
+fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Commands) {
+    let handle = effects.add(
+        AbilityBuilder::new()
+            .with_name("Fireball".into())
+            .with_activation(|_: &mut ActorEntityMut, _: Commands| {
+                info!("fireball!");
+            })
+            .with_cooldown(1.0)
+            .with_cost::<Mana>(12.0)
+            .with_tag::<Fire>()
+            .build(),
+    );
 
-    AbilityBuilder::new(ability, player_entity)
-        .with_activation(|_: ActorEntityMut, _: Commands| {
-            info!("fireball!");
-        })
-        .with_cooldown(1.0)
-        .with_cost::<Mana>(12.0)
-        .build(&mut commands);
-
-    ActorBuilder::new(player_entity)
-        .with::<Strength>(12.0)
-        .with::<Agility>(7.0)
-        .with::<Intelligence>(1.0)
-        .with::<Health>(85.0)
-        .clamp_max::<Health, MaxHealth>(0.0)
-        .with::<MaxHealth>(1000.0)
-        .with::<HealthRegen>(2.0)
-        .with::<Mana>(100.0)
-        .with::<ManaPool>(100.0)
-        .with::<ManaRegen>(8.0)
-        .with::<MagicPower>(1.0)
-        .with::<AttackPower>(0.0)
-        .with::<Armour>(0.10)
-        .with_component((Name::new("Player"), Player))
-        .commit(&mut commands);
-
-    ctx.apply_effect_to_self(player_entity, efx.ap_buff.clone());
-    ctx.apply_effect_to_self(player_entity, efx.hp_buff.clone());
-    ctx.apply_effect_to_self(player_entity, efx.hp_regen.clone());
-
-    // Should have two stacks
-    ctx.apply_effect_to_self(player_entity, efx.mp_buff.clone());
-    ctx.apply_effect_to_self(player_entity, efx.mp_buff.clone());
+    commands.insert_resource(FireballAbility(handle));
 }
 
-#[derive(Component)]
+fn setup_actor(
+    mut ctx: EffectContext,
+    mut actor_assets: ResMut<Assets<ActorDef>>,
+    efx: Res<EffectsDatabase>,
+    fireball: Res<FireballAbility>,
+) {
+    let _rng = rand::rng();
+
+    let actor_template = actor_assets.add(
+        ActorBuilder::new()
+            .with_name("=== Player ===".into())
+            .with::<Strength>(12.0)
+            .with::<Agility>(7.0)
+            .with::<Intelligence>(1.0)
+            .with::<Health>(85.0)
+            .clamp_max::<Health, MaxHealth>(0.0)
+            .with::<MaxHealth>(1000.0)
+            .with::<HealthRegen>(2.0)
+            .with::<Mana>(100.0)
+            .with::<ManaPool>(100.0)
+            .with::<ManaRegen>(8.0)
+            .with::<MagicPower>(1.0)
+            .with::<AttackPower>(0.0)
+            .with::<Armour>(0.10)
+            .with_component((Player, DebugOverlayMarker))
+            .grant_ability(&fireball.0)
+            .build(),
+    );
+
+    let player_entity = ctx.spawn_actor(&actor_template).id();
+
+    ctx.apply_effect_to_self(player_entity, &efx.ap_buff);
+    ctx.apply_effect_to_self(player_entity, &efx.hp_buff);
+    ctx.apply_effect_to_self(player_entity, &efx.hp_regen);
+
+    // Should have two stacks
+    ctx.apply_effect_to_self(player_entity, &efx.mp_buff);
+    ctx.apply_effect_to_self(player_entity, &efx.mp_buff);
+}
+
+#[derive(Component, Copy, Clone)]
 struct Player;
 
 #[derive(Component)]
@@ -220,12 +269,11 @@ fn setup_camera(mut commands: Commands) {
 fn inputs(
     mut players: Query<Entity, With<Player>>,
     keys: Res<ButtonInput<KeyCode>>,
-    ability: Res<FireballAbility>,
     mut commands: Commands,
 ) {
     if let Ok(player_entity) = players.single_mut() {
         if keys.just_pressed(KeyCode::Space) {
-            commands.trigger_targets(TryActivateAbility, ability.0);
+            commands.trigger_targets(TryActivateAbility::new(), player_entity);
             commands.trigger_targets(DamageEvent { damage: 10.0 }, player_entity);
         }
     }

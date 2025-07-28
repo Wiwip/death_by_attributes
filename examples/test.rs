@@ -1,7 +1,8 @@
-use bevy::app::App;
-use bevy::DefaultPlugins;
-use std::fmt::Debug;
+
+use bevy::prelude::*;
+use predicates::prelude::*;
+
 
 fn main() {
-    App::new().add_plugins(DefaultPlugins).run();
+
 }

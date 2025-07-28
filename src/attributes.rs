@@ -7,7 +7,7 @@ use std::marker::PhantomData;
 use std::ops::DerefMut;
 
 pub trait Attribute:
-    Component<Mutability = Mutable> + Reflect + TypePath + GetTypeRegistration
+    Component<Mutability = Mutable> + Clone + Reflect + TypePath + GetTypeRegistration
 {
     fn new(value: f64) -> Self;
     fn base_value(&self) -> f64;
@@ -81,7 +81,7 @@ macro_rules! attribute {
     };
 }
 
-#[derive(Component)]
+#[derive(Component, Clone)]
 pub enum AttributeClamp<A> {
     Phantom(PhantomData<A>),
     Min(f64),

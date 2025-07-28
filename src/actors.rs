@@ -1,130 +1,157 @@
-use crate::attributes::{clamp_attributes_system, update_max_clamp_values, Attribute, AttributeClamp, ReflectAccessAttribute};
-use crate::modifiers::{AttributeModifier, ModAggregator};
-use crate::systems::{
-    apply_modifier_on_trigger, apply_periodic_effect, flag_dirty_attribute, flag_dirty_modifier,
-    tick_effects_periodic_timer, update_effect_tree_system,
-};
-use crate::{Actor, OnAttributeValueChanged, OnBaseValueChange, RegisteredPhantomSystem};
-use bevy::app::{PostUpdate, PreUpdate};
-use bevy::ecs::component::Mutable;
-use bevy::ecs::event::EventRegistry;
+use crate::OnAttributeValueChanged;
+use crate::abilities::{AbilityOf, GrantAbilityCommand};
+use crate::assets::{AbilityDef, ActorDef, EffectDef};
+use crate::attributes::{Attribute, AttributeClamp, update_max_clamp_values};
+use crate::effects::ApplyEffectEvent;
+use crate::modifiers::ModAggregator;
+use crate::mutator::EntityMutator;
+use crate::systems::apply_modifier_on_trigger;
 use bevy::ecs::world::CommandQueue;
-use bevy::log::debug;
 use bevy::prelude::*;
-use std::any::type_name;
-use std::marker::PhantomData;
-use bevy::reflect::GetTypeRegistration;
+
+#[derive(Component, Clone, Debug)]
+pub struct Actor(Handle<ActorDef>);
+
+pub struct SpawnActorCommand {
+    pub handle: Handle<ActorDef>,
+}
+
+impl EntityCommand for SpawnActorCommand {
+    fn apply(self, mut entity: EntityWorldMut) -> () {
+        warn!("Spawning actor {:?}", self.handle);
+        let actor_entity = entity.id();
+
+        entity.world_scope(|world| {
+            world.resource_scope(|world, actor_assets: Mut<Assets<ActorDef>>| {
+                actor_assets.get(&self.handle).unwrap();
+                let actor_def = actor_assets.get(&self.handle).unwrap();
+
+                let mut queue = {
+                    let mut queue = CommandQueue::default();
+                    let mut commands = Commands::new(&mut queue, world);
+
+                    commands.entity(actor_entity).insert((
+                        Actor(self.handle.clone()),
+                        Name::new(actor_def.name.clone()),
+                    ));
+
+                    // Apply mutators
+                    for mutator in &actor_def.mutators {
+                        let mut entity_commands = commands.entity(actor_entity);
+                        (mutator.func)(&mut entity_commands);
+                    }
+
+                    // Spawn the granted ability entities
+                    for ability in actor_def.abilities.iter() {
+                        commands
+                            .spawn(AbilityOf(actor_entity))
+                            .queue(GrantAbilityCommand {
+                                handle: ability.clone(),
+                            });
+                    }
+
+                    queue
+                };
+
+                // Sends the event that will apply the effects to the entity
+                for effect in actor_def.effects.iter() {
+                    println!("duh");
+                    world.send_event(ApplyEffectEvent {
+                        target: actor_entity,
+                        source: actor_entity,
+                        handle: effect.clone(),
+                    });
+                }
+
+                // Queue the commands for deferred application
+                world.commands().append(&mut queue);
+            });
+        });
+    }
+}
 
 pub struct ActorBuilder {
-    entity: Entity,
-    queue: CommandQueue,
+    name: String,
+    mutators: Vec<EntityMutator>,
+    abilities: Vec<Handle<AbilityDef>>,
+    effects: Vec<Handle<EffectDef>>,
 }
 
 impl ActorBuilder {
-    pub fn new(actor: Entity) -> ActorBuilder {
-        let mut queue = CommandQueue::default();
-        queue.push(move |world: &mut World| {
+    pub fn new() -> ActorBuilder {
+        // let mut queue = CommandQueue::default();
+        /*queue.push(move |world: &mut World| {
             world.entity_mut(actor).insert(Actor);
-        });
+        });*/
         Self {
-            entity: actor,
-            queue,
+            name: "Actor".to_string(),
+            mutators: vec![],
+            abilities: vec![],
+            effects: vec![],
         }
     }
 
-    pub fn with<T>(mut self, value: f64) -> ActorBuilder
-    where
-        T: Component<Mutability = Mutable> + Attribute,
-    {
-        // Ensures that the systems related to this attribute exist in the schedule
-        self.queue.push(AttributeInitCommand::<T> {
-            phantom: Default::default(),
-        });
-        // Inserts the actual T attribute on the entity
-        self.queue.push(move |world: &mut World| {
-            world
-                .entity_mut(self.entity)
-                .insert((T::new(value), ModAggregator::<T>::default()));
-
-            // TODO: Should probably be a global observer
-            world
-                .entity_mut(self.entity)
-                .observe(apply_modifier_on_trigger::<T>);
-        });
+    pub fn with_name(mut self, name: &str) -> ActorBuilder {
+        self.name = name.to_string();
         self
     }
 
-    pub fn clamp<T>(mut self, clamp: AttributeClamp<T>) -> ActorBuilder
-    where
-        T: Component<Mutability = Mutable> + Attribute,
-    {
-        self.queue.push(move |world: &mut World| {
-            world.entity_mut(self.entity).insert(clamp);
-        });
+    pub fn with<T: Attribute>(mut self, value: f64) -> ActorBuilder {
+        self.mutators.push(EntityMutator::new(
+            move |entity_commands: &mut EntityCommands| {
+                entity_commands.insert((T::new(value), ModAggregator::<T>::default()));
+                entity_commands.observe(apply_modifier_on_trigger::<T>);
+            },
+        ));
+        self
+    }
+
+    pub fn clamp<T: Attribute>(mut self, clamp: AttributeClamp<T>) -> ActorBuilder {
+        self.mutators.push(EntityMutator::new(
+            move |entity_commands: &mut EntityCommands| {
+                entity_commands.insert(clamp.clone());
+            },
+        ));
         self
     }
 
     pub fn clamp_max<T, C>(mut self, min: f64) -> ActorBuilder
     where
-        T: Component<Mutability = Mutable> + Attribute,
-        C: Component<Mutability = Mutable> + Attribute,
+        T: Attribute,
+        C: Attribute,
     {
-        self.queue.push(move |world: &mut World| {
-            world
-                .entity_mut(self.entity)
-                .insert(AttributeClamp::<T>::MinMax(min, f64::MAX))
-                .observe(update_max_clamp_values::<T, C>);
-            world.trigger_targets(OnAttributeValueChanged::<T>::default(), self.entity);
-        });
+        self.mutators.push(EntityMutator::new(
+            move |entity_commands: &mut EntityCommands| {
+                entity_commands
+                    .insert(AttributeClamp::<T>::MinMax(min, f64::MAX))
+                    .observe(update_max_clamp_values::<T, C>);
+                entity_commands.trigger(OnAttributeValueChanged::<T>::default());
+            },
+        ));
         self
     }
 
-    pub fn with_command(mut self, command: impl Command) -> ActorBuilder {
-        self.queue.push(command);
+    pub fn with_component<T: Bundle + Clone + 'static>(mut self, bundle: T) -> ActorBuilder {
+        self.mutators.push(EntityMutator::new(
+            move |entity_commands: &mut EntityCommands| {
+                entity_commands.insert(bundle.clone());
+            },
+        ));
         self
     }
 
-    pub fn with_component(mut self, component: impl Bundle) -> ActorBuilder {
-        self.queue.push(move |world: &mut World| {
-            world.entity_mut(self.entity).insert(component);
-        });
+    pub fn grant_ability(mut self, ability_spec: &Handle<AbilityDef>) -> Self {
+        self.abilities.push(ability_spec.clone());
         self
     }
 
-    pub fn commit(mut self, commands: &mut Commands) {
-        commands.append(&mut self.queue);
-    }
-}
-
-struct AttributeInitCommand<T> {
-    phantom: PhantomData<T>,
-}
-
-impl<T: Component<Mutability = Mutable> + Attribute + Reflect + TypePath + GetTypeRegistration> Command for AttributeInitCommand<T> {
-    fn apply(self, world: &mut World) -> () {
-        // Systems cannot be added multiple time. We use a resource as a 'marker'.
-        if !world.contains_resource::<RegisteredPhantomSystem<T>>() {
-            debug!("Registered Systems for: {}.", type_name::<T>());
-            world.init_resource::<RegisteredPhantomSystem<T>>();
-            if !world.contains_resource::<Events<OnBaseValueChange<T>>>() {
-                EventRegistry::register_event::<OnBaseValueChange<T>>(world);
-                world.resource_scope(|_world, type_registry: Mut<AppTypeRegistry>| {
-                    type_registry.write().register::<AttributeModifier<T>>();
-                    type_registry.write().register::<T>();
-
-                    type_registry.write().register_type_data::<T, ReflectAccessAttribute>();
-                });
-            }
-            world.schedule_scope(PreUpdate, |_, schedule| {
-                schedule.add_systems(apply_periodic_effect::<T>.after(tick_effects_periodic_timer));
-                schedule
-                    .add_systems(update_effect_tree_system::<T>.after(apply_periodic_effect::<T>));
-            });
-            world.schedule_scope(PostUpdate, |_, schedule| {
-                schedule.add_systems(flag_dirty_attribute::<T>);
-                schedule.add_systems(flag_dirty_modifier::<T>);
-                schedule.add_systems(clamp_attributes_system::<T>);
-            });
+    pub fn build(self) -> ActorDef {
+        ActorDef {
+            name: self.name,
+            description: "".to_string(),
+            mutators: self.mutators,
+            abilities: self.abilities,
+            effects: self.effects,
         }
     }
 }
