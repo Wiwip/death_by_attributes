@@ -1,10 +1,11 @@
 use crate::OnAttributeValueChanged;
-use crate::abilities::{AbilityOf, GrantAbilityCommand};
+use crate::ability::{AbilityOf, GrantAbilityCommand};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::attributes::{Attribute, AttributeClamp, update_max_clamp_values};
-use crate::effects::ApplyEffectEvent;
+use crate::effect::EffectTargeting;
 use crate::modifiers::ModAggregator;
 use crate::mutator::EntityMutator;
+use crate::prelude::ApplyEffectEvent;
 use crate::systems::apply_modifier_on_trigger;
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
@@ -18,7 +19,7 @@ pub struct SpawnActorCommand {
 
 impl EntityCommand for SpawnActorCommand {
     fn apply(self, mut entity: EntityWorldMut) -> () {
-        warn!("Spawning actor {:?}", self.handle);
+        debug!("Spawning actor {:?}", self.handle);
         let actor_entity = entity.id();
 
         entity.world_scope(|world| {
@@ -55,10 +56,8 @@ impl EntityCommand for SpawnActorCommand {
 
                 // Sends the event that will apply the effects to the entity
                 for effect in actor_def.effects.iter() {
-                    println!("duh");
                     world.send_event(ApplyEffectEvent {
-                        target: actor_entity,
-                        source: actor_entity,
+                        targeting: EffectTargeting::SelfCast(actor_entity),
                         handle: effect.clone(),
                     });
                 }
@@ -79,10 +78,6 @@ pub struct ActorBuilder {
 
 impl ActorBuilder {
     pub fn new() -> ActorBuilder {
-        // let mut queue = CommandQueue::default();
-        /*queue.push(move |world: &mut World| {
-            world.entity_mut(actor).insert(Actor);
-        });*/
         Self {
             name: "Actor".to_string(),
             mutators: vec![],

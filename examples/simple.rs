@@ -1,27 +1,26 @@
-use root_attribute::conditions::{AttributeCondition, ConditionContext, ConditionExt, FunctionCondition, StackCondition, Who};
 use bevy::ecs::schedule::{LogLevel, ScheduleBuildSettings};
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::window::PresentMode;
 use bevy_egui::EguiPlugin;
 use bevy_inspector_egui::DefaultInspectorConfigPlugin;
-use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use ptree::TreeBuilder;
-use root_attribute::abilities::{AbilityBuilder, TryActivateAbility};
-use root_attribute::actors::{ActorBuilder, SpawnActorCommand};
+use root_attribute::ability::{AbilityBuilder, TargetData, TryActivateAbility};
+use root_attribute::actors::ActorBuilder;
 use root_attribute::assets::{AbilityDef, ActorDef, EffectDef};
 use root_attribute::attributes::Attribute;
 use root_attribute::attributes::ReflectAccessAttribute;
-use root_attribute::context::EffectContext;
-use root_attribute::effects::{
-    EffectBuilder, EffectPeriodicTimer, EffectSource, EffectSources, EffectTarget, EffectTargetedBy,
+use root_attribute::condition::{
+    AttributeCondition, ConditionContext, ConditionExt, FunctionCondition, Who,
 };
-use root_attribute::inspector::ActorInspectorPlugin;
+use root_attribute::context::EffectContext;
+use root_attribute::effect::{EffectStackingPolicy, Stacks};
 use root_attribute::inspector::debug_overlay::DebugOverlayMarker;
+use root_attribute::inspector::ActorInspectorPlugin;
 use root_attribute::modifiers::ModType::{Additive, Multiplicative};
 use root_attribute::modifiers::{AttributeModifier, ModAggregator, ModTarget};
-use root_attribute::stacks::{EffectStackingPolicy, Stacks};
-use root_attribute::{ActorEntityMut, AttributesPlugin, attribute, init_attribute};
+use root_attribute::prelude::*;
+use root_attribute::{attribute, init_attribute, AttributesMut, AttributesPlugin};
 use std::fmt::Debug;
 use std::time::Duration;
 
@@ -69,7 +68,7 @@ fn main() {
         ))
         .add_plugins(EguiPlugin::default())
         .add_plugins(DefaultInspectorConfigPlugin)
-        .add_plugins(WorldInspectorPlugin::default())
+        //.add_plugins(WorldInspectorPlugin::default())
         .add_plugins(ActorInspectorPlugin)
         .add_systems(
             Startup,
@@ -83,9 +82,6 @@ fn main() {
                 .chain(),
         )
         .add_systems(Update, do_gameplay_stuff)
-        //.add_systems(Update, display_tree)
-        //.add_systems(Update, pretty_print_tree_system)
-        //.add_systems(Update, display_modifier_tree::<Health>)
         .add_systems(PreUpdate, inputs)
         .edit_schedule(Update, |schedule| {
             schedule.set_build_settings(ScheduleBuildSettings {
@@ -94,7 +90,6 @@ fn main() {
             });
         })
         .add_observer(damage_event_calculations)
-        .register_type::<EffectPeriodicTimer>()
         .register_type::<Health>()
         .register_type::<AttackPower>()
         .register_type::<Mana>()
@@ -102,7 +97,7 @@ fn main() {
         .register_type::<AttributeModifier<AttackPower>>()
         .register_type::<AttributeModifier<MagicPower>>()
         .register_type::<EffectSources>()
-        .register_type::<EffectTargetedBy>()
+        .register_type::<Effects>()
         .register_type::<Stacks>()
         .register_type::<EffectSource>()
         .register_type::<EffectTarget>()
@@ -122,7 +117,10 @@ fn setup_window(mut query: Query<&mut Window>) {
 }
 
 #[derive(Resource)]
-struct FireballAbility(Handle<AbilityDef>);
+struct AbilityDatabase {
+    fireball: Handle<AbilityDef>,
+    frostball: Handle<AbilityDef>,
+}
 
 #[derive(Resource)]
 struct EffectsDatabase {
@@ -135,29 +133,27 @@ struct EffectsDatabase {
 fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands) {
     // Attack Power effect
     let ap_buff = effects.add(
-        EffectBuilder::new()
-            .with_permanent_duration()
-            .with_continuous_application()
-            .with_name("AttackPower Buff".into())
+        EffectBuilder::permanent()
+            .name("AttackPower Buff".into())
             .modify_by_ref::<AttackPower, Health>(0.10, Additive, ModTarget::Target)
             .modify_by_ref::<Intelligence, Health>(0.25, Additive, ModTarget::Target)
             .build(),
     );
 
     let a = AttributeCondition::new::<Health>(..=100.0, Who::Source);
-    let b = AttributeCondition::new::<Health>(150.0..250.0, Who::Source);
-    let c = FunctionCondition::new(|context: &ConditionContext| context.source_actor.get::<Fire>().is_some());
-    let condition = a.or(b.not()).or(c);
+    /*let b = AttributeCondition::new::<Health>(150.0..250.0, Who::Source);
+    let c = FunctionCondition::new(|context: &ConditionContext| {
+        context.source_actor.get::<Fire>().is_some()
+    });
+    let condition = a.or(b.not()).or(c);*/
 
     // Magic Power effect
     let mp_buff = effects.add(
-        EffectBuilder::new()
-            .with_permanent_duration()
-            .with_continuous_application()
-            .with_name("MagicPower Buff".into())
+        EffectBuilder::permanent()
+            .name("MagicPower Buff".into())
             .modify_by_scalar::<MagicPower>(10.0, Additive, ModTarget::Target)
             //.when_attribute::<Health>(..=100.0)
-            .when_condition(condition)
+            .when_condition(a)
             .with_stacking_policy(EffectStackingPolicy::Add {
                 count: 1,
                 max_stack: 10,
@@ -167,21 +163,17 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
 
     // Effect 1 - Passive Max Health Boost
     let hp_buff = effects.add(
-        EffectBuilder::new()
-            .with_permanent_duration()
-            .with_continuous_application()
-            .with_name("MaxHealth Increase".into())
+        EffectBuilder::permanent()
+            .name("MaxHealth Increase".into())
             .modify_by_scalar::<MaxHealth>(0.10, Multiplicative, ModTarget::Target)
-            .with_stacking_policy(EffectStackingPolicy::Override)
+            .with_stacking_policy(EffectStackingPolicy::RefreshDuration)
             .build(),
     );
 
     // Effect 2 - Periodic Health Regen
     let hp_regen = effects.add(
-        EffectBuilder::new()
-            .with_permanent_duration()
-            .with_periodic_application(1.0)
-            .with_name("Health Regen".into())
+        EffectBuilder::every_seconds(1.0)
+            .name("Health Regen".into())
             .modify_by_scalar::<Health>(1.0, Additive, ModTarget::Target)
             .modify_by_ref::<Health, HealthRegen>(1.0, Additive, ModTarget::Target)
             .build(),
@@ -198,12 +190,15 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
 #[derive(Component, Default)]
 struct Fire;
 
+#[derive(Component, Default)]
+struct Frost;
+
 fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Commands) {
-    let handle = effects.add(
+    let fireball = effects.add(
         AbilityBuilder::new()
             .with_name("Fireball".into())
-            .with_activation(|_: &mut ActorEntityMut, _: Commands| {
-                info!("fireball!");
+            .with_activation(|entity: &mut AttributesMut, _: &mut Commands| {
+                println!("Fireball! {}", entity.id());
             })
             .with_cooldown(1.0)
             .with_cost::<Mana>(12.0)
@@ -211,14 +206,28 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
             .build(),
     );
 
-    commands.insert_resource(FireballAbility(handle));
+    let frostball = effects.add(
+        AbilityBuilder::new()
+            .with_name("Frostball".into())
+            .with_activation(|entity: &mut AttributesMut, _: &mut Commands| {
+                println!("Frostball! {}", entity.id());
+            })
+            .with_cooldown(1.0)
+            .with_cost::<Mana>(12.0)
+            .with_tag::<Frost>()
+            .build(),
+    );
+    commands.insert_resource(AbilityDatabase {
+        fireball,
+        frostball,
+    });
 }
 
 fn setup_actor(
     mut ctx: EffectContext,
     mut actor_assets: ResMut<Assets<ActorDef>>,
     efx: Res<EffectsDatabase>,
-    fireball: Res<FireballAbility>,
+    abilities: Res<AbilityDatabase>,
 ) {
     let _rng = rand::rng();
 
@@ -239,7 +248,8 @@ fn setup_actor(
             .with::<AttackPower>(0.0)
             .with::<Armour>(0.10)
             .with_component((Player, DebugOverlayMarker))
-            .grant_ability(&fireball.0)
+            .grant_ability(&abilities.fireball)
+            .grant_ability(&abilities.frostball)
             .build(),
     );
 
@@ -272,8 +282,17 @@ fn inputs(
     mut commands: Commands,
 ) {
     if let Ok(player_entity) = players.single_mut() {
-        if keys.just_pressed(KeyCode::Space) {
-            commands.trigger_targets(TryActivateAbility::new(), player_entity);
+        if keys.just_pressed(KeyCode::KeyQ) {
+            commands
+                .entity(player_entity)
+                .trigger(TryActivateAbility::by_tag::<Fire>(TargetData::Own));
+        }
+        if keys.just_pressed(KeyCode::KeyE) {
+            commands
+                .entity(player_entity)
+                .trigger(TryActivateAbility::by_tag::<Frost>(TargetData::Own));
+        }
+        if keys.just_pressed(KeyCode::Backspace) {
             commands.trigger_targets(DamageEvent { damage: 10.0 }, player_entity);
         }
     }
@@ -312,7 +331,7 @@ fn do_gameplay_stuff() {
 pub fn print_modifier_hierarchy<T: Component + Attribute>(
     current_entity: Entity,
     builder: &mut TreeBuilder,
-    descendants: Query<&EffectTargetedBy>,
+    descendants: Query<&Effects>,
     entities: Query<(
         &Name,
         Option<&AttributeModifier<T>>,

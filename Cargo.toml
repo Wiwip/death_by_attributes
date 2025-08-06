@@ -18,10 +18,9 @@ debug = true
 
 [dependencies]
 attributes_macro = { path = "attributes_macro" }
-rand = "0.9.1"
+rand = "0.9"
 ptree = "0.5"
-log = "0.4.27"
-bevy_egui = "0.35"
+bevy_egui = "0.36"
 bevy-inspector-egui = "0.32"
 disqualified = "1.0"
 

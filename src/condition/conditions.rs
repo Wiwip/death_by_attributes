@@ -1,48 +1,16 @@
-use crate::assets::EffectDef;
+
+use crate::assets::AbilityDef;
 use crate::attributes::Attribute;
-use crate::effects::{Effect, EffectInactive, EffectSource, EffectTarget};
-use crate::evaluator::{AttributeExtractor, BoxExtractor};
-use crate::stacks::Stacks;
-use bevy::ecs::relationship::Relationship;
-use bevy::prelude::*;
+use crate::condition::evaluator::{AttributeExtractor, BoxExtractor};
+use crate::condition::{Condition, ConditionContext, Who};
+use crate::effect::Stacks;
+use bevy::asset::{AssetId};
+use bevy::log::error;
+use bevy::prelude::{Component, TypePath};
 use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::ops::{Bound, RangeBounds};
-
-pub trait Condition: Send + Sync + 'static {
-    fn evaluate(&self, context: &ConditionContext) -> bool;
-}
-
-pub struct BoxCondition(Box<dyn Condition>);
-
-impl BoxCondition {
-    pub fn new<C: Condition + 'static>(condition: C) -> Self {
-        Self(Box::new(condition))
-    }
-}
-
-pub struct ConditionContext<'a> {
-    pub target_actor: &'a EntityRef<'a>,
-    pub source_actor: &'a EntityRef<'a>,
-    pub owner: &'a EntityRef<'a>,
-}
-
-pub enum Who {
-    Target,
-    Source,
-    Owner,
-}
-
-impl Who {
-    /// Resolves the `Who` variant to a specific entity from the context.
-    pub fn get_entity<'a>(&self, context: &'a ConditionContext<'a>) -> &'a EntityRef<'a> {
-        match self {
-            Who::Target => context.target_actor,
-            Who::Source => context.source_actor,
-            Who::Owner => context.owner,
-        }
-    }
-}
+use crate::ability::Ability;
 
 #[derive(TypePath)]
 pub struct AttributeCondition {
@@ -88,7 +56,28 @@ impl Condition for AttributeCondition {
 
 impl std::fmt::Display for AttributeCondition {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        todo!()
+        let (start, end) = &self.bounds;
+
+        let start_str = match start {
+            Bound::Included(v) => format!("[{v}"),
+            Bound::Excluded(v) => format!("({v}"),
+            Bound::Unbounded => "(-∞".to_string(),
+        };
+
+        let end_str = match end {
+            Bound::Included(v) => format!("{v}]"),
+            Bound::Excluded(v) => format!("{v})"),
+            Bound::Unbounded => "∞)".to_string(),
+        };
+
+        write!(
+            f,
+            "Attribute {} on {:?} in range {}, {}",
+            self.extractor.0.name(),
+            self.target,
+            start_str,
+            end_str
+        )
     }
 }
 
@@ -200,9 +189,50 @@ pub struct TagCondition<C: Component> {
     phantom_data: PhantomData<C>,
 }
 
+impl<C: Component> TagCondition<C> {
+    pub fn new(target: Who) -> Self {
+        Self {
+            target,
+            phantom_data: PhantomData,
+        }
+    }
+
+    pub fn source() -> Self {
+        Self::new(Who::Source)
+    }
+
+    pub fn target() -> Self {
+        Self::new(Who::Target)
+    }
+
+    pub fn owner() -> Self {
+        Self::new(Who::Owner)
+    }
+}
+
 impl<C: Component> Condition for TagCondition<C> {
     fn evaluate(&self, context: &ConditionContext) -> bool {
         self.target.get_entity(context).contains::<C>()
+    }
+}
+
+pub struct AbilityCondition {
+    asset: AssetId<AbilityDef>,
+}
+
+impl AbilityCondition {
+    pub fn new(asset: AssetId<AbilityDef>) -> Self {
+        Self { asset }
+    }
+}
+
+impl Condition for AbilityCondition {
+    fn evaluate(&self, context: &ConditionContext) -> bool {
+        context
+            .owner
+            .get::<Ability>()
+            .map(|ability| ability.0.id() == self.asset)
+            .unwrap_or(false)
     }
 }
 
@@ -228,74 +258,8 @@ pub trait ConditionExt: Condition + Sized {
 
 impl<T: Condition> ConditionExt for T {}
 
-pub(crate) fn evaluate_effect_conditions(
-    mut query: Query<(
-        EntityRef,
-        &Effect,
-        &EffectSource,
-        &EffectTarget,
-        Option<&EffectInactive>,
-    )>,
-    parents: Query<EntityRef>,
-    effects: Res<Assets<EffectDef>>,
-    mut commands: Commands,
-) {
-    for (effect_entity_ref, effect, source, target, status) in query.iter_mut() {
-        let effect_entity = effect_entity_ref.id();
-        let Ok(target_actor_ref) = parents.get(source.get()) else {
-            error!(
-                "Effect {} has no parent entity {}.",
-                effect_entity_ref.id(),
-                target.get()
-            );
-            continue;
-        };
-        let Ok(source_actor_ref) = parents.get(target.0) else {
-            error!(
-                "Effect {} has no target entity {}.",
-                effect_entity_ref.id(),
-                target.get()
-            );
-            continue;
-        };
-
-        let Some(effect) = effects.get(&effect.0) else {
-            error!("Effect {} has no effect definition.", effect_entity_ref.id());
-            continue;
-        };
-
-        let context = ConditionContext {
-            target_actor: &target_actor_ref,
-            source_actor: &source_actor_ref,
-            owner: &effect_entity_ref,
-        };
-
-        // Determines whether the effect should activate
-        let should_be_active = effect
-            .conditions
-            .iter()
-            .all(|condition| condition.0.evaluate(&context));
-
-        let is_inactive = status.is_some();
-        if should_be_active && is_inactive {
-            // Effect was inactive and its conditions are now met, so activate it.
-            println!("Effect {effect_entity} is now active.");
-            commands.entity(effect_entity).remove::<EffectInactive>();
-        } else if !should_be_active && !is_inactive {
-            // Effect was active and its conditions are no longer met, so deactivate it.
-            println!("Effect {effect_entity} is now inactive.");
-            commands.entity(effect_entity).insert(EffectInactive);
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use bevy::prelude::*;
-
-    #[derive(Resource)]
-    struct EffectDatabase {
-        effect_a: Handle<EffectDef>,
-    }
 }

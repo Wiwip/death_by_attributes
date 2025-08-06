@@ -1,58 +1,51 @@
-use crate::effects::{
-    ApplyEffectEvent, Effect, EffectDuration, EffectPeriodicTimer, EffectSource, EffectSources,
-    EffectTarget, EffectTargetedBy, OnAddStackEffect, apply_effect_events, read_add_stack_event,
-};
 use crate::modifiers::{AttributeModifier, ModAggregator, Modifiers};
 use crate::systems::{
-    apply_periodic_effect, flag_dirty_attribute, flag_dirty_modifier, tick_ability_cooldown,
-    tick_effect_duration_timers, tick_effects_periodic_timer, update_effect_tree_system,
+    apply_periodic_effect, flag_dirty_attribute, flag_dirty_modifier, update_effect_tree_system,
 };
 use bevy::ecs::event::EventRegistry;
 use bevy::prelude::*;
 use std::any::{TypeId, type_name};
 use std::marker::PhantomData;
 
-pub mod abilities;
+pub mod ability;
 pub mod actors;
 pub mod assets;
 pub mod attributes;
-pub mod conditions;
+pub mod condition;
 pub mod context;
-pub mod effects;
+pub mod effect;
 pub mod inspector;
 pub mod modifiers;
 pub mod mutator;
-pub mod stacks;
-pub mod systems;
-pub mod evaluator;
+mod systems;
 
-use crate::abilities::{Abilities, Ability, AbilityCooldown, AbilityOf, try_activate_ability_observer};
+use crate::ability::{Abilities, Ability, AbilityCooldown, AbilityOf, AbilityPlugin};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::attributes::{Attribute, ReflectAccessAttribute, clamp_attributes_system};
-use crate::conditions::evaluate_effect_conditions;
+use crate::condition::ConditionPlugin;
+use crate::effect::EffectsPlugin;
+use crate::prelude::{
+    Effect, EffectDuration, EffectSource, EffectSources, EffectTarget,
+    EffectTicker, Effects, tick_effect_tickers,
+};
 pub use attributes_macro::Attribute;
 use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
+
+pub mod prelude {
+    pub use crate::effect::*;
+}
 
 pub struct AttributesPlugin;
 
 impl Plugin for AttributesPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PreUpdate, tick_effect_duration_timers)
-            .add_systems(PreUpdate, tick_effects_periodic_timer)
-            .add_systems(PreUpdate, tick_ability_cooldown)
-            .add_systems(PreUpdate, evaluate_effect_conditions)
-            .add_observer(try_activate_ability_observer)
-            .add_observer(apply_effect_events)
-            .add_systems(PostUpdate, read_add_stack_event)
+        app.add_plugins((AbilityPlugin, ConditionPlugin, EffectsPlugin))
             .init_schedule(PreUpdate)
             .init_schedule(PostUpdate)
             .init_asset::<ActorDef>()
             .init_asset::<EffectDef>()
             .init_asset::<AbilityDef>()
-            .register_type::<AbilityOf>()
-            .register_type::<Abilities>()
-            .register_type::<Modifiers>()
-            .add_event::<OnAddStackEffect>();
+            .register_type::<Modifiers>();
     }
 }
 
@@ -77,7 +70,7 @@ pub fn init_attribute<T: Attribute>(app: &mut App) {
     EventRegistry::register_event::<OnBaseValueChange<T>>(world);
 
     world.schedule_scope(PreUpdate, |_, schedule| {
-        schedule.add_systems(apply_periodic_effect::<T>.after(tick_effects_periodic_timer));
+        schedule.add_systems(apply_periodic_effect::<T>.after(tick_effect_tickers));
         schedule.add_systems(update_effect_tree_system::<T>.after(apply_periodic_effect::<T>));
     });
 
@@ -90,18 +83,18 @@ pub fn init_attribute<T: Attribute>(app: &mut App) {
     debug!("Registered Systems for: {}.", type_name::<T>());
 }
 
-pub type ActorEntityMut<'w> = EntityMutExcept<
+pub type AttributesMut<'w> = EntityMutExcept<
     'w,
     (
         // We exclude anything related to effects
         ChildOf,
         Effect,
+        EffectDuration,
+        EffectTicker,
         EffectSource,
         EffectTarget,
-        EffectTargetedBy,
+        Effects,
         EffectSources,
-        EffectPeriodicTimer,
-        EffectDuration,
         Ability,
         Abilities,
         AbilityOf,
@@ -109,18 +102,18 @@ pub type ActorEntityMut<'w> = EntityMutExcept<
     ),
 >;
 
-pub type ActorEntityRef<'w> = EntityRefExcept<
+pub type AttributesRef<'w> = EntityRefExcept<
     'w,
     (
         // We exclude anything related to effects
         ChildOf,
         Effect,
+        EffectDuration,
+        EffectTicker,
         EffectSource,
         EffectTarget,
-        EffectTargetedBy,
+        Effects,
         EffectSources,
-        EffectPeriodicTimer,
-        EffectDuration,
         Ability,
         Abilities,
         AbilityOf,

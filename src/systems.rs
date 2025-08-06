@@ -1,47 +1,14 @@
-use crate::abilities::AbilityCooldown;
+use crate::actors::Actor;
 use crate::attributes::Attribute;
-use crate::effects::{
-    EffectDuration, EffectInactive, EffectPeriodicTimer, EffectSource, EffectTarget,
-    EffectTargetedBy,
-};
+use crate::effect::Stacks;
 use crate::modifiers::{
     AttributeModifier, ModAggregator, ModTarget, Modifiers, aggregate_entity_modifiers,
 };
-use crate::stacks::Stacks;
+use crate::prelude::{EffectSource, EffectStatusParam, EffectTarget, EffectTicker, Effects};
 use crate::{ApplyModifier, Dirty, OnAttributeValueChanged, OnBaseValueChange};
-use bevy::ecs::component::{Mutable};
+use bevy::ecs::component::Mutable;
 use bevy::prelude::*;
 use std::any::type_name;
-use crate::actors::Actor;
-
-pub(crate) fn tick_effects_periodic_timer(
-    mut query: Query<&mut EffectPeriodicTimer, Without<EffectInactive>>,
-    time: Res<Time>,
-) {
-    query.par_iter_mut().for_each(|mut timer| {
-        timer.0.tick(time.delta());
-    });
-}
-
-/// Updates the duration timers for all active effects.
-///
-/// The function iterates over all entities that have an `EffectDuration` component,
-/// excluding those with an `EffectInactive` component, and progresses their timers.
-/// This is done in parallel for performance optimization.
-pub(crate) fn tick_effect_duration_timers(
-    mut query: Query<&mut EffectDuration, Without<EffectInactive>>,
-    time: Res<Time>,
-) {
-    query.par_iter_mut().for_each(|mut effect_duration| {
-        effect_duration.0.tick(time.delta());
-    });
-}
-
-pub(crate) fn tick_ability_cooldown(mut query: Query<&mut AbilityCooldown>, time: Res<Time>) {
-    query.par_iter_mut().for_each(|mut cooldown| {
-        cooldown.0.tick(time.delta());
-    });
-}
 
 pub fn flag_dirty_modifier<T: Attribute>(
     changed: Query<Entity, Changed<AttributeModifier<T>>>,
@@ -83,14 +50,13 @@ pub fn flag_dirty_attribute<T: Attribute>(
 /// Effects that have a periodic timer application must be ignored in the current value calculations
 pub fn update_effect_tree_system<T: Component<Mutability = Mutable> + Attribute>(
     actors: Query<Entity, With<Actor>>,
-    descendants: Query<&EffectTargetedBy>,
-    mut is_periodic: Query<&EffectPeriodicTimer>,
-    mut is_inactive: Query<&EffectInactive>,
+    child_effects: Query<&Effects>,
+    statuses: Query<EffectStatusParam>,
     dirty: Query<&Dirty<T>>,
-    mut modifiers_query: Query<&Modifiers>,
     mut attributes: Query<&mut T>,
-    mut modifiers: Query<&AttributeModifier<T>>,
     mut aggregators: Query<&mut ModAggregator<T>>,
+    mut modifiers_query: Query<&Modifiers>,
+    mut modifiers: Query<&AttributeModifier<T>>,
     mut commands: Commands,
 ) {
     debug_once!("Ready: update_effect_tree_system::{}", type_name::<T>());
@@ -99,9 +65,8 @@ pub fn update_effect_tree_system<T: Component<Mutability = Mutable> + Attribute>
         update_effect_tree(
             &mut visited_nodes,
             actor_entity,
-            descendants,
-            &mut is_periodic,
-            &mut is_inactive,
+            child_effects,
+            statuses,
             dirty,
             &mut modifiers_query,
             &mut attributes,
@@ -115,9 +80,8 @@ pub fn update_effect_tree_system<T: Component<Mutability = Mutable> + Attribute>
 fn update_effect_tree<T: Component<Mutability = Mutable> + Attribute>(
     visited_nodes: &mut usize,
     current_entity: Entity,
-    descendants: Query<&EffectTargetedBy>,
-    mut is_periodic: &mut Query<&EffectPeriodicTimer>,
-    mut is_inactive: &mut Query<&EffectInactive>,
+    child_effects: Query<&Effects>,
+    statuses: Query<EffectStatusParam>,
     dirty: Query<&Dirty<T>>,
     mut modifiers_query: &mut Query<&Modifiers>,
     mut attribute_query: &mut Query<&mut T>,
@@ -133,25 +97,27 @@ fn update_effect_tree<T: Component<Mutability = Mutable> + Attribute>(
         };
     };*/
 
-    if is_inactive.contains(current_entity) | is_periodic.contains(current_entity) {
-        return ModAggregator::<T>::default();
+    if let Ok(effect_status) = statuses.get(current_entity) {
+        if effect_status.is_inactive() || effect_status.is_periodic() {
+            return ModAggregator::default();
+        }
     };
 
     // Accumulates the value of the modifiers on this node from all the attached modifiers
+    // TODO Make its own system?
     let this_node_mod_aggregator =
         aggregate_entity_modifiers(current_entity, modifiers_query, attribute_modifier_query);
 
     let modifier_so_far = this_node_mod_aggregator
-        + match descendants.get(current_entity) {
-            Ok(child_effects) => child_effects
+        + match child_effects.get(current_entity) {
+            Ok(current_effect) => current_effect
                 .iter()
                 .map(|child| {
                     update_effect_tree::<T>(
                         visited_nodes,
                         child,
-                        descendants,
-                        &mut is_periodic,
-                        &mut is_inactive,
+                        child_effects,
+                        statuses,
                         dirty,
                         &mut modifiers_query,
                         &mut attribute_query,
@@ -189,7 +155,7 @@ fn update_effect_tree<T: Component<Mutability = Mutable> + Attribute>(
 
 pub fn apply_periodic_effect<T: Component<Mutability = Mutable> + Attribute>(
     effects: Query<(
-        &EffectPeriodicTimer,
+        &EffectTicker,
         &Modifiers,
         &Stacks,
         &EffectTarget,
@@ -199,7 +165,7 @@ pub fn apply_periodic_effect<T: Component<Mutability = Mutable> + Attribute>(
     mut commands: Commands,
 ) {
     for (timer, effect_modifiers, stacks, target, source) in effects.iter() {
-        if !timer.0.just_finished() {
+        if !timer.just_finished() {
             continue;
         }
 
@@ -236,7 +202,7 @@ pub fn apply_periodic_effect<T: Component<Mutability = Mutable> + Attribute>(
     }
 }
 
-pub(crate) fn apply_modifier_on_trigger<T: Component<Mutability = Mutable> + Attribute>(
+pub fn apply_modifier_on_trigger<T: Component<Mutability = Mutable> + Attribute>(
     trigger: Trigger<ApplyModifier<T>>,
     mut query: Query<&mut T>,
     mut commands: Commands,

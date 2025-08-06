@@ -2,9 +2,11 @@
 use crate::attributes::Attribute;
 use bevy::prelude::*;
 use std::marker::PhantomData;
+use crate::AttributesRef;
 
 pub trait Extractor: Send + Sync + 'static {
-    fn extract_value(&self, entity: &EntityRef) -> Result<f64, BevyError>;
+    fn extract_value(&self, entity: &AttributesRef) -> Result<f64, BevyError>;
+    fn name(&self) -> &str;
 }
 
 #[derive(TypePath)]
@@ -29,10 +31,15 @@ impl<A: Attribute> AttributeExtractor<A> {
 }
 
 impl<A: Attribute> Extractor for AttributeExtractor<A> {
-    fn extract_value(&self, entity: &EntityRef) -> Result<f64, BevyError> {
+    fn extract_value(&self, entity: &AttributesRef) -> Result<f64, BevyError> {
         Ok(entity
             .get::<A>()
             .ok_or("Attribute not found")?
             .current_value())
     }
+
+    fn name(&self) -> &'static str {
+        A::type_path()
+    }
+
 }

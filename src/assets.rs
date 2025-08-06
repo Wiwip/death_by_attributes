@@ -1,10 +1,10 @@
-use crate::abilities::AbilityActivationFn;
-use crate::conditions::BoxCondition;
-use crate::effects::{EffectDurationPolicy, EffectPeriodicTimer};
+use crate::ability::AbilityActivationFn;
+use crate::condition::BoxCondition;
+use crate::effect::EffectExecution;
+use crate::effect::EffectStackingPolicy;
 use crate::modifiers::{ModifierFn, Mutator};
 use crate::mutator::EntityMutator;
-use crate::stacks::EffectStackingPolicy;
-use crate::ActorEntityMut;
+use crate::prelude::EffectApplicationPolicy;
 use bevy::prelude::*;
 
 #[derive(Asset, TypePath)]
@@ -20,9 +20,9 @@ pub struct ActorDef {
 pub struct EffectDef {
     pub effect_fn: Vec<Box<ModifierFn>>,
     pub effect_modifiers: Vec<Box<dyn Mutator>>,
+    pub custom_execution: Option<Box<dyn EffectExecution>>,
     pub modifiers: Vec<Box<dyn Mutator>>,
-    pub duration: EffectDurationPolicy,
-    pub period: Option<EffectPeriodicTimer>,
+    pub application: EffectApplicationPolicy,
     pub conditions: Vec<BoxCondition>,
     pub stacking_policy: EffectStackingPolicy,
 }
@@ -32,6 +32,7 @@ pub struct AbilityDef {
     pub name: String,
     pub description: String,
     pub mutators: Vec<EntityMutator>,
-    pub cost_fn: Box<dyn Fn(&mut ActorEntityMut, bool) -> bool + Send + Sync>,
+    pub cost: Vec<BoxCondition>,
+    pub cost_effects: Vec<Box<dyn Mutator>>,
     pub activation_fn: AbilityActivationFn,
 }

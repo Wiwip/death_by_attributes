@@ -1,15 +1,15 @@
 use crate::attributes::Attribute;
-use crate::effects::{EffectTarget, OnEffectStatusChangeEvent};
 use crate::inspector::pretty_type_name;
-use crate::{ActorEntityMut, ActorEntityRef, Dirty, OnAttributeValueChanged};
+use crate::{AttributesMut, AttributesRef, Dirty, OnAttributeValueChanged};
 use bevy::ecs::component::Mutable;
 use bevy::prelude::*;
-use std::any::{type_name, TypeId};
+use std::any::{TypeId, type_name};
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::iter::Sum;
 use std::marker::PhantomData;
 use std::ops::{Add, AddAssign, Mul};
+use crate::prelude::{EffectTarget, OnEffectStatusChangeEvent};
 
 #[derive(Component, Default, Copy, Clone, Debug, Reflect)]
 pub struct ModifierMarker;
@@ -25,8 +25,8 @@ pub struct ModifierOf(pub Entity);
 pub struct Modifiers(Vec<Entity>);
 
 pub trait Mutator: Send + Sync {
-    fn spawn(&self, commands: &mut Commands, actor_entity: ActorEntityRef) -> Entity;
-    fn apply(&self, actor_entity: &mut ActorEntityMut) -> bool;
+    fn spawn(&self, commands: &mut Commands, actor_entity: AttributesRef) -> Entity;
+    fn apply(&self, actor_entity: &mut AttributesMut) -> bool;
     fn origin(&self) -> ModTarget;
 }
 
@@ -85,7 +85,7 @@ impl<T> Mutator for AttributeModifier<T>
 where
     T: Attribute,
 {
-    fn spawn(&self, commands: &mut Commands, actor_entity: ActorEntityRef) -> Entity {
+    fn spawn(&self, commands: &mut Commands, actor_entity: AttributesRef) -> Entity {
         debug!(
             "Added Mod<{}> [{}] to {}",
             type_name::<T>(),
@@ -97,7 +97,7 @@ where
             |trigger: Trigger<OnEffectStatusChangeEvent>,
              query: Query<&EffectTarget>,
              mut commands: Commands| {
-                println!(
+                debug!(
                     "Observer[{}] -> Target[{}] change for {}",
                     trigger.observer(),
                     trigger.target(),
@@ -130,13 +130,12 @@ where
             .id()
     }
 
-    fn apply(&self, actor_entity: &mut ActorEntityMut) -> bool {
+    fn apply(&self, actor_entity: &mut AttributesMut) -> bool {
         if let Some(mut attribute) = actor_entity.get_mut::<T>() {
             let new_val = self.aggregator.evaluate(attribute.base_value());
-
             // Ensure that the modifier meaningfully changed the value before we trigger the event.
             if (new_val - &attribute.base_value()).abs() > f64::EPSILON {
-                attribute.set_current_value(new_val);
+                attribute.set_base_value(new_val);
                 true
             } else {
                 false
@@ -176,10 +175,10 @@ impl<T, S> ModifierRef<T, S> {
 
 impl<T, S> Mutator for ModifierRef<T, S>
 where
-    T: Attribute + Component<Mutability = Mutable>,
-    S: Attribute + Component<Mutability = Mutable>,
+    T: Attribute,
+    S: Attribute,
 {
-    fn spawn(&self, commands: &mut Commands, actor_entity: ActorEntityRef) -> Entity {
+    fn spawn(&self, commands: &mut Commands, actor_entity: AttributesRef) -> Entity {
         debug!(
             "Added modifier<{}> [{}] to {}",
             type_name::<T>(),
@@ -224,13 +223,25 @@ where
             .id()
     }
 
-    fn apply(&self, actor_entity: &mut ActorEntityMut) -> bool {
+    fn apply(&self, actor_entity: &mut AttributesMut) -> bool {
         let Some(origin_value) = actor_entity.get::<S>() else {
             panic!("Should have found source attribute");
         };
         let value = origin_value.current_value() * self.scaling_factor;
 
-        AttributeModifier::<T>::new(value, ModType::Additive, self.mod_target).apply(actor_entity)
+        if let Some(mut target_attribute) = actor_entity.get_mut::<T>() {
+            let aggregator = ModAggregator::<T>::new(value, self.mod_type);
+            let new_val = aggregator.evaluate(target_attribute.base_value());
+
+            if (new_val - target_attribute.base_value()).abs() > f64::EPSILON {
+                target_attribute.set_base_value(new_val);
+                true
+            } else {
+                false
+            }
+        } else {
+            panic!("Could not find target attribute {}", type_name::<T>());
+        }
     }
 
     fn origin(&self) -> ModTarget {
@@ -483,7 +494,6 @@ where
         pretty_type_name::<T>()
     }
 }
-
 
 pub struct SpawnModifierCommand {
     pub modifier: Box<dyn Mutator>,
