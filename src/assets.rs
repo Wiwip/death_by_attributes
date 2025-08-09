@@ -2,7 +2,7 @@ use crate::ability::AbilityActivationFn;
 use crate::condition::BoxCondition;
 use crate::effect::EffectExecution;
 use crate::effect::EffectStackingPolicy;
-use crate::modifiers::{ModifierFn, Mutator};
+use crate::modifier::{ModifierFn, Mutator};
 use crate::mutator::EntityMutator;
 use crate::prelude::EffectApplicationPolicy;
 use bevy::prelude::*;

@@ -1,12 +1,11 @@
-use crate::OnAttributeValueChanged;
 use crate::ability::{AbilityOf, GrantAbilityCommand};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
-use crate::attributes::{Attribute, AttributeClamp, update_max_clamp_values};
+use crate::attributes::{update_max_clamp_values, Attribute, AttributeClamp};
 use crate::effect::EffectTargeting;
-use crate::modifiers::ModAggregator;
 use crate::mutator::EntityMutator;
-use crate::prelude::ApplyEffectEvent;
+use crate::prelude::{ApplyEffectEvent, AttributeCalculatorCached};
 use crate::systems::apply_modifier_on_trigger;
+use crate::OnAttributeValueChanged;
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 
@@ -94,7 +93,7 @@ impl ActorBuilder {
     pub fn with<T: Attribute>(mut self, value: f64) -> ActorBuilder {
         self.mutators.push(EntityMutator::new(
             move |entity_commands: &mut EntityCommands| {
-                entity_commands.insert((T::new(value), ModAggregator::<T>::default()));
+                entity_commands.insert((T::new(value), AttributeCalculatorCached::<T>::default()));
                 entity_commands.observe(apply_modifier_on_trigger::<T>);
             },
         ));

@@ -1,5 +1,5 @@
 use crate::attributes::Attribute;
-use crate::modifiers::Mutator;
+use crate::modifier::Mutator;
 use crate::{AttributesMut, AttributesRef};
 use bevy::prelude::*;
 use std::any::TypeId;
@@ -86,10 +86,6 @@ impl<'a> EffectCaptureContext<'a> {
         self.target_map
             .insert(TypeId::of::<T>(), value.current_value());
         Ok(())
-    }
-
-    pub(crate) fn to_capture_context(self) -> (HashMap<TypeId, f64>, HashMap<TypeId, f64>) {
-        (self.source_map, self.target_map)
     }
 
     pub fn from(

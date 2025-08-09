@@ -1,15 +1,15 @@
-use std::any::type_name;
+use crate::AttributesMut;
 use crate::ability::{Ability, AbilityActivationFn, AbilityCooldown};
 use crate::assets::AbilityDef;
 use crate::attributes::Attribute;
+use crate::condition::{AttributeCondition, BoxCondition};
+use crate::modifier::{Mutator, Who};
 use crate::mutator::EntityMutator;
-use crate::AttributesMut;
+use crate::prelude::{AttributeModifier, Mod};
 use bevy::asset::{Assets, Handle};
 use bevy::ecs::world::CommandQueue;
-use bevy::log::{warn};
+use bevy::log::warn;
 use bevy::prelude::*;
-use crate::condition::{AttributeCondition, BoxCondition};
-use crate::modifiers::{AttributeModifier, ModTarget, ModType, Mutator};
 
 pub struct GrantAbilityCommand {
     pub handle: Handle<AbilityDef>,
@@ -50,7 +50,6 @@ impl EntityCommand for GrantAbilityCommand {
 pub struct AbilityBuilder {
     name: String,
     mutators: Vec<EntityMutator>,
-    //cost: Box<dyn Fn(&mut ActorEntityMut, bool) -> bool + Send + Sync>,
     cost_condition: Vec<BoxCondition>,
     cost_mods: Vec<Box<dyn Mutator>>,
     activation_fn: AbilityActivationFn,
@@ -77,7 +76,7 @@ impl AbilityBuilder {
     }
 
     pub fn with_cost<C: Attribute>(mut self, cost: f64) -> Self {
-        let mutator = AttributeModifier::<C>::new(-cost, ModType::Additive, ModTarget::Source);
+        let mutator = AttributeModifier::<C>::new(Mod::Add(-cost), Who::Source);
         self.cost_mods.push(Box::new(mutator));
 
         let condition = AttributeCondition::source::<C>(cost..);

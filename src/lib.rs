@@ -1,7 +1,5 @@
-use crate::modifiers::{AttributeModifier, ModAggregator, Modifiers};
-use crate::systems::{
-    apply_periodic_effect, flag_dirty_attribute, flag_dirty_modifier, update_effect_tree_system,
-};
+use crate::modifier::Modifiers;
+use crate::systems::{apply_periodic_effect, flag_dirty_modifier, observe_dirty_effect_notifications, observe_dirty_modifier_notifications, update_changed_attributes, update_effect_tree_system};
 use bevy::ecs::event::EventRegistry;
 use bevy::prelude::*;
 use std::any::{TypeId, type_name};
@@ -15,7 +13,7 @@ pub mod condition;
 pub mod context;
 pub mod effect;
 pub mod inspector;
-pub mod modifiers;
+mod modifier;
 pub mod mutator;
 mod systems;
 
@@ -25,14 +23,16 @@ use crate::attributes::{Attribute, ReflectAccessAttribute, clamp_attributes_syst
 use crate::condition::ConditionPlugin;
 use crate::effect::EffectsPlugin;
 use crate::prelude::{
-    Effect, EffectDuration, EffectSource, EffectSources, EffectTarget,
-    EffectTicker, Effects, tick_effect_tickers,
+    AttributeModifier, Effect, EffectDuration, EffectSource, EffectSources, EffectTarget,
+    EffectTicker, Effects, Mod, tick_effect_tickers,
 };
-pub use attributes_macro::Attribute;
 use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
 
 pub mod prelude {
+    pub use crate::attributes::Attribute;
     pub use crate::effect::*;
+    pub use crate::modifier::prelude::*;
+    pub use crate::modifier::*;
 }
 
 pub struct AttributesPlugin;
@@ -75,10 +75,13 @@ pub fn init_attribute<T: Attribute>(app: &mut App) {
     });
 
     world.schedule_scope(PostUpdate, |_, schedule| {
-        schedule.add_systems(flag_dirty_attribute::<T>);
         schedule.add_systems(flag_dirty_modifier::<T>);
         schedule.add_systems(clamp_attributes_system::<T>);
+        schedule.add_systems(update_changed_attributes::<T>);
     });
+
+    world.add_observer(observe_dirty_modifier_notifications::<T>);
+    world.add_observer(observe_dirty_effect_notifications::<T>);
 
     debug!("Registered Systems for: {}.", type_name::<T>());
 }
@@ -169,16 +172,7 @@ pub struct OnCurrentValueChange<A: Attribute> {
 #[event(traversal = &'static EffectTarget, auto_propagate)]
 pub struct ApplyModifier<T> {
     pub phantom_data: PhantomData<T>,
-    pub value: ModAggregator<T>,
-}
-
-impl<T> Default for ApplyModifier<T> {
-    fn default() -> Self {
-        Self {
-            phantom_data: PhantomData,
-            value: ModAggregator::<T>::default(),
-        }
-    }
+    pub modifier: Mod,
 }
 
 #[derive(Clone, Debug)]

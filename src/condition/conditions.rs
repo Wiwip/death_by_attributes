@@ -1,20 +1,20 @@
-
+use crate::ability::Ability;
 use crate::assets::AbilityDef;
 use crate::attributes::Attribute;
 use crate::condition::evaluator::{AttributeExtractor, BoxExtractor};
-use crate::condition::{Condition, ConditionContext, Who};
+use crate::condition::{Condition, ConditionContext};
 use crate::effect::Stacks;
-use bevy::asset::{AssetId};
+use crate::modifier::Who;
+use bevy::asset::AssetId;
 use bevy::log::error;
 use bevy::prelude::{Component, TypePath};
 use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::ops::{Bound, RangeBounds};
-use crate::ability::Ability;
 
 #[derive(TypePath)]
 pub struct AttributeCondition {
-    target: Who,
+    who: Who,
     extractor: BoxExtractor,
     bounds: (Bound<f64>, Bound<f64>),
 }
@@ -22,10 +22,10 @@ pub struct AttributeCondition {
 impl AttributeCondition {
     pub fn new<'a, A: Attribute>(
         range: impl RangeBounds<f64> + Send + Sync + 'static,
-        mod_target: Who,
+        who: Who,
     ) -> Self {
         Self {
-            target: mod_target,
+            who,
             extractor: BoxExtractor::new(AttributeExtractor::<A>::new()),
             bounds: (range.start_bound().cloned(), range.end_bound().cloned()),
         }
@@ -42,7 +42,7 @@ impl AttributeCondition {
 
 impl Condition for AttributeCondition {
     fn evaluate(&self, context: &ConditionContext) -> bool {
-        let entity = self.target.get_entity(context);
+        let entity = self.who.get_entity(context);
 
         match self.extractor.0.extract_value(entity) {
             Ok(value) => self.bounds.contains(&value),
@@ -74,7 +74,7 @@ impl std::fmt::Display for AttributeCondition {
             f,
             "Attribute {} on {:?} in range {}, {}",
             self.extractor.0.name(),
-            self.target,
+            self.who,
             start_str,
             end_str
         )

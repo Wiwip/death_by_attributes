@@ -1,11 +1,10 @@
 use crate::assets::EffectDef;
 use crate::attributes::Attribute;
-use crate::condition::{AttributeCondition, BoxCondition, Who};
+use crate::condition::{AttributeCondition, BoxCondition};
 use crate::effect::application::EffectApplicationPolicy;
 use crate::effect::{EffectExecution, EffectStackingPolicy};
-use crate::modifiers::{
-    AttributeModifier, ModAggregator, ModTarget, ModType, ModifierFn, ModifierRef, Mutator,
-};
+use crate::modifier::{ModifierFn, Mutator, Who};
+use crate::prelude::{AttributeCalculatorCached, AttributeModifier, DerivedModifier, Mod};
 use bevy::ecs::component::Mutable;
 use bevy::ecs::system::IntoObserverSystem;
 use bevy::prelude::{Bundle, Component, Entity, EntityCommands, Event, Name};
@@ -56,21 +55,19 @@ impl EffectBuilder {
         ))
     }
 
-    pub fn modify_by_scalar<T: Attribute + Component<Mutability = Mutable>>(
+    pub fn modify<T: Attribute + Component<Mutability = Mutable>>(
         mut self,
-        magnitude: f64,
-        mod_type: ModType,
-        mod_target: ModTarget,
+        modifier: Mod,
+        who: Who,
     ) -> Self {
         self.effect_entity_commands.push(Box::new(
             move |entity_mut: &mut EntityCommands, _: Entity| {
-                entity_mut.insert(ModAggregator::<T>::default());
+                entity_mut.insert(AttributeCalculatorCached::<T>::default());
             },
         ));
 
-        self.modifiers.push(Box::new(AttributeModifier::<T>::new(
-            magnitude, mod_type, mod_target,
-        )));
+        self.modifiers
+            .push(Box::new(AttributeModifier::<T>::new(modifier, who)));
         self
     }
 
@@ -80,32 +77,31 @@ impl EffectBuilder {
     pub fn modify_by_ref<T, S>(
         mut self,
         scaling_factor: f64,
-        mod_type: ModType,
-        mod_target: ModTarget,
+        modifier: Mod,
+        mod_target: Who,
     ) -> Self
     where
-        T: Attribute + Component<Mutability = Mutable>,
-        S: Attribute + Component<Mutability = Mutable>,
+        T: Attribute,
+        S: Attribute,
     {
         self.effect_entity_commands.push(Box::new(
             move |effect_entity: &mut EntityCommands, _: Entity| {
-                effect_entity.insert(ModAggregator::<T>::default());
+                effect_entity.insert(AttributeCalculatorCached::<T>::default());
             },
         ));
 
-        self.modifiers.push(Box::new(ModifierRef::<T, S>::new(
+        self.modifiers.push(Box::new(DerivedModifier::<T, S>::new(
+            modifier,
             scaling_factor,
-            mod_type,
             mod_target,
         )));
         self
     }
 
-    pub fn with_trigger<E: Event, B: Bundle, M>(
+    /*pub fn with_trigger<E: Event, B: Bundle, M>(
         mut self,
         _observer: impl IntoObserverSystem<E, B, M>,
     ) -> Self {
-        
         self.effect_entity_commands.push(Box::new(
             move |_effect_entity: &mut EntityCommands, _: Entity| {
                 //effect_entity.insert(Condition::<T>::default());
@@ -113,7 +109,7 @@ impl EffectBuilder {
         ));
         //self
         todo!()
-    }
+    }*/
 
     pub fn when_condition(mut self, condition: impl crate::condition::Condition + 'static) -> Self {
         self.conditions.push(BoxCondition::new(condition));

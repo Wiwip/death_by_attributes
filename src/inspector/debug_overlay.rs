@@ -1,7 +1,7 @@
 
 use crate::attributes::ReflectAccessAttribute;
 use crate::inspector::pretty_type_name_str;
-use crate::modifiers::{ModifierMarker, Modifiers, ReflectAccessModifier};
+use crate::modifier::{ModifierMarker, Modifiers, ReflectAccessModifier};
 use bevy::ecs::component::{ComponentId, Components};
 use bevy::prelude::*;
 use bevy::reflect::ReflectFromPtr;

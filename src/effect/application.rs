@@ -6,14 +6,11 @@ use crate::effect::{
     Effect, EffectCalculationContext, EffectCaptureContext, EffectStackingPolicy, EffectTargeting,
     Effects,
 };
-use crate::modifiers::{ModTarget, ModifierOf, Mutator};
+use crate::modifier::{ModifierOf, Mutator, Who};
 use crate::prelude::{EffectInactive, EffectSource, EffectTarget};
 use bevy::asset::{Assets, Handle};
 use bevy::log::debug;
-use bevy::prelude::{
-    BevyError, Bundle, Commands, Component, Event, EventWriter, Query, Reflect, RelationshipTarget,
-    Res, Time, Timer, TimerMode, Trigger, With, Without,
-};
+use bevy::prelude::*;
 use std::cmp::PartialEq;
 
 /// Describes how the effect is applied to entities
@@ -137,7 +134,6 @@ impl EffectApplicationPolicy {
     }
 }
 
-
 #[derive(Event)]
 pub struct ApplyEffectEvent {
     pub targeting: EffectTargeting,
@@ -149,7 +145,7 @@ impl ApplyEffectEvent {
         &self,
         mut actors: &mut Query<(Option<&Effects>, AttributesMut), Without<Effect>>,
         effect: &EffectDef,
-    ) -> bevy::prelude::Result<(), BevyError> {
+    ) -> Result<(), BevyError> {
         debug!("Applying instant effect to {}", self.targeting.target());
 
         if let Some(execution) = &effect.custom_execution {
@@ -178,14 +174,17 @@ impl ApplyEffectEvent {
         I: Iterator<Item = &'a Box<dyn Mutator>>,
     {
         for modifier in modifiers {
-            match modifier.origin() {
-                ModTarget::Target => {
+            match modifier.who() {
+                Who::Target => {
                     let (_, mut target) = actors.get_mut(self.targeting.target()).unwrap();
                     modifier.apply(&mut target);
                 }
-                ModTarget::Source => {
+                Who::Source => {
                     let (_, mut source) = actors.get_mut(self.targeting.source()).unwrap();
                     modifier.apply(&mut source);
+                }
+                Who::Owner => {
+                    todo!()
                 }
             }
         }
@@ -246,8 +245,6 @@ impl ApplyEffectEvent {
             effect_fn(&mut effect_commands, self.targeting.target());
         }
 
-
-
         // Spawns the effect entity
         effect_commands.insert((
             EffectTarget(self.targeting.target()),
@@ -274,21 +271,22 @@ impl ApplyEffectEvent {
         effect
             .modifiers
             .iter()
-            .for_each(|modifier| match modifier.origin() {
-                ModTarget::Target => {
+            .for_each(|modifier| match modifier.who() {
+                Who::Target => {
                     let (_, target) = actors.get_mut(self.targeting.target()).unwrap();
                     let mod_entity = modifier.spawn(commands, target.as_readonly());
                     commands
                         .entity(mod_entity)
                         .insert(ModifierOf(effect_entity));
                 }
-                ModTarget::Source => {
+                Who::Source => {
                     let (_, source) = actors.get_mut(self.targeting.source()).unwrap();
                     let mod_entity = modifier.spawn(commands, source.as_readonly());
                     commands
                         .entity(mod_entity)
                         .insert(ModifierOf(effect_entity));
                 }
+                Who::Owner => todo!(),
             });
 
         Ok(())

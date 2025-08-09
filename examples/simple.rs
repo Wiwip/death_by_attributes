@@ -1,3 +1,4 @@
+use root_attribute::attributes::ReflectAccessAttribute;
 use bevy::ecs::schedule::{LogLevel, ScheduleBuildSettings};
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
@@ -9,16 +10,13 @@ use root_attribute::ability::{AbilityBuilder, TargetData, TryActivateAbility};
 use root_attribute::actors::ActorBuilder;
 use root_attribute::assets::{AbilityDef, ActorDef, EffectDef};
 use root_attribute::attributes::Attribute;
-use root_attribute::attributes::ReflectAccessAttribute;
 use root_attribute::condition::{
-    AttributeCondition, ConditionContext, ConditionExt, FunctionCondition, Who,
+    AttributeCondition,
 };
 use root_attribute::context::EffectContext;
 use root_attribute::effect::{EffectStackingPolicy, Stacks};
 use root_attribute::inspector::debug_overlay::DebugOverlayMarker;
 use root_attribute::inspector::ActorInspectorPlugin;
-use root_attribute::modifiers::ModType::{Additive, Multiplicative};
-use root_attribute::modifiers::{AttributeModifier, ModAggregator, ModTarget};
 use root_attribute::prelude::*;
 use root_attribute::{attribute, init_attribute, AttributesMut, AttributesPlugin};
 use std::fmt::Debug;
@@ -94,8 +92,6 @@ fn main() {
         .register_type::<AttackPower>()
         .register_type::<Mana>()
         .register_type::<ManaPool>()
-        .register_type::<AttributeModifier<AttackPower>>()
-        .register_type::<AttributeModifier<MagicPower>>()
         .register_type::<EffectSources>()
         .register_type::<Effects>()
         .register_type::<Stacks>()
@@ -103,12 +99,6 @@ fn main() {
         .register_type::<EffectTarget>()
         .run();
 }
-
-#[derive(Component)]
-struct UiFireballText;
-
-#[derive(Component)]
-struct Fireball;
 
 fn setup_window(mut query: Query<&mut Window>) {
     for mut window in query.iter_mut() {
@@ -135,8 +125,8 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
     let ap_buff = effects.add(
         EffectBuilder::permanent()
             .name("AttackPower Buff".into())
-            .modify_by_ref::<AttackPower, Health>(0.10, Additive, ModTarget::Target)
-            .modify_by_ref::<Intelligence, Health>(0.25, Additive, ModTarget::Target)
+            .modify_by_ref::<AttackPower, Health>(0.10, Mod::Add(1.0), Who::Target)
+            .modify_by_ref::<Intelligence, Health>(0.25, Mod::Add(1.0), Who::Target)
             .build(),
     );
 
@@ -151,7 +141,7 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
     let mp_buff = effects.add(
         EffectBuilder::permanent()
             .name("MagicPower Buff".into())
-            .modify_by_scalar::<MagicPower>(10.0, Additive, ModTarget::Target)
+            .modify::<MagicPower>(Mod::Add(10.0), Who::Target)
             //.when_attribute::<Health>(..=100.0)
             .when_condition(a)
             .with_stacking_policy(EffectStackingPolicy::Add {
@@ -165,7 +155,7 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
     let hp_buff = effects.add(
         EffectBuilder::permanent()
             .name("MaxHealth Increase".into())
-            .modify_by_scalar::<MaxHealth>(0.10, Multiplicative, ModTarget::Target)
+            .modify::<MaxHealth>(Mod::Inc(0.10), Who::Target)
             .with_stacking_policy(EffectStackingPolicy::RefreshDuration)
             .build(),
     );
@@ -174,8 +164,8 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
     let hp_regen = effects.add(
         EffectBuilder::every_seconds(1.0)
             .name("Health Regen".into())
-            .modify_by_scalar::<Health>(1.0, Additive, ModTarget::Target)
-            .modify_by_ref::<Health, HealthRegen>(1.0, Additive, ModTarget::Target)
+            .modify::<Health>(Mod::Add(3.0), Who::Target)
+            .modify_by_ref::<Health, HealthRegen>(1.0, Mod::Add(1.0), Who::Target)
             .build(),
     );
 
@@ -300,70 +290,6 @@ fn inputs(
 
 fn do_gameplay_stuff() {
     std::thread::sleep(Duration::from_millis(12));
-}
-
-/// Prints the hierarchy of modifiers in a tree structure for a given `Entity` and its descendants.
-///
-/// This function recursively traverses through an entity and its descendants to construct a
-/// string representation of the modifiers associated with each entity. The result is added to a given
-/// `TreeBuilder` instance to visualize the hierarchy.
-///
-/// # Type Parameters
-/// - `T`: A type that implements both `Component` and `AttributeComponent`. Represents the specific
-///   type of modifier being used.
-///
-/// # Notes
-/// - This function will gracefully return if it fails to fetch the required data (e.g., if an entity doesn't exist).
-/// - For entities without modifiers or aggregators, the corresponding strings will be empty.
-///
-/// # Examples
-/// ```rust
-/// let mut builder = TreeBuilder::new();
-/// let current_entity = some_entity_id;
-/// print_modifier_hierarchy::<MyComponent>(
-///     current_entity,
-///     &mut builder,
-///     descendants_query,
-///     entities_query,
-/// );
-/// println!("{}", builder.build());
-/// ```
-pub fn print_modifier_hierarchy<T: Component + Attribute>(
-    current_entity: Entity,
-    builder: &mut TreeBuilder,
-    descendants: Query<&Effects>,
-    entities: Query<(
-        &Name,
-        Option<&AttributeModifier<T>>,
-        Option<&ModAggregator<T>>,
-    )>,
-) {
-    let Ok((name, modifier, aggregator)) = entities.get(current_entity) else {
-        return;
-    };
-    let modifier = if let Some(modifier) = modifier {
-        format!("Mod:{}", modifier.aggregator)
-    } else {
-        "".to_string()
-    };
-    let aggregator = if let Some(aggregator) = aggregator {
-        format!("{}", aggregator)
-    } else {
-        "".to_string()
-    };
-
-    let tree_item = format!("{} [{name}] {} {} ", current_entity, modifier, aggregator);
-
-    // Iterate recursively on all the childrens
-    if let Ok(childrens) = descendants.get(current_entity) {
-        builder.begin_child(tree_item);
-        for child in childrens.iter() {
-            print_modifier_hierarchy::<T>(child, builder, descendants, entities);
-        }
-        builder.end_child();
-    } else {
-        builder.add_empty_child(tree_item);
-    }
 }
 
 #[derive(Event)]

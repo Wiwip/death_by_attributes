@@ -4,7 +4,7 @@ use rand::Rng;
 use root_attribute::actors::ActorBuilder;
 use root_attribute::attributes::AttributeBuilder;
 use root_attribute::effects::EffectBuilder;
-use root_attribute::modifiers::ModType::Additive;
+use root_attribute::modifier::ModType::Additive;
 use root_attribute::{DeathByAttributesPlugin, attribute};
 
 criterion_group!(benches, criterion_benchmark);

@@ -1,11 +1,8 @@
 use crate::ability::{Abilities, Ability, AbilityCooldown, TargetData, TryActivateAbility};
 use crate::assets::AbilityDef;
 use crate::condition::{BoxCondition, ConditionContext};
-use crate::context::EffectContext;
 use crate::{AttributesMut, AttributesRef};
 use bevy::asset::Assets;
-use bevy::ecs::query::QueryData;
-use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 
 pub fn tick_ability_cooldown(mut query: Query<&mut AbilityCooldown>, time: Res<Time>) {

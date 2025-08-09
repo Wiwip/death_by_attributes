@@ -1,6 +1,8 @@
 use crate::OnAttributeValueChanged;
 use crate::inspector::pretty_type_name;
+use crate::prelude::{AttributeCalculator, AttributeCalculatorCached, Mod};
 use bevy::ecs::component::Mutable;
+use bevy::ecs::query::{QueryData, QueryEntityError};
 use bevy::prelude::*;
 use bevy::reflect::GetTypeRegistration;
 use std::marker::PhantomData;
@@ -21,7 +23,7 @@ macro_rules! attribute {
     ( $StructName:ident) => {
         #[derive(bevy::prelude::Component, Default, Clone, Copy, bevy::prelude::Reflect, Debug)]
         #[reflect(AccessAttribute)]
-        #[require($crate::modifiers::ModAggregator<$StructName>)]
+        //#[require($crate::prelude::ModAggregator<$StructName>)]
         pub struct $StructName {
             base_value: f64,
             current_value: f64,
@@ -52,7 +54,7 @@ macro_rules! attribute {
         ( $StructName:ident, $($RequiredType:ty),+ $(,)? ) => {
         #[derive(bevy::prelude::Component, Default, Clone, Copy, bevy::prelude::Reflect, Debug)]
         #[reflect(AccessAttribute)]
-        #[require($crate::modifiers::ModAggregator<$StructName>, $($RequiredType),+)]
+        #[require($crate::prelude::ModAggregator<$StructName>, $($RequiredType),+)]
         pub struct $StructName {
             base_value: f64,
             current_value: f64,
@@ -79,6 +81,41 @@ macro_rules! attribute {
             }
         }
     };
+}
+
+#[derive(QueryData, Debug)]
+#[query_data(mutable, derive(Debug))]
+pub struct AttributeQueryData<T: Attribute + 'static> {
+    pub entity: Entity,
+    pub attribute: &'static mut T,
+    pub calculator_cache: &'static mut AttributeCalculatorCached<T>,
+}
+
+impl<T: Attribute> AttributeQueryDataItem<'_, T> {
+    pub fn update_attribute(
+        &mut self,
+        calculator: &AttributeCalculator,
+    ) -> bool {
+        let new_val = calculator.eval(self.attribute.base_value());
+
+        let is_notable_update = (new_val - &self.attribute.current_value()).abs() > f64::EPSILON;
+        if is_notable_update {
+            self.attribute.set_current_value(new_val);
+        }
+
+        is_notable_update
+    }
+    
+    pub fn update_attribute_from_cache(&mut self) -> bool {
+        let new_val = self.calculator_cache.calculator.eval(self.attribute.base_value());
+
+        let is_notable_update = (new_val - &self.attribute.current_value()).abs() > f64::EPSILON;
+        if is_notable_update {
+            self.attribute.set_current_value(new_val);
+        }
+
+        is_notable_update
+    }
 }
 
 #[derive(Component, Clone)]
@@ -156,11 +193,9 @@ where
     fn base_value(&self) -> f64 {
         self.base_value()
     }
-
     fn current_value(&self) -> f64 {
         self.current_value()
     }
-
     fn name(&self) -> String {
         pretty_type_name::<T>()
     }
