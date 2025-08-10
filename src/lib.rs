@@ -1,5 +1,8 @@
 use crate::modifier::Modifiers;
-use crate::systems::{apply_periodic_effect, flag_dirty_modifier, observe_dirty_effect_notifications, observe_dirty_modifier_notifications, update_changed_attributes, update_effect_tree_system};
+use crate::systems::{
+    apply_periodic_effect, flag_dirty_modifier, observe_dirty_effect_notifications,
+    observe_dirty_modifier_notifications, update_changed_attributes, update_effect_tree_system,
+};
 use bevy::ecs::event::EventRegistry;
 use bevy::prelude::*;
 use std::any::{TypeId, type_name};
@@ -12,6 +15,7 @@ pub mod attributes;
 pub mod condition;
 pub mod context;
 pub mod effect;
+pub mod graph;
 pub mod inspector;
 mod modifier;
 pub mod mutator;
@@ -22,6 +26,7 @@ use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::attributes::{Attribute, ReflectAccessAttribute, clamp_attributes_system};
 use crate::condition::ConditionPlugin;
 use crate::effect::EffectsPlugin;
+use crate::graph::EntityGraph;
 use crate::prelude::{
     AttributeModifier, Effect, EffectDuration, EffectSource, EffectSources, EffectTarget,
     EffectTicker, Effects, Mod, tick_effect_tickers,
@@ -90,6 +95,7 @@ pub type AttributesMut<'w> = EntityMutExcept<
     'w,
     (
         // We exclude anything related to effects
+        EntityGraph,
         ChildOf,
         Effect,
         EffectDuration,
@@ -109,6 +115,7 @@ pub type AttributesRef<'w> = EntityRefExcept<
     'w,
     (
         // We exclude anything related to effects
+        EntityGraph,
         ChildOf,
         Effect,
         EffectDuration,

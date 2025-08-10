@@ -10,6 +10,7 @@ use std::any::{TypeId, type_name};
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::marker::PhantomData;
+use crate::graph::AttributeTypeId;
 
 #[derive(Component, Copy, Clone, Debug, Reflect)]
 #[reflect(AccessModifier)]
@@ -31,10 +32,6 @@ where
             modifier,
             marker: Default::default(),
         }
-    }
-
-    pub fn target(&self) -> TypeId {
-        TypeId::of::<T>()
     }
 }
 
@@ -115,5 +112,13 @@ where
 
     fn who(&self) -> Who {
         self.who
+    }
+
+    fn modifier(&self) -> Mod {
+        self.modifier
+    }
+
+    fn attribute_type_id(&self) -> AttributeTypeId {
+        T::attribute_type_id()
     }
 }

@@ -28,11 +28,11 @@ pub fn flag_dirty_modifier<T: Attribute>(
     mut command: Commands,
 ) {
     for entity in changed.iter() {
-        println!(
+        /*println!(
             "{}: AttributeModifier<{}> is dirty.",
             pretty_type_name::<T>(),
             entity
-        );
+        );*/
         command
             .entity(entity)
             .trigger(NotifyDirtyModifier::<T>::default());
@@ -44,7 +44,7 @@ pub fn observe_dirty_modifier_notifications<T: Attribute>(
     parent_effects: Query<&ModifierOf>,
     mut commands: Commands,
 ) {
-    println!("{}: Dirty modifier inserted.", trigger.target());
+    //println!("{}: Dirty modifier inserted.", trigger.target());
     commands
         .entity(trigger.target())
         .try_insert(Dirty::<T>::default());
@@ -89,7 +89,7 @@ pub fn observe_dirty_effect_notifications<T: Attribute>(
     trigger: Trigger<NotifyDirtyEffect<T>>,
     mut commands: Commands,
 ) {
-    println!("{}: Dirty modifier inserted on effect.", trigger.target());
+    //println!("{}: Dirty modifier inserted on effect.", trigger.target());
     commands
         .entity(trigger.target())
         .try_insert(Dirty::<T>::default());
@@ -184,7 +184,7 @@ fn update_effect_tree<T: Attribute>(
         .unwrap_or_default();
 
     let combined_calculator = this_node_calculator.combine(child_calculator);
-    println!("{}: Combined: {:?}", current_entity, combined_calculator);
+    //println!("{}: Combined: {:?}", current_entity, combined_calculator);
 
     // Update the attribute if it exists
     if let Ok(mut attribute) = attributes.get_mut(current_entity) {
@@ -197,7 +197,7 @@ fn update_effect_tree<T: Attribute>(
 
     // Cleans the node
     commands.entity(current_entity).try_remove::<Dirty<T>>();
-    println!("{}: Node visited and cleaned.", current_entity);
+    //println!("{}: Node visited and cleaned.", current_entity);
 
     // Return the value of the modifier so far so we can update the current values
     combined_calculator

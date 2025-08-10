@@ -6,10 +6,11 @@ mod derived_modifier;
 use crate::attributes::Attribute;
 use crate::condition::ConditionContext;
 use crate::inspector::pretty_type_name;
-use crate::prelude::AttributeModifier;
+use crate::prelude::{AttributeModifier, Mod};
 use crate::{AttributesMut, AttributesRef};
 use bevy::prelude::{Commands, Component, Entity, EntityCommands, Reflect, reflect_trait};
 use std::fmt::{Debug, Formatter};
+use crate::graph::AttributeTypeId;
 
 pub mod prelude {
     pub use super::attribute_modifier::AttributeModifier;
@@ -38,6 +39,8 @@ pub trait Mutator: Send + Sync {
     fn spawn(&self, commands: &mut Commands, actor_entity: AttributesRef) -> Entity;
     fn apply(&self, actor_entity: &mut AttributesMut) -> bool;
     fn who(&self) -> Who;
+    fn modifier(&self) -> Mod;
+    fn attribute_type_id(&self) -> AttributeTypeId;
 }
 
 #[reflect_trait] // Generates a `ReflectMyTrait` type

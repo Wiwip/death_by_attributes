@@ -2,7 +2,8 @@ extern crate proc_macro;
 
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{Attribute, Data, DeriveInput, Error, Fields, Meta, Path, Variant, parse_macro_input};
+use syn::{parse_macro_input, Attribute, Data, DeriveInput, Error, Fields, Meta, Variant};
+
 
 #[proc_macro_attribute]
 pub fn attribute_calculator(_attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -28,7 +29,7 @@ fn generate_calculator_code(input: DeriveInput) -> Result<TokenStream, syn::Erro
     };
 
     let enum_name = &input.ident;
-    let generics = &input.generics;
+    //let generics = &input.generics;
 
     // A helper struct to hold the variants sorted by their category.
     struct CategorizedVariants<'a> {

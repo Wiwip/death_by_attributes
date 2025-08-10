@@ -23,6 +23,7 @@ ptree = "0.5"
 bevy_egui = "0.36"
 bevy-inspector-egui = "0.32"
 disqualified = "1.0"
+petgraph = "0.8.2"
 
 [dependencies.bevy]
 version = "0.16"

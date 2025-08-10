@@ -1,8 +1,9 @@
-use crate::OnAttributeValueChanged;
+use crate::graph::AttributeTypeId;
 use crate::inspector::pretty_type_name;
-use crate::prelude::{AttributeCalculator, AttributeCalculatorCached, Mod};
+use crate::prelude::{AttributeCalculator, AttributeCalculatorCached};
+use crate::OnAttributeValueChanged;
 use bevy::ecs::component::Mutable;
-use bevy::ecs::query::{QueryData, QueryEntityError};
+use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
 use bevy::reflect::GetTypeRegistration;
 use std::marker::PhantomData;
@@ -16,6 +17,7 @@ pub trait Attribute:
     fn set_base_value(&mut self, value: f64);
     fn current_value(&self) -> f64;
     fn set_current_value(&mut self, value: f64);
+    fn attribute_type_id() -> AttributeTypeId;
 }
 
 #[macro_export]
@@ -47,6 +49,9 @@ macro_rules! attribute {
             }
             fn set_current_value(&mut self, value: f64) {
                 self.current_value = value;
+            }
+            fn attribute_type_id() -> $crate::graph::AttributeTypeId {
+                $crate::graph::AttributeTypeId::of::<Self>()
             }
         }
     };
@@ -92,10 +97,7 @@ pub struct AttributeQueryData<T: Attribute + 'static> {
 }
 
 impl<T: Attribute> AttributeQueryDataItem<'_, T> {
-    pub fn update_attribute(
-        &mut self,
-        calculator: &AttributeCalculator,
-    ) -> bool {
+    pub fn update_attribute(&mut self, calculator: &AttributeCalculator) -> bool {
         let new_val = calculator.eval(self.attribute.base_value());
 
         let is_notable_update = (new_val - &self.attribute.current_value()).abs() > f64::EPSILON;
@@ -105,9 +107,12 @@ impl<T: Attribute> AttributeQueryDataItem<'_, T> {
 
         is_notable_update
     }
-    
+
     pub fn update_attribute_from_cache(&mut self) -> bool {
-        let new_val = self.calculator_cache.calculator.eval(self.attribute.base_value());
+        let new_val = self
+            .calculator_cache
+            .calculator
+            .eval(self.attribute.base_value());
 
         let is_notable_update = (new_val - &self.attribute.current_value()).abs() > f64::EPSILON;
         if is_notable_update {

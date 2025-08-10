@@ -9,6 +9,9 @@ use bevy::ecs::component::Mutable;
 use bevy::ecs::system::IntoObserverSystem;
 use bevy::prelude::{Bundle, Component, Entity, EntityCommands, Event, Name};
 use std::ops::RangeBounds;
+use bevy::ui::NodeType;
+use petgraph::Directed;
+use petgraph::prelude::StableGraph;
 
 pub struct EffectBuilder {
     effect_entity_commands: Vec<Box<ModifierFn>>,
@@ -97,7 +100,7 @@ impl EffectBuilder {
         )));
         self
     }
-
+    
     /*pub fn with_trigger<E: Event, B: Bundle, M>(
         mut self,
         _observer: impl IntoObserverSystem<E, B, M>,

@@ -1,24 +1,25 @@
-use root_attribute::attributes::ReflectAccessAttribute;
 use bevy::ecs::schedule::{LogLevel, ScheduleBuildSettings};
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::window::PresentMode;
 use bevy_egui::EguiPlugin;
 use bevy_inspector_egui::DefaultInspectorConfigPlugin;
+use petgraph::Graph;
+use petgraph::dot::Dot;
 use ptree::TreeBuilder;
 use root_attribute::ability::{AbilityBuilder, TargetData, TryActivateAbility};
 use root_attribute::actors::ActorBuilder;
 use root_attribute::assets::{AbilityDef, ActorDef, EffectDef};
 use root_attribute::attributes::Attribute;
-use root_attribute::condition::{
-    AttributeCondition,
-};
+use root_attribute::attributes::ReflectAccessAttribute;
+use root_attribute::condition::AttributeCondition;
 use root_attribute::context::EffectContext;
 use root_attribute::effect::{EffectStackingPolicy, Stacks};
-use root_attribute::inspector::debug_overlay::DebugOverlayMarker;
+use root_attribute::graph::EntityGraph;
 use root_attribute::inspector::ActorInspectorPlugin;
+use root_attribute::inspector::debug_overlay::DebugOverlayMarker;
 use root_attribute::prelude::*;
-use root_attribute::{attribute, init_attribute, AttributesMut, AttributesPlugin};
+use root_attribute::{AttributesMut, AttributesPlugin, attribute, init_attribute};
 use std::fmt::Debug;
 use std::time::Duration;
 
@@ -131,11 +132,6 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
     );
 
     let a = AttributeCondition::new::<Health>(..=100.0, Who::Source);
-    /*let b = AttributeCondition::new::<Health>(150.0..250.0, Who::Source);
-    let c = FunctionCondition::new(|context: &ConditionContext| {
-        context.source_actor.get::<Fire>().is_some()
-    });
-    let condition = a.or(b.not()).or(c);*/
 
     // Magic Power effect
     let mp_buff = effects.add(
@@ -267,11 +263,11 @@ fn setup_camera(mut commands: Commands) {
 }
 
 fn inputs(
-    mut players: Query<Entity, With<Player>>,
+    mut players: Query<(Entity, &EntityGraph, &AttackPower), With<Player>>,
     keys: Res<ButtonInput<KeyCode>>,
     mut commands: Commands,
 ) {
-    if let Ok(player_entity) = players.single_mut() {
+    if let Ok((player_entity, graph, attribute)) = players.single_mut() {
         if keys.just_pressed(KeyCode::KeyQ) {
             commands
                 .entity(player_entity)
@@ -284,6 +280,12 @@ fn inputs(
         }
         if keys.just_pressed(KeyCode::Backspace) {
             commands.trigger_targets(DamageEvent { damage: 10.0 }, player_entity);
+        }
+        if keys.just_pressed(KeyCode::KeyR) {
+            println!("{:?}", Dot::new(&graph.graph));
+
+            let cv = graph.calculate_attribute_value::<AttackPower>(attribute.current_value);
+            println!("{:?}", cv);
         }
     }
 }

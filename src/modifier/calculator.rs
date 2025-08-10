@@ -10,7 +10,7 @@ pub enum Mod {
     Add(f64),
     Inc(f64),
     More(f64),
-    Less(f64),
+    //Less(f64),
 }
 
 impl Mod {
@@ -20,7 +20,7 @@ impl Mod {
             Mod::Add(value) => value,
             Mod::Inc(value) => value,
             Mod::More(value) => value,
-            Mod::Less(value) => value,
+            //Mod::Less(value) => value,
         }
     }
 }
@@ -40,7 +40,7 @@ impl Mul<f64> for Mod {
             Mod::Add(value) => Mod::Add(value * rhs),
             Mod::Inc(value) => Mod::Inc(value * rhs),
             Mod::More(value) => Mod::More(value * rhs),
-            Mod::Less(value) => Mod::Less(value * rhs),
+            //Mod::Less(value) => Mod::Less(value * rhs),
         }
     }
 }
@@ -58,7 +58,7 @@ impl Display for Mod {
             }
             Mod::Inc(value) => write!(f, "{:.1}%", value * 100.0),
             Mod::More(value) => write!(f, "{:.1}%", value * 100.0),
-            Mod::Less(value) => write!(f, "{:.1}%", value * 100.0),
+            //Mod::Less(value) => write!(f, "{:.1}%", value * 100.0),
         }
     }
 }

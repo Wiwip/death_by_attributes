@@ -7,6 +7,7 @@ use bevy::log::debug;
 use bevy::prelude::{Commands, Entity, Name, Observer, Query, Reflect, Trigger};
 use std::any::type_name;
 use std::marker::PhantomData;
+use crate::graph::AttributeTypeId;
 
 #[derive(Copy, Clone, Debug, Reflect)]
 pub struct DerivedModifier<T, S> {
@@ -106,5 +107,13 @@ where
 
     fn who(&self) -> Who {
         self.who
+    }
+
+    fn modifier(&self) -> Mod {
+        self.modifier
+    }
+
+    fn attribute_type_id(&self) -> AttributeTypeId {
+        T::attribute_type_id()
     }
 }

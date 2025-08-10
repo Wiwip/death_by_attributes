@@ -5,6 +5,7 @@ use bevy::prelude::*;
 use std::any::TypeId;
 use std::collections::HashMap;
 use crate::effect::EffectTargeting;
+use crate::graph::EntityGraph;
 use crate::prelude::{Effect, Effects};
 
 #[derive(Component)]
@@ -90,16 +91,16 @@ impl<'a> EffectCaptureContext<'a> {
 
     pub fn from(
         targeting: &EffectTargeting,
-        actors: &'a mut Query<(Option<&Effects>, AttributesMut), Without<Effect>>,
+        actors: &'a mut Query<(&mut EntityGraph, Option<&Effects>, AttributesMut), Without<Effect>>,
     ) -> Self {
         let (source_actor, target_actor) = match targeting {
             EffectTargeting::SelfCast(entity) => {
-                let (_, actor) = actors.get(*entity).unwrap();
+                let (_, _, actor) = actors.get(*entity).unwrap();
                 (actor, actor)
             }
             EffectTargeting::Targeted { source, target } => {
-                let (_, source_actor_ref) = actors.get(*target).unwrap();
-                let (_, target_actor_ref) = actors.get(*source).unwrap();
+                let (_, _, source_actor_ref) = actors.get(*target).unwrap();
+                let (_, _, target_actor_ref) = actors.get(*source).unwrap();
                 (source_actor_ref, target_actor_ref)
             }
         };
