@@ -15,13 +15,15 @@ use root_attribute::attributes::ReflectAccessAttribute;
 use root_attribute::condition::AttributeCondition;
 use root_attribute::context::EffectContext;
 use root_attribute::effect::{EffectStackingPolicy, Stacks};
-use root_attribute::graph::EntityGraph;
 use root_attribute::inspector::ActorInspectorPlugin;
 use root_attribute::inspector::debug_overlay::DebugOverlayMarker;
 use root_attribute::prelude::*;
 use root_attribute::{AttributesMut, AttributesPlugin, attribute, init_attribute};
 use std::fmt::Debug;
 use std::time::Duration;
+use petgraph::prelude::{Bfs, Dfs};
+use petgraph::visit::{depth_first_search, DfsEvent};
+use root_attribute::graph::QueryGraphAdapter;
 
 attribute!(Strength);
 attribute!(Agility);
@@ -215,8 +217,6 @@ fn setup_actor(
     efx: Res<EffectsDatabase>,
     abilities: Res<AbilityDatabase>,
 ) {
-    let _rng = rand::rng();
-
     let actor_template = actor_assets.add(
         ActorBuilder::new()
             .with_name("=== Player ===".into())
@@ -263,11 +263,13 @@ fn setup_camera(mut commands: Commands) {
 }
 
 fn inputs(
-    mut players: Query<(Entity, &EntityGraph, &AttackPower), With<Player>>,
+    mut players: Query<(Entity, &AttackPower), With<Player>>,
     keys: Res<ButtonInput<KeyCode>>,
     mut commands: Commands,
+    graph: QueryGraphAdapter,
+    actors: Query<Entity, With<Player>>,
 ) {
-    if let Ok((player_entity, graph, attribute)) = players.single_mut() {
+    if let Ok((player_entity, attribute)) = players.single_mut() {
         if keys.just_pressed(KeyCode::KeyQ) {
             commands
                 .entity(player_entity)
@@ -282,13 +284,59 @@ fn inputs(
             commands.trigger_targets(DamageEvent { damage: 10.0 }, player_entity);
         }
         if keys.just_pressed(KeyCode::KeyR) {
-            println!("{:?}", Dot::new(&graph.graph));
-
-            let cv = graph.calculate_attribute_value::<AttackPower>(attribute.current_value);
-            println!("{:?}", cv);
+            analyze_dependencies_with_petgraph(graph, actors);
+            //let cv = graph.calculate_attribute_value::<AttackPower>(attribute.base_value);
+            //println!("{:?}", cv);
         }
     }
 }
+
+pub fn analyze_dependencies_with_petgraph(
+    graph: QueryGraphAdapter,
+    actors: Query<Entity, With<Player>>,
+) {
+    for actor_entity in actors.iter() {
+        println!("Analyzing actor: {:?}", actor_entity);
+
+        // Use petgraph's depth_first_search with custom visitor
+        depth_first_search(&graph, Some(actor_entity), |event| {
+            match event {
+                DfsEvent::Discover(entity, time) => {
+                    println!("  Discovered: {} at time {}", entity, time.0);
+                },
+                DfsEvent::TreeEdge(source, target) => {
+                    println!("  Tree edge: {} -> {}", source, target);
+                },
+                DfsEvent::BackEdge(source, target) => {
+                    warn!("  Back edge (cycle): {} -> {}", source, target);
+                },
+                DfsEvent::CrossForwardEdge(source, target) => {
+                    println!("  Cross edge: {} -> {}", source, target);
+                },
+                DfsEvent::Finish(entity, time) => {
+                    println!("  Finished: {} at time {}", entity, time.0);
+                },
+            }
+            petgraph::visit::Control::<Entity>::Continue
+        });
+
+        // Use petgraph's DFS iterator
+        let mut dfs = Dfs::new(&graph, actor_entity);
+        let mut count = 0;
+        while let Some(entity) = dfs.next(&graph) {
+            count += 1;
+        }
+        info!("Actor {:?} has {} reachable nodes", actor_entity, count);
+
+        // Use petgraph's BFS iterator
+        let mut bfs = Bfs::new(&graph, actor_entity);
+        println!("  BFS traversal:");
+        while let Some(entity) = bfs.next(&graph) {
+            println!("    {:?}", entity);
+        }
+    }
+}
+
 
 fn do_gameplay_stuff() {
     std::thread::sleep(Duration::from_millis(12));

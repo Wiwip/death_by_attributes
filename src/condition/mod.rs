@@ -1,7 +1,5 @@
 use crate::condition::systems::evaluate_effect_conditions;
 use bevy::app::{App, Plugin, PreUpdate};
-use std::fmt::{Debug, Formatter};
-use bevy::prelude::Reflect;
 
 mod conditions;
 mod evaluator;
@@ -12,6 +10,7 @@ pub use conditions::{
     AbilityCondition, And, AttributeCondition, ConditionExt, FunctionCondition, Not, Or,
     StackCondition, TagCondition,
 };
+pub use evaluator::{AttributeExtractor, BoxExtractor};
 
 pub struct ConditionPlugin;
 

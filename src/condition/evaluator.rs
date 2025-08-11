@@ -1,4 +1,4 @@
-
+use std::fmt::Formatter;
 use crate::attributes::Attribute;
 use bevy::prelude::*;
 use std::marker::PhantomData;
@@ -15,6 +15,14 @@ pub struct BoxExtractor(pub Box<dyn Extractor>);
 impl BoxExtractor {
     pub fn new<T: Extractor + 'static>(evaluator: T) -> Self {
         Self(Box::new(evaluator))
+    }
+}
+
+impl std::fmt::Debug for BoxExtractor {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("BoxExtractor")
+            .field(&self.0.name())
+            .finish()
     }
 }
 

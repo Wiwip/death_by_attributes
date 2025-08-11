@@ -57,7 +57,7 @@ where
             self.modifier,
         );
 
-        let mut observer = Observer::new(
+        /*let mut observer = Observer::new(
             |trigger: Trigger<OnEffectStatusChangeEvent>,
              query: Query<&EffectTarget>,
              mut commands: Commands| {
@@ -79,7 +79,7 @@ where
                     .insert(Dirty::<T>::default());
             },
         );
-        observer.watch_entity(actor_entity.id());
+        observer.watch_entity(actor_entity.id());*/
 
         commands
             .spawn((
@@ -88,7 +88,7 @@ where
                     modifier: self.modifier,
                     marker: Default::default(),
                 },
-                observer,
+                //observer,
                 Name::new(format!("Mod<{}> ({:?})", pretty_type_name::<T>(), self.who)),
             ))
             .id()

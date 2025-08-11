@@ -1,8 +1,5 @@
 use crate::modifier::Modifiers;
-use crate::systems::{
-    apply_periodic_effect, flag_dirty_modifier, observe_dirty_effect_notifications,
-    observe_dirty_modifier_notifications, update_changed_attributes, update_effect_tree_system,
-};
+use crate::systems::{apply_periodic_effect, flag_dirty_modifier, observe_dirty_effect_notifications, observe_dirty_modifier_notifications, update_changed_attributes, update_effect_system};
 use bevy::ecs::event::EventRegistry;
 use bevy::prelude::*;
 use std::any::{TypeId, type_name};
@@ -26,7 +23,6 @@ use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::attributes::{Attribute, ReflectAccessAttribute, clamp_attributes_system};
 use crate::condition::ConditionPlugin;
 use crate::effect::EffectsPlugin;
-use crate::graph::EntityGraph;
 use crate::prelude::{
     AttributeModifier, Effect, EffectDuration, EffectSource, EffectSources, EffectTarget,
     EffectTicker, Effects, Mod, tick_effect_tickers,
@@ -76,7 +72,8 @@ pub fn init_attribute<T: Attribute>(app: &mut App) {
 
     world.schedule_scope(PreUpdate, |_, schedule| {
         schedule.add_systems(apply_periodic_effect::<T>.after(tick_effect_tickers));
-        schedule.add_systems(update_effect_tree_system::<T>.after(apply_periodic_effect::<T>));
+        schedule.add_systems(update_effect_system::<T>.after(apply_periodic_effect::<T>));
+        //schedule.add_systems(update_effect_graph::<T>.after(apply_periodic_effect::<T>));
     });
 
     world.schedule_scope(PostUpdate, |_, schedule| {
@@ -95,7 +92,6 @@ pub type AttributesMut<'w> = EntityMutExcept<
     'w,
     (
         // We exclude anything related to effects
-        EntityGraph,
         ChildOf,
         Effect,
         EffectDuration,
@@ -115,7 +111,6 @@ pub type AttributesRef<'w> = EntityRefExcept<
     'w,
     (
         // We exclude anything related to effects
-        EntityGraph,
         ChildOf,
         Effect,
         EffectDuration,

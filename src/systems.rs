@@ -1,5 +1,5 @@
 use crate::actors::Actor;
-use crate::attributes::{Attribute, AttributeQueryData};
+use crate::attributes::{AccessAttribute, Attribute, AttributeQueryData};
 use crate::effect::Stacks;
 use crate::inspector::pretty_type_name;
 use crate::modifier::{Modifiers, Who};
@@ -7,7 +7,7 @@ use crate::prelude::{
     AttributeCalculator, AttributeModifier, EffectSource, EffectStatusParam, EffectTarget,
     EffectTicker, Effects, ModifierOf, collect_entity_modifiers,
 };
-use crate::{ApplyModifier, Dirty, OnAttributeValueChanged, OnBaseValueChange};
+use crate::{ApplyModifier, AttributesMut, AttributesRef, Dirty, OnAttributeValueChanged, OnBaseValueChange};
 use bevy::ecs::component::Mutable;
 use bevy::prelude::*;
 use std::any::type_name;
@@ -97,7 +97,7 @@ pub fn observe_dirty_effect_notifications<T: Attribute>(
 
 /// Navigates the tree descendants to update the tree attribute values
 /// Effects that have a periodic timer application must be ignored in the current value calculations
-pub fn update_effect_tree_system<T: Attribute>(
+pub fn update_effect_system<T: Attribute>(
     actors: Query<Entity, With<Actor>>,
     child_effects: Query<&Effects>,
     statuses: Query<EffectStatusParam>,
@@ -121,6 +121,32 @@ pub fn update_effect_tree_system<T: Attribute>(
         );
     }
 }
+
+/*pub fn update_effect_graph<T: Attribute>(
+    mut entities: Query<(Entity, &EntityGraph)>,
+    mut attributes: Query<AttributesMut>,
+) {
+    debug_once!("Ready: update_effect_graph::{}", type_name::<T>());
+    for (entity, graph) in entities.iter_mut() {
+        let current_value = {
+            let Ok(attribute_ref) = attributes.get(entity) else {
+                warn!("{}: Attribute not found.", entity);
+                continue;
+            };
+
+            let base_value = attribute_ref.get::<T>().unwrap().base_value();
+
+            graph.calculate_attribute_value::<T>(base_value, &attributes.as_readonly())
+        };
+
+        let Ok(mut attribute_ref) = attributes.get_mut(entity) else {
+            warn!("{}: Attribute not found.", entity);
+            continue;
+        };
+        let mut attribute = attribute_ref.get_mut::<T>().unwrap();
+        attribute.set_current_value(current_value);
+    }
+}*/
 
 fn update_effect_tree<T: Attribute>(
     current_entity: Entity,

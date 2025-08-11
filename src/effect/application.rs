@@ -12,7 +12,7 @@ use bevy::asset::{Assets, Handle};
 use bevy::log::debug;
 use bevy::prelude::*;
 use std::cmp::PartialEq;
-use crate::graph::EntityGraph;
+
 
 /// Describes how the effect is applied to entities
 #[derive(Debug, Clone, Reflect, PartialEq)]
@@ -144,7 +144,7 @@ pub struct ApplyEffectEvent {
 impl ApplyEffectEvent {
     fn apply_instant_effect(
         &self,
-        mut actors: &mut Query<(&mut EntityGraph, Option<&Effects>, AttributesMut), Without<Effect>>,
+        mut actors: &mut Query<(Option<&Effects>, AttributesMut), Without<Effect>>,
         effect: &EffectDef,
     ) -> Result<(), BevyError> {
         debug!("Applying instant effect to {}", self.targeting.target());
@@ -169,7 +169,7 @@ impl ApplyEffectEvent {
 
     fn apply_modifiers<'a, I>(
         &self,
-        actors: &mut Query<(&mut EntityGraph, Option<&Effects>, AttributesMut), Without<Effect>>,
+        actors: &mut Query<(Option<&Effects>, AttributesMut), Without<Effect>>,
         modifiers: &mut I,
     ) where
         I: Iterator<Item = &'a Box<dyn Mutator>>,
@@ -177,11 +177,11 @@ impl ApplyEffectEvent {
         for modifier in modifiers {
             match modifier.who() {
                 Who::Target => {
-                    let (_, _, mut target) = actors.get_mut(self.targeting.target()).unwrap();
+                    let (_, mut target) = actors.get_mut(self.targeting.target()).unwrap();
                     modifier.apply(&mut target);
                 }
                 Who::Source => {
-                    let (_, _, mut source) = actors.get_mut(self.targeting.source()).unwrap();
+                    let (_, mut source) = actors.get_mut(self.targeting.source()).unwrap();
                     modifier.apply(&mut source);
                 }
                 Who::Owner => {
@@ -195,14 +195,14 @@ impl ApplyEffectEvent {
         &self,
         mut commands: &mut Commands,
         effect: &EffectDef,
-        actors: &mut Query<(&mut EntityGraph, Option<&Effects>, AttributesMut), Without<Effect>>,
+        actors: &mut Query<(Option<&Effects>, AttributesMut), Without<Effect>>,
         effects: &mut Query<&Effect>,
         add_stack_event: &mut EventWriter<NotifyAddStackEvent>,
     ) -> Result<(), BevyError> {
         debug!("Applying duration effect to {}", self.targeting.target());
 
         // We want to know whether an effect with the same handle already exists on the actor
-        let (mut graph, optional_effects, _) = actors.get_mut(self.targeting.target())?;
+        let (optional_effects, _) = actors.get_mut(self.targeting.target())?;
         let effects_on_actor = match optional_effects {
             None => {
                 vec![]
@@ -242,8 +242,6 @@ impl ApplyEffectEvent {
 
         let mut effect_commands = commands.spawn_empty();
         let effect_entity = effect_commands.id();
-        // TODO Prototype
-        graph.add_effect_to(effect_entity, self.targeting.target(), 1.0);
         for effect_fn in &effect.effect_fn {
             effect_fn(&mut effect_commands, self.targeting.target());
         }
@@ -266,7 +264,7 @@ impl ApplyEffectEvent {
 
         // Prepare entity commands
         for effect_mod in &effect.effect_modifiers {
-            let (_, _, target) = actors.get_mut(self.targeting.target())?;
+            let (_, target) = actors.get_mut(self.targeting.target())?;
             effect_mod.spawn(&mut commands, target.as_readonly());
         }
 
@@ -276,24 +274,18 @@ impl ApplyEffectEvent {
             .iter()
             .for_each(|modifier| match modifier.who() {
                 Who::Target => {
-                    let (mut graph, _, target) = actors.get_mut(self.targeting.target()).unwrap();
+                    let (_, target) = actors.get_mut(self.targeting.target()).unwrap();
                     let mod_entity = modifier.spawn(commands, target.as_readonly());
                     commands
                         .entity(mod_entity)
                         .insert(ModifierOf(effect_entity));
-
-                    // Prototype
-                    graph.add_modifier_to(effect_entity, modifier.attribute_type_id(), modifier.modifier());
                 }
                 Who::Source => {
-                    let (mut graph, _, source) = actors.get_mut(self.targeting.source()).unwrap();
+                    let (_, source) = actors.get_mut(self.targeting.source()).unwrap();
                     let mod_entity = modifier.spawn(commands, source.as_readonly());
                     commands
                         .entity(mod_entity)
                         .insert(ModifierOf(effect_entity));
-
-                    // Prototype
-                    graph.add_modifier_to(effect_entity, modifier.attribute_type_id(), modifier.modifier());
                 }
                 Who::Owner => todo!(),
             });
@@ -304,7 +296,7 @@ impl ApplyEffectEvent {
 
 pub(crate) fn apply_effect_events(
     trigger: Trigger<ApplyEffectEvent>,
-    mut actors: Query<(&mut EntityGraph, Option<&Effects>, AttributesMut), Without<Effect>>,
+    mut actors: Query<(Option<&Effects>, AttributesMut), Without<Effect>>,
     mut effects: Query<&Effect>,
     effect_assets: Res<Assets<EffectDef>>,
     mut event_writer: EventWriter<NotifyAddStackEvent>,
