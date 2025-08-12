@@ -3,16 +3,16 @@ use crate::assets::EffectDef;
 use crate::effect::stacks::NotifyAddStackEvent;
 use crate::effect::timing::{EffectDuration, EffectTicker};
 use crate::effect::{
-    Effect, EffectCalculationContext, EffectCaptureContext, EffectStackingPolicy, EffectTargeting,
-    Effects,
+    AppliedEffects, Effect, EffectCalculationContext, EffectCaptureContext, EffectStackingPolicy,
+    EffectTargeting,
 };
-use crate::modifier::{ModifierOf, Mutator, Who};
+use crate::graph::NodeType;
+use crate::modifier::{Mutator, Who};
 use crate::prelude::{EffectInactive, EffectSource, EffectTarget};
 use bevy::asset::{Assets, Handle};
 use bevy::log::debug;
 use bevy::prelude::*;
 use std::cmp::PartialEq;
-
 
 /// Describes how the effect is applied to entities
 #[derive(Debug, Clone, Reflect, PartialEq)]
@@ -144,7 +144,7 @@ pub struct ApplyEffectEvent {
 impl ApplyEffectEvent {
     fn apply_instant_effect(
         &self,
-        mut actors: &mut Query<(Option<&Effects>, AttributesMut), Without<Effect>>,
+        mut actors: &mut Query<(Option<&AppliedEffects>, AttributesMut), Without<Effect>>,
         effect: &EffectDef,
     ) -> Result<(), BevyError> {
         debug!("Applying instant effect to {}", self.targeting.target());
@@ -169,7 +169,7 @@ impl ApplyEffectEvent {
 
     fn apply_modifiers<'a, I>(
         &self,
-        actors: &mut Query<(Option<&Effects>, AttributesMut), Without<Effect>>,
+        actors: &mut Query<(Option<&AppliedEffects>, AttributesMut), Without<Effect>>,
         modifiers: &mut I,
     ) where
         I: Iterator<Item = &'a Box<dyn Mutator>>,
@@ -195,7 +195,7 @@ impl ApplyEffectEvent {
         &self,
         mut commands: &mut Commands,
         effect: &EffectDef,
-        actors: &mut Query<(Option<&Effects>, AttributesMut), Without<Effect>>,
+        actors: &mut Query<(Option<&AppliedEffects>, AttributesMut), Without<Effect>>,
         effects: &mut Query<&Effect>,
         add_stack_event: &mut EventWriter<NotifyAddStackEvent>,
     ) -> Result<(), BevyError> {
@@ -248,6 +248,7 @@ impl ApplyEffectEvent {
 
         // Spawns the effect entity
         effect_commands.insert((
+            NodeType::Effect,
             EffectTarget(self.targeting.target()),
             EffectSource(self.targeting.source()),
             Effect(self.handle.clone()),
@@ -278,14 +279,14 @@ impl ApplyEffectEvent {
                     let mod_entity = modifier.spawn(commands, target.as_readonly());
                     commands
                         .entity(mod_entity)
-                        .insert(ModifierOf(effect_entity));
+                        .insert(EffectTarget(effect_entity));
                 }
                 Who::Source => {
                     let (_, source) = actors.get_mut(self.targeting.source()).unwrap();
                     let mod_entity = modifier.spawn(commands, source.as_readonly());
                     commands
                         .entity(mod_entity)
-                        .insert(ModifierOf(effect_entity));
+                        .insert(EffectTarget(effect_entity));
                 }
                 Who::Owner => todo!(),
             });
@@ -296,7 +297,7 @@ impl ApplyEffectEvent {
 
 pub(crate) fn apply_effect_events(
     trigger: Trigger<ApplyEffectEvent>,
-    mut actors: Query<(Option<&Effects>, AttributesMut), Without<Effect>>,
+    mut actors: Query<(Option<&AppliedEffects>, AttributesMut), Without<Effect>>,
     mut effects: Query<&Effect>,
     effect_assets: Res<Assets<EffectDef>>,
     mut event_writer: EventWriter<NotifyAddStackEvent>,

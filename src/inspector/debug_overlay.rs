@@ -1,7 +1,7 @@
 
 use crate::attributes::ReflectAccessAttribute;
 use crate::inspector::pretty_type_name_str;
-use crate::modifier::{ModifierMarker, Modifiers, ReflectAccessModifier};
+use crate::modifier::{ModifierMarker, ReflectAccessModifier};
 use bevy::ecs::component::{ComponentId, Components};
 use bevy::prelude::*;
 use bevy::reflect::ReflectFromPtr;
@@ -10,7 +10,7 @@ use ptree::{TreeBuilder, write_tree};
 use std::any::TypeId;
 use crate::actors::Actor;
 use crate::effect::Stacks;
-use crate::prelude::{Effect, Effects};
+use crate::prelude::{Effect, AppliedEffects};
 
 #[derive(Component, Copy, Clone)]
 pub struct DebugOverlayMarker;
@@ -38,8 +38,8 @@ pub fn setup_debug_overlay(mut commands: Commands, asset_server: Res<AssetServer
 }
 
 pub fn explore_actors_system(
-    actors: Query<(EntityRef, Option<&Effects>), (With<Actor>, With<DebugOverlayMarker>)>,
-    effects: Query<(&Effect, &Stacks, Option<&Name>, Option<&Modifiers>)>,
+    actors: Query<(EntityRef, Option<&AppliedEffects>), (With<Actor>, With<DebugOverlayMarker>)>,
+    effects: Query<(&Effect, &Stacks, Option<&Name>, Option<&AppliedEffects>)>,
     modifiers: Query<EntityRef, With<ModifierMarker>>,
     type_registry: Res<AppTypeRegistry>,
     world_components: &Components,
@@ -137,8 +137,8 @@ fn list_attributes(
 
 fn list_effects(
     mut builder: &mut TreeBuilder,
-    actor_effects: &Effects,
-    effect_query: Query<(&Effect, &Stacks, Option<&Name>, Option<&Modifiers>)>,
+    actor_effects: &AppliedEffects,
+    effect_query: Query<(&Effect, &Stacks, Option<&Name>, Option<&AppliedEffects>)>,
     modifier_query: Query<EntityRef, With<ModifierMarker>>,
     type_registry: &AppTypeRegistry,
     world_components: &Components,
@@ -233,7 +233,8 @@ fn list_modifiers_for_effect(
 
         builder
             .begin_child(format!(
-                "Mod: {} [{}]",
+                "[{}] Mod: {} [{}]",
+                modifier_ref.id(),
                 modifier.name(),
                 modifier.describe()
             ))

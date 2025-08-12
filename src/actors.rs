@@ -8,6 +8,7 @@ use crate::systems::apply_modifier_on_trigger;
 use crate::OnAttributeValueChanged;
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
+use crate::graph::NodeType;
 
 #[derive(Component, Clone, Debug)]
 pub struct Actor(Handle<ActorDef>);
@@ -31,6 +32,7 @@ impl EntityCommand for SpawnActorCommand {
                     let mut commands = Commands::new(&mut queue, world);
 
                     commands.entity(actor_entity).insert((
+                        NodeType::Actor,
                         Actor(self.handle.clone()),
                         Name::new(actor_def.name.clone()),
                     ));

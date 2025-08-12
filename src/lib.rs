@@ -1,5 +1,5 @@
-use crate::modifier::Modifiers;
-use crate::systems::{apply_periodic_effect, flag_dirty_modifier, observe_dirty_effect_notifications, observe_dirty_modifier_notifications, update_changed_attributes, update_effect_system};
+
+use crate::systems::{apply_periodic_effect, attribute_changed_system, update_effect_system};
 use bevy::ecs::event::EventRegistry;
 use bevy::prelude::*;
 use std::any::{TypeId, type_name};
@@ -25,7 +25,7 @@ use crate::condition::ConditionPlugin;
 use crate::effect::EffectsPlugin;
 use crate::prelude::{
     AttributeModifier, Effect, EffectDuration, EffectSource, EffectSources, EffectTarget,
-    EffectTicker, Effects, Mod, tick_effect_tickers,
+    EffectTicker, AppliedEffects, Mod, tick_effect_tickers,
 };
 use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
 
@@ -46,7 +46,8 @@ impl Plugin for AttributesPlugin {
             .init_asset::<ActorDef>()
             .init_asset::<EffectDef>()
             .init_asset::<AbilityDef>()
-            .register_type::<Modifiers>();
+            .register_type::<AppliedEffects>()
+            .register_type::<EffectTarget>();
     }
 }
 
@@ -77,13 +78,14 @@ pub fn init_attribute<T: Attribute>(app: &mut App) {
     });
 
     world.schedule_scope(PostUpdate, |_, schedule| {
-        schedule.add_systems(flag_dirty_modifier::<T>);
+        //schedule.add_systems(flag_dirty_modifier::<T>);
         schedule.add_systems(clamp_attributes_system::<T>);
-        schedule.add_systems(update_changed_attributes::<T>);
+        schedule.add_systems(attribute_changed_system::<T>);
+        //schedule.add_systems(update_changed_attributes::<T>);
     });
 
-    world.add_observer(observe_dirty_modifier_notifications::<T>);
-    world.add_observer(observe_dirty_effect_notifications::<T>);
+    //world.add_observer(observe_dirty_modifier_notifications::<T>);
+    //world.add_observer(observe_dirty_effect_notifications::<T>);
 
     debug!("Registered Systems for: {}.", type_name::<T>());
 }
@@ -98,7 +100,7 @@ pub type AttributesMut<'w> = EntityMutExcept<
         EffectTicker,
         EffectSource,
         EffectTarget,
-        Effects,
+        AppliedEffects,
         EffectSources,
         Ability,
         Abilities,
@@ -117,7 +119,7 @@ pub type AttributesRef<'w> = EntityRefExcept<
         EffectTicker,
         EffectSource,
         EffectTarget,
-        Effects,
+        AppliedEffects,
         EffectSources,
         Ability,
         Abilities,

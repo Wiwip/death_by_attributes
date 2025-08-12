@@ -1,18 +1,23 @@
 use crate::actors::Actor;
 use crate::attributes::{AccessAttribute, Attribute, AttributeQueryData};
 use crate::effect::Stacks;
+use crate::graph::{NodeType, QueryGraphAdapter};
 use crate::inspector::pretty_type_name;
-use crate::modifier::{Modifiers, Who};
+use crate::modifier::Who;
 use crate::prelude::{
-    AttributeCalculator, AttributeModifier, EffectSource, EffectStatusParam, EffectTarget,
-    EffectTicker, Effects, ModifierOf, collect_entity_modifiers,
+    AppliedEffects, AttributeCalculator, AttributeModifier, EffectSource, EffectSources,
+    EffectStatusParam, EffectTarget, EffectTicker,
 };
-use crate::{ApplyModifier, AttributesMut, AttributesRef, Dirty, OnAttributeValueChanged, OnBaseValueChange};
+use crate::{
+    ApplyModifier, AttributesMut, AttributesRef, Dirty, OnAttributeValueChanged, OnBaseValueChange,
+};
 use bevy::ecs::component::Mutable;
 use bevy::prelude::*;
+use petgraph::visit::{Control, DfsEvent, IntoNeighbors, depth_first_search};
 use std::any::type_name;
+use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
-
+/*
 #[derive(Event)]
 pub struct NotifyDirtyModifier<T: Attribute>(PhantomData<T>);
 
@@ -94,79 +99,164 @@ pub fn observe_dirty_effect_notifications<T: Attribute>(
         .entity(trigger.target())
         .try_insert(Dirty::<T>::default());
 }
+*/
+
+pub fn attribute_changed_system<T: Attribute>(
+    query: Query<(&T, &EffectSources), Changed<T>>,
+    mut commands: Commands,
+) {
+    for (attribute, watchers) in query.iter() {
+        let notify_targets = watchers.iter().collect::<Vec<Entity>>();
+        commands.trigger_targets(
+            NotifyAttributeChanged::<T> {
+                base_value: attribute.base_value(),
+                current_value: attribute.current_value(),
+                phantom_data: Default::default(),
+            },
+            notify_targets,
+        );
+    }
+}
+
+#[derive(Event)]
+pub struct NotifyAttributeChanged<T: Attribute> {
+    base_value: f64,
+    current_value: f64,
+    phantom_data: PhantomData<T>,
+}
+
+pub fn attribute_changed_observer<S: Attribute, T: Attribute>(
+    trigger: Trigger<NotifyAttributeChanged<S>>,
+    mut attribute_modifiers_query: Query<&mut AttributeModifier<T>>,
+) {
+    /*println!(
+        "Target: {} | Observer: {} | Type: {}",
+        trigger.target(),
+        trigger.observer(),
+        type_name::<T>()
+    );*/
+    let mut modifier = attribute_modifiers_query
+        .get_mut(trigger.observer())
+        .unwrap();
+    let mod_value = modifier.modifier.value_mut();
+    *mod_value = trigger.current_value;
+}
 
 /// Navigates the tree descendants to update the tree attribute values
 /// Effects that have a periodic timer application must be ignored in the current value calculations
 pub fn update_effect_system<T: Attribute>(
+    graph: QueryGraphAdapter,
     actors: Query<Entity, With<Actor>>,
-    child_effects: Query<&Effects>,
-    statuses: Query<EffectStatusParam>,
-    dirty: Query<&Dirty<T>>,
+    nodes: Query<&NodeType>,
     mut attributes: Query<AttributeQueryData<T>>,
-    mut modifiers_query: Query<&Modifiers>,
-    mut modifiers: Query<&AttributeModifier<T>>,
+    attribute_modifiers_query: Query<&AttributeModifier<T>>,
     mut commands: Commands,
 ) {
     debug_once!("Ready: update_effect_tree_system::{}", type_name::<T>());
     for actor_entity in actors.iter() {
-        update_effect_tree(
+        traverse_effect_tree::<T>(
+            &graph,
+            &nodes,
             actor_entity,
-            child_effects,
-            statuses,
-            dirty,
-            &mut modifiers_query,
-            &mut modifiers,
+            1.0,
             &mut attributes,
+            &attribute_modifiers_query,
             &mut commands,
         );
     }
 }
 
-/*pub fn update_effect_graph<T: Attribute>(
-    mut entities: Query<(Entity, &EntityGraph)>,
-    mut attributes: Query<AttributesMut>,
-) {
-    debug_once!("Ready: update_effect_graph::{}", type_name::<T>());
-    for (entity, graph) in entities.iter_mut() {
-        let current_value = {
-            let Ok(attribute_ref) = attributes.get(entity) else {
-                warn!("{}: Attribute not found.", entity);
-                continue;
-            };
-
-            let base_value = attribute_ref.get::<T>().unwrap().base_value();
-
-            graph.calculate_attribute_value::<T>(base_value, &attributes.as_readonly())
-        };
-
-        let Ok(mut attribute_ref) = attributes.get_mut(entity) else {
-            warn!("{}: Attribute not found.", entity);
-            continue;
-        };
-        let mut attribute = attribute_ref.get_mut::<T>().unwrap();
-        attribute.set_current_value(current_value);
-    }
-}*/
-
-fn update_effect_tree<T: Attribute>(
+fn traverse_effect_tree<T: Attribute>(
+    graph: &QueryGraphAdapter,
+    nodes: &Query<&NodeType>,
     current_entity: Entity,
-    child_effects: Query<&Effects>,
+    effect_intensity: f64,
+    attributes: &mut Query<AttributeQueryData<T>>,
+    attribute_modifiers_query: &Query<&AttributeModifier<T>>,
+    commands: &mut Commands,
+) -> AttributeCalculator {
+    let Ok(node_type) = nodes.get(current_entity) else {
+        error!("{}: Error getting node type.", current_entity);
+        return AttributeCalculator::default();
+    };
+
+    let node_calculator = match node_type {
+        NodeType::Actor => {
+            // Traverse children with the new intensity
+            let calculator = graph
+                .neighbors(current_entity)
+                .map(|entity| {
+                    traverse_effect_tree::<T>(
+                        graph,
+                        nodes,
+                        entity,
+                        effect_intensity,
+                        attributes,
+                        attribute_modifiers_query,
+                        commands,
+                    )
+                })
+                .fold(AttributeCalculator::default(), |acc, child| {
+                    acc.combine(child)
+                });
+            calculator
+        }
+        NodeType::Effect => {
+            // Traverse children with the new intensity
+            let calculator = graph
+                .neighbors(current_entity)
+                .map(|entity| {
+                    traverse_effect_tree::<T>(
+                        graph,
+                        nodes,
+                        entity,
+                        effect_intensity,
+                        attributes,
+                        attribute_modifiers_query,
+                        commands,
+                    )
+                })
+                .fold(AttributeCalculator::default(), |acc, child| {
+                    acc.combine(child)
+                });
+            calculator
+        }
+        NodeType::Modifier => {
+            if let Ok(modifier) = attribute_modifiers_query.get(current_entity) {
+                AttributeCalculator::from(modifier.modifier)
+            } else {
+                AttributeCalculator::default()
+            }
+        }
+    };
+    
+    if let Ok(mut attribute) = attributes.get_mut(current_entity) {
+        attribute.calculator_cache.calculator = node_calculator;
+        let should_notify_observers = attribute.update_attribute(&node_calculator);
+        if should_notify_observers {
+            commands.trigger_targets(OnAttributeValueChanged::<T>::default(), current_entity);
+        }
+    };
+
+    // Cleans the node
+    commands.entity(current_entity).try_remove::<Dirty<T>>();
+
+    node_calculator
+}
+
+/*
+fn update_effect_tree<T: Attribute>(
+    graph: &QueryGraphAdapter,
+    current_entity: Entity,
+    child_effects: Query<&AppliedEffects>,
     statuses: Query<EffectStatusParam>,
     dirty_attribute: Query<&Dirty<T>>,
-    modifiers_query: &Query<&Modifiers>,
     attribute_modifiers_query: &Query<&AttributeModifier<T>>,
     attributes: &mut Query<AttributeQueryData<T>>,
     commands: &mut Commands,
 ) -> AttributeCalculator {
     // Ignore clean branches of the tree that have the updated cached value of the calculator
     if attributes.contains(current_entity) && !dirty_attribute.contains(current_entity) {
-        /*println!(
-            "[{}] {} => has_attribute? {} | is_dirty? {}",
-            pretty_type_name::<T>(),
-            current_entity,
-            attributes.contains(current_entity),
-            dirty_attribute.contains(current_entity)
-        );*/
         return match attributes.get(current_entity) {
             Ok(attribute) => attribute.calculator_cache.calculator,
             Err(e) => {
@@ -228,11 +318,12 @@ fn update_effect_tree<T: Attribute>(
     // Return the value of the modifier so far so we can update the current values
     combined_calculator
 }
-
+*/
 pub fn apply_periodic_effect<T: Component<Mutability = Mutable> + Attribute>(
     effects: Query<(
         &EffectTicker,
-        &Modifiers,
+        // Add node types
+        &AppliedEffects,
         &Stacks,
         &EffectTarget,
         &EffectSource,

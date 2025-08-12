@@ -7,6 +7,7 @@ use petgraph::visit::{GraphBase, IntoNeighbors};
 use std::collections::HashSet;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use crate::assets::EffectDef;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
 pub struct AttributeTypeId(pub u64);
@@ -32,28 +33,17 @@ impl AttributeTypeId {
 /// Modifiers are added to Effects as Vec<Mod>
 /// - Modifiers must apply to an attribute
 
-#[derive(Debug)]
+#[derive(Component, Debug)]
 pub enum NodeType {
-    Entity,
-    Effect {
-        effect_entity: Entity,
-    },
-    ScalarModifier {
-        modifier_entity: Entity,
-        target_attribute: AttributeTypeId,
-    },
-    DerivedModifier {
-        modifier_entity: Entity,
-        dependency_entity: Entity,
-        target_attribute: AttributeTypeId,
-        extractor: BoxExtractor,
-    },
+    Actor,
+    Effect,
+    Modifier,
 }
 
 // Lightweight wrapper that implements petgraph traits
 #[derive(SystemParam)]
 pub struct QueryGraphAdapter<'w, 's> {
-    dependencies: Query<'w, 's, (Entity, &'static Effects)>,
+    dependencies: Query<'w, 's, (Entity, &'static AppliedEffects)>,
 }
 
 impl GraphBase for QueryGraphAdapter<'_, '_> {
@@ -62,7 +52,7 @@ impl GraphBase for QueryGraphAdapter<'_, '_> {
 }
 
 impl IntoNeighbors for &QueryGraphAdapter<'_, '_> {
-    type Neighbors = std::vec::IntoIter<Entity>;
+    type Neighbors = vec::IntoIter<Entity>;
 
     fn neighbors(self, node: Self::NodeId) -> Self::Neighbors {
         match self.dependencies.get(node) {

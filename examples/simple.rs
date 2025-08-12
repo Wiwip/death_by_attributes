@@ -1,3 +1,4 @@
+use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use bevy::ecs::schedule::{LogLevel, ScheduleBuildSettings};
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
@@ -69,7 +70,7 @@ fn main() {
         ))
         .add_plugins(EguiPlugin::default())
         .add_plugins(DefaultInspectorConfigPlugin)
-        //.add_plugins(WorldInspectorPlugin::default())
+        .add_plugins(WorldInspectorPlugin::default())
         .add_plugins(ActorInspectorPlugin)
         .add_systems(
             Startup,
@@ -96,7 +97,7 @@ fn main() {
         .register_type::<Mana>()
         .register_type::<ManaPool>()
         .register_type::<EffectSources>()
-        .register_type::<Effects>()
+        .register_type::<AppliedEffects>()
         .register_type::<Stacks>()
         .register_type::<EffectSource>()
         .register_type::<EffectTarget>()
@@ -327,13 +328,6 @@ pub fn analyze_dependencies_with_petgraph(
             count += 1;
         }
         info!("Actor {:?} has {} reachable nodes", actor_entity, count);
-
-        // Use petgraph's BFS iterator
-        let mut bfs = Bfs::new(&graph, actor_entity);
-        println!("  BFS traversal:");
-        while let Some(entity) = bfs.next(&graph) {
-            println!("    {:?}", entity);
-        }
     }
 }
 

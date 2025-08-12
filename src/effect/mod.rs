@@ -68,13 +68,13 @@ pub struct EffectSources(Vec<Entity>);
 
 /// All effects targeting this entity
 #[derive(Component, Reflect, Debug)]
-#[relationship(relationship_target = Effects)]
+#[relationship(relationship_target = AppliedEffects)]
 pub struct EffectTarget(pub Entity);
 
 /// All effects that are targeting this entity.
 #[derive(Component, Reflect, Debug)]
 #[relationship_target(relationship = EffectTarget, linked_spawn)]
-pub struct Effects(Vec<Entity>);
+pub struct AppliedEffects(Vec<Entity>);
 
 #[derive(QueryData)]
 pub struct EffectStatusParam {

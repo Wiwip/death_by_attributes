@@ -16,21 +16,10 @@ pub mod prelude {
     pub use super::attribute_modifier::AttributeModifier;
     pub use super::calculator::{AttributeCalculatorCached, AttributeCalculator};
     pub use super::calculator::Mod;
-    pub use super::collector::collect_entity_modifiers;
     pub use super::derived_modifier::DerivedModifier;
 }
 
 pub type ModifierFn = dyn Fn(&mut EntityCommands, Entity) + Send + Sync;
-
-/// The entity that this effect is targeting.
-#[derive(Component, Reflect, Debug)]
-#[relationship(relationship_target = Modifiers)]
-pub struct ModifierOf(pub Entity);
-
-/// All effects that are targeting this entity.
-#[derive(Component, Reflect, Debug)]
-#[relationship_target(relationship = ModifierOf, linked_spawn)]
-pub struct Modifiers(Vec<Entity>);
 
 #[derive(Component, Default, Copy, Clone, Debug, Reflect)]
 pub struct ModifierMarker;

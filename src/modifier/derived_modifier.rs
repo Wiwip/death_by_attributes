@@ -1,13 +1,15 @@
 use crate::attributes::Attribute;
+use crate::condition::{AttributeExtractor, BoxExtractor};
+use crate::graph::{AttributeTypeId, NodeType};
 use crate::modifier::calculator::AttributeCalculator;
 use crate::modifier::{Mutator, Who};
 use crate::prelude::*;
+use crate::systems::attribute_changed_observer;
 use crate::{AttributesMut, AttributesRef, OnAttributeValueChanged};
 use bevy::log::debug;
 use bevy::prelude::{Commands, Entity, Name, Observer, Query, Reflect, Trigger};
 use std::any::type_name;
 use std::marker::PhantomData;
-use crate::graph::AttributeTypeId;
 
 #[derive(Copy, Clone, Debug, Reflect)]
 pub struct DerivedModifier<T, S> {
@@ -44,41 +46,21 @@ where
             type_name::<S>(),
             actor_entity.id()
         );
-        let scaling_factor = self.scaling_factor;
 
-        let mut observer = Observer::new(
-            // When the source attribute changes, update the modifier of the target attribute.
-            move |trigger: Trigger<OnAttributeValueChanged<S>>,
-                  attributes: Query<&S>,
-                  mut modifiers: Query<&mut AttributeModifier<T>>| {
-                let Ok(attribute) = attributes.get(trigger.target()) else {
-                    return;
-                };
-                let Ok(mut modifier) = modifiers.get_mut(trigger.observer()) else {
-                    return;
-                };
+        let target_entity = actor_entity.id();
+        let scaled_modifier = self.modifier * self.scaling_factor;
 
-                let value_mut = modifier.modifier.value_mut();
-                *value_mut = scaling_factor * attribute.current_value(); // modify by scaling factor
-            },
-        );
-        observer.watch_entity(actor_entity.id());
-
-        let Some(attribute_value) = actor_entity.get::<S>() else {
-            panic!(
-                "Could not find attribute {} on {}",
-                type_name::<S>(),
-                actor_entity.id(),
-            );
-        };
-        let value = attribute_value.current_value() * self.scaling_factor;
-        let scaled_modifier = self.modifier * value;
+        // We observe the target entity for update the source attribute
+        let observer = Observer::new(attribute_changed_observer::<S, T>);
 
         commands
             .spawn((
+                NodeType::Modifier,
+                EffectSource(target_entity),
+                EffectTarget(target_entity),
                 Name::new(format!("{}", type_name::<T>())),
-                observer,
                 AttributeModifier::<T>::new(scaled_modifier, self.who),
+                observer,
             ))
             .id()
     }

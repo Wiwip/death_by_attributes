@@ -1,16 +1,16 @@
 use crate::attributes::Attribute;
+use crate::graph::{AttributeTypeId, NodeType};
 use crate::inspector::pretty_type_name;
 use crate::modifier::calculator::{AttributeCalculator, Mod};
 use crate::modifier::{ModifierMarker, Mutator};
 use crate::modifier::{ReflectAccessModifier, Who};
-use crate::prelude::{EffectTarget, OnEffectStatusChangeEvent};
-use crate::{AttributesMut, AttributesRef, Dirty};
+use crate::prelude::{EffectTarget, EffectSource};
+use crate::{AttributesMut, AttributesRef};
 use bevy::prelude::*;
-use std::any::{TypeId, type_name};
+use std::any::type_name;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::marker::PhantomData;
-use crate::graph::AttributeTypeId;
 
 #[derive(Component, Copy, Clone, Debug, Reflect)]
 #[reflect(AccessModifier)]
@@ -35,7 +35,6 @@ where
     }
 }
 
-
 impl<T> Display for AttributeModifier<T>
 where
     T: Attribute,
@@ -57,38 +56,16 @@ where
             self.modifier,
         );
 
-        /*let mut observer = Observer::new(
-            |trigger: Trigger<OnEffectStatusChangeEvent>,
-             query: Query<&EffectTarget>,
-             mut commands: Commands| {
-                debug!(
-                    "Observer[{}] -> Target[{}] change for {}",
-                    trigger.observer(),
-                    trigger.target(),
-                    pretty_type_name::<T>()
-                );
-                let parent = query.get(trigger.observer()).unwrap();
-
-                // Marks dirty the actor, the effect, and the modifier.
-                commands
-                    .entity(trigger.target())
-                    .insert(Dirty::<T>::default());
-                commands.entity(parent.0).insert(Dirty::<T>::default());
-                commands
-                    .entity(trigger.observer())
-                    .insert(Dirty::<T>::default());
-            },
-        );
-        observer.watch_entity(actor_entity.id());*/
-
         commands
             .spawn((
+                NodeType::Modifier,
+                EffectSource(actor_entity.id()),
+                EffectTarget(actor_entity.id()),
                 AttributeModifier::<T> {
                     who: self.who,
                     modifier: self.modifier,
                     marker: Default::default(),
                 },
-                //observer,
                 Name::new(format!("Mod<{}> ({:?})", pretty_type_name::<T>(), self.who)),
             ))
             .id()

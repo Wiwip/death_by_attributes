@@ -5,7 +5,7 @@ use bevy::prelude::*;
 use std::any::TypeId;
 use std::collections::HashMap;
 use crate::effect::EffectTargeting;
-use crate::prelude::{Effect, Effects};
+use crate::prelude::{Effect, AppliedEffects};
 
 #[derive(Component)]
 pub struct EffectCalculationContext<'a> {
@@ -90,7 +90,7 @@ impl<'a> EffectCaptureContext<'a> {
 
     pub fn from(
         targeting: &EffectTargeting,
-        actors: &'a mut Query<(Option<&Effects>, AttributesMut), Without<Effect>>,
+        actors: &'a mut Query<(Option<&AppliedEffects>, AttributesMut), Without<Effect>>,
     ) -> Self {
         let (source_actor, target_actor) = match targeting {
             EffectTargeting::SelfCast(entity) => {
