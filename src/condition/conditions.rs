@@ -1,7 +1,6 @@
 use crate::ability::Ability;
 use crate::assets::AbilityDef;
-use crate::attributes::Attribute;
-use crate::condition::evaluator::{AttributeExtractor, BoxExtractor};
+use crate::attributes::{AccessAttribute, Attribute, AttributeExtractor, BoxAttributeAccessor};
 use crate::condition::{Condition, ConditionContext};
 use crate::effect::Stacks;
 use crate::modifier::Who;
@@ -15,7 +14,7 @@ use std::ops::{Bound, RangeBounds};
 #[derive(TypePath)]
 pub struct AttributeCondition {
     who: Who,
-    extractor: BoxExtractor,
+    extractor: BoxAttributeAccessor,
     bounds: (Bound<f64>, Bound<f64>),
 }
 
@@ -26,7 +25,7 @@ impl AttributeCondition {
     ) -> Self {
         Self {
             who,
-            extractor: BoxExtractor::new(AttributeExtractor::<A>::new()),
+            extractor: BoxAttributeAccessor::new(AttributeExtractor::<A>::new()),
             bounds: (range.start_bound().cloned(), range.end_bound().cloned()),
         }
     }
@@ -44,10 +43,10 @@ impl Condition for AttributeCondition {
     fn evaluate(&self, context: &ConditionContext) -> bool {
         let entity = self.who.get_entity(context);
 
-        match self.extractor.0.extract_value(entity) {
+        match self.extractor.0.current_value(entity) {
             Ok(value) => self.bounds.contains(&value),
             Err(e) => {
-                error!("Error evaluating attribute condition: {}", e);
+                error!("Error evaluating attribute condition: {:?}", e);
                 false
             }
         }
@@ -103,7 +102,7 @@ impl std::fmt::Display for StackCondition {
 impl Condition for StackCondition {
     fn evaluate(&self, context: &ConditionContext) -> bool {
         match context.owner.get::<Stacks>() {
-            Some(value) => self.bounds.contains(&value.0),
+            Some(value) => self.bounds.contains(&(value.current_value() as u32)),
             None => {
                 error!(
                     "Effect {}: StackCondition requires a Stacks component.",
@@ -206,7 +205,7 @@ impl<C: Component> TagCondition<C> {
     }
 
     pub fn owner() -> Self {
-        Self::new(Who::Owner)
+        Self::new(Who::Effect)
     }
 }
 
@@ -259,7 +258,4 @@ pub trait ConditionExt: Condition + Sized {
 impl<T: Condition> ConditionExt for T {}
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use bevy::prelude::*;
-}
+mod tests {}

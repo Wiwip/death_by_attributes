@@ -6,12 +6,8 @@ use crate::effect::{EffectExecution, EffectStackingPolicy};
 use crate::modifier::{ModifierFn, Mutator, Who};
 use crate::prelude::{AttributeCalculatorCached, AttributeModifier, DerivedModifier, Mod};
 use bevy::ecs::component::Mutable;
-use bevy::ecs::system::IntoObserverSystem;
-use bevy::prelude::{Bundle, Component, Entity, EntityCommands, Event, Name};
+use bevy::prelude::{Bundle, Component, Entity, EntityCommands, Name};
 use std::ops::RangeBounds;
-use bevy::ui::NodeType;
-use petgraph::Directed;
-use petgraph::prelude::StableGraph;
 
 pub struct EffectBuilder {
     effect_entity_commands: Vec<Box<ModifierFn>>,
@@ -21,18 +17,20 @@ pub struct EffectBuilder {
     application: EffectApplicationPolicy,
     conditions: Vec<BoxCondition>,
     stacking_policy: EffectStackingPolicy,
+    intensity: Option<f64>,
 }
 
 impl EffectBuilder {
-    fn new(timing: EffectApplicationPolicy) -> Self {
+    fn new(application: EffectApplicationPolicy) -> Self {
         Self {
             effect_entity_commands: vec![],
             effects: vec![],
             custom_execution: None,
             modifiers: vec![],
-            application: timing,
+            application,
             conditions: vec![],
             stacking_policy: EffectStackingPolicy::None,
+            intensity: None,
         }
     }
 
@@ -113,13 +111,18 @@ impl EffectBuilder {
         //self
         todo!()
     }*/
+    
+    pub fn intensity(mut self, intensity: f64) -> Self {
+        self.intensity = Some(intensity);
+        self
+    }
 
     pub fn when_condition(mut self, condition: impl crate::condition::Condition + 'static) -> Self {
         self.conditions.push(BoxCondition::new(condition));
         self
     }
 
-    pub fn when_source_attribute<T: Attribute + Component<Mutability = Mutable>>(
+    pub fn when_source_attribute<T: Attribute>(
         mut self,
         range: impl RangeBounds<f64> + Send + Sync + 'static,
     ) -> Self {
@@ -128,7 +131,7 @@ impl EffectBuilder {
         self
     }
 
-    pub fn when_target_attribute<T: Attribute + Component<Mutability = Mutable>>(
+    pub fn when_target_attribute<T: Attribute>(
         mut self,
         range: impl RangeBounds<f64> + Send + Sync + 'static,
     ) -> Self {
@@ -203,6 +206,7 @@ impl EffectBuilder {
             application: self.application,
             conditions: self.conditions,
             stacking_policy: self.stacking_policy,
+            intensity: self.intensity,
         }
     }
 }

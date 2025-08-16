@@ -1,7 +1,9 @@
+use crate::ReflectAccessAttribute;
 use crate::assets::EffectDef;
 use bevy::prelude::*;
+use crate::attribute;
 use crate::effect::timing::EffectDuration;
-use crate::prelude::Effect;
+use crate::prelude::{Attribute, Effect};
 
 pub enum EffectStackingPolicy {
     None, // Each effect is independently added to the entity
@@ -10,12 +12,19 @@ pub enum EffectStackingPolicy {
     //RefreshDurationWithOverflow, // The effect overrides previous applications
 }
 
-#[derive(Component, Reflect, Deref, DerefMut)]
-pub struct Stacks(pub u32);
+attribute!(EffectIntensity);
+
+impl Default for EffectIntensity {
+    fn default() -> Self {
+        EffectIntensity::new(1.0)
+    }
+}
+
+attribute!(Stacks);
 
 impl Default for Stacks {
     fn default() -> Self {
-        Self(1) // By default, a new effect has 1 stack
+        Stacks::new(1.0) // By default, a new effect has 1 stack
     }
 }
 
@@ -31,8 +40,10 @@ impl Stacks {
             EffectStackingPolicy::Add { count, max_stack } => {
                 // Apply additive stacking, increasing stack count up to max
                 if let Ok(mut stack_count) = stacks.get_mut(effect_entity) {
-                    stack_count.0 += count;
-                    stack_count.0 = stack_count.clamp(1, *max_stack);
+                    let mut base_stacks = stack_count.base_value() as u32;
+                    base_stacks += *count;
+                    stack_count.set_base_value(base_stacks.clamp(1, *max_stack) as f64);
+                    stack_count.set_current_value(base_stacks.clamp(1, *max_stack) as f64);
                 } else {
                     error!(
                         "Failed to find component Stacks for entity: {:?}",

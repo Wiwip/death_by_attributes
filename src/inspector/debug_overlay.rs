@@ -10,7 +10,7 @@ use ptree::{TreeBuilder, write_tree};
 use std::any::TypeId;
 use crate::actors::Actor;
 use crate::effect::Stacks;
-use crate::prelude::{Effect, AppliedEffects};
+use crate::prelude::{Effect, AppliedEffects, Attribute};
 
 #[derive(Component, Copy, Clone)]
 pub struct DebugOverlayMarker;
@@ -128,7 +128,7 @@ fn list_attributes(
             .begin_child(format!(
                 "{}: {:.1}",
                 attribute.name(),
-                attribute.current_value()
+                attribute.access_current_value()
             ))
             .end_child();
     }
@@ -153,7 +153,7 @@ fn list_effects(
             Some(name) => name,
         };
 
-        builder.begin_child(format!("[{effect_entity}] {name} [{}]", stacks.0));
+        builder.begin_child(format!("[{effect_entity}] {name} [{}]", stacks.current_value()));
 
         let Some(modifiers) = modifiers else {
             continue;

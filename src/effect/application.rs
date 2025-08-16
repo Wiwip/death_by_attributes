@@ -1,4 +1,4 @@
-use crate::AttributesMut;
+use crate::{AttributesMut};
 use crate::assets::EffectDef;
 use crate::effect::stacks::NotifyAddStackEvent;
 use crate::effect::timing::{EffectDuration, EffectTicker};
@@ -8,7 +8,7 @@ use crate::effect::{
 };
 use crate::graph::NodeType;
 use crate::modifier::{Mutator, Who};
-use crate::prelude::{EffectInactive, EffectSource, EffectTarget};
+use crate::prelude::{EffectInactive, EffectSource, EffectTarget, EffectIntensity, Attribute};
 use bevy::asset::{Assets, Handle};
 use bevy::log::debug;
 use bevy::prelude::*;
@@ -171,20 +171,21 @@ impl ApplyEffectEvent {
         &self,
         actors: &mut Query<(Option<&AppliedEffects>, AttributesMut), Without<Effect>>,
         modifiers: &mut I,
+        //event_writer: EventWriter<ApplyAttributeModifier>
     ) where
         I: Iterator<Item = &'a Box<dyn Mutator>>,
     {
         for modifier in modifiers {
             match modifier.who() {
                 Who::Target => {
-                    let (_, mut target) = actors.get_mut(self.targeting.target()).unwrap();
-                    modifier.apply(&mut target);
+                    //let (_, mut target) = actors.get_mut(self.targeting.target()).unwrap();
+                    //modifier.apply(&mut target);
                 }
                 Who::Source => {
-                    let (_, mut source) = actors.get_mut(self.targeting.source()).unwrap();
-                    modifier.apply(&mut source);
+                    //let (_, mut source) = actors.get_mut(self.targeting.source()).unwrap();
+                    //modifier.apply(&mut source);
                 }
-                Who::Owner => {
+                Who::Effect => {
                     todo!()
                 }
             }
@@ -262,6 +263,9 @@ impl ApplyEffectEvent {
         if let Some(ticker) = ticker {
             effect_commands.insert(ticker);
         }
+        if let Some(intensity) = effect.intensity {
+            effect_commands.insert(EffectIntensity::new(intensity));
+        }
 
         // Prepare entity commands
         for effect_mod in &effect.effect_modifiers {
@@ -288,14 +292,14 @@ impl ApplyEffectEvent {
                         .entity(mod_entity)
                         .insert(EffectTarget(effect_entity));
                 }
-                Who::Owner => todo!(),
+                Who::Effect => todo!(),
             });
 
         Ok(())
     }
 }
 
-pub(crate) fn apply_effect_events(
+pub(crate) fn apply_effect_event_observer(
     trigger: Trigger<ApplyEffectEvent>,
     mut actors: Query<(Option<&AppliedEffects>, AttributesMut), Without<Effect>>,
     mut effects: Query<&Effect>,
@@ -322,27 +326,4 @@ pub(crate) fn apply_effect_events(
     }
 
     Ok(())
-}
-
-/// Updates the duration timers for all active effects.
-///
-/// The function iterates over all entities that have an `EffectDuration` component,
-/// excluding those with an `EffectInactive` component, and progresses their timers.
-/// This is done in parallel for performance optimization.
-pub fn tick_effect_durations(
-    mut query: Query<&mut EffectDuration, Without<EffectInactive>>,
-    time: Res<Time>,
-) {
-    query.par_iter_mut().for_each(|mut effect_duration| {
-        effect_duration.0.tick(time.delta());
-    });
-}
-
-pub fn tick_effect_tickers(
-    mut query: Query<&mut EffectTicker, Without<EffectInactive>>,
-    time: Res<Time>,
-) {
-    query.par_iter_mut().for_each(|mut effect_ticker| {
-        effect_ticker.0.tick(time.delta());
-    });
 }

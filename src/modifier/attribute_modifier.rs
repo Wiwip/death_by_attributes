@@ -1,4 +1,4 @@
-use crate::attributes::Attribute;
+use crate::attributes::{Attribute, AttributeExtractor, BoxAttributeAccessor};
 use crate::graph::{AttributeTypeId, NodeType};
 use crate::inspector::pretty_type_name;
 use crate::modifier::calculator::{AttributeCalculator, Mod};
@@ -32,6 +32,10 @@ where
             modifier,
             marker: Default::default(),
         }
+    }
+
+    pub fn as_accessor(&self) -> BoxAttributeAccessor {
+        BoxAttributeAccessor::new(AttributeExtractor::<T>::new())
     }
 }
 

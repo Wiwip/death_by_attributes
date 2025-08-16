@@ -19,9 +19,9 @@ impl Plugin for ActorInspectorPlugin {
 }
 
 pub fn pretty_type_name<T>() -> String {
-    format!("{:?}", disqualified::ShortName::of::<T>())
+    format!("{}", disqualified::ShortName::of::<T>())
 }
 
 pub fn pretty_type_name_str(val: &str) -> String {
-    format!("{:?}", disqualified::ShortName(val))
+    format!("{}", disqualified::ShortName(val))
 }

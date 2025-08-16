@@ -1,22 +1,23 @@
 mod attribute_modifier;
 mod calculator;
-mod collector;
 mod derived_modifier;
+mod events;
 
 use crate::attributes::Attribute;
 use crate::condition::ConditionContext;
+use crate::graph::AttributeTypeId;
 use crate::inspector::pretty_type_name;
 use crate::prelude::{AttributeModifier, Mod};
 use crate::{AttributesMut, AttributesRef};
 use bevy::prelude::{Commands, Component, Entity, EntityCommands, Reflect, reflect_trait};
 use std::fmt::{Debug, Formatter};
-use crate::graph::AttributeTypeId;
 
 pub mod prelude {
     pub use super::attribute_modifier::AttributeModifier;
-    pub use super::calculator::{AttributeCalculatorCached, AttributeCalculator};
     pub use super::calculator::Mod;
+    pub use super::calculator::{AttributeCalculator, AttributeCalculatorCached};
     pub use super::derived_modifier::DerivedModifier;
+    pub use super::events::{ApplyAttributeModifierEvent, apply_modifier_events};
 }
 
 pub type ModifierFn = dyn Fn(&mut EntityCommands, Entity) + Send + Sync;
@@ -54,7 +55,7 @@ where
 pub enum Who {
     Target,
     Source,
-    Owner,
+    Effect,
 }
 
 impl Who {
@@ -63,7 +64,7 @@ impl Who {
         match self {
             Who::Target => context.target_actor,
             Who::Source => context.source_actor,
-            Who::Owner => context.owner,
+            Who::Effect => context.owner,
         }
     }
 }
@@ -73,7 +74,7 @@ impl Debug for Who {
         match self {
             Who::Target => write!(f, "Target"),
             Who::Source => write!(f, "Source"),
-            Who::Owner => write!(f, "Owner"),
+            Who::Effect => write!(f, "Owner"),
         }
     }
 }

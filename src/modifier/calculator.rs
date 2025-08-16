@@ -63,8 +63,7 @@ impl Display for Mod {
     }
 }
 
-#[derive(Component, Clone, Copy, Reflect)]
-#[derive(Debug)]
+#[derive(Component, Clone, Copy, Reflect, Debug)]
 pub struct AttributeCalculatorCached<T: Attribute> {
     pub calculator: AttributeCalculator,
     #[reflect(ignore)]
@@ -99,7 +98,7 @@ impl AttributeCalculator {
 
     pub fn combine(self, other: AttributeCalculator) -> AttributeCalculator {
         // If either has a set value, the last one wins (or you could define other logic)
-        let set = other.set.or(self.set);
+        let set = self.set.or(other.set);
 
         // Combine additive values
         let additive = self.additive + other.additive;
@@ -117,6 +116,18 @@ impl AttributeCalculator {
             more,
         }
     }
+
+    /// Combines another AttributeCalculator into this one in-place.
+    /// - set: Uses this calculator's set value if present, otherwise uses other's
+    /// - additive: Adds other's additive value to this one
+    /// - increased: Adds other's increased value to this one
+    /// - more: Multiplies this calculator's more value by other's
+    pub fn combine_in_place(&mut self, other: &AttributeCalculator) {
+        self.set = self.set.or(other.set);
+        self.additive += other.additive;
+        self.increased += other.increased;
+        self.more *= other.more;
+    }
 }
 
 impl Default for AttributeCalculator {
@@ -132,7 +143,24 @@ impl Default for AttributeCalculator {
 
 impl From<Mod> for AttributeCalculator {
     fn from(modifier: Mod) -> Self {
-        Self::from(&vec![modifier])
+        match modifier {
+            Mod::Set(value) => Self {
+                set: Some(value),
+                ..default()
+            },
+            Mod::Add(value) => Self {
+                additive: value,
+                ..default()
+            },
+            Mod::Inc(value) => Self {
+                increased: value,
+                ..default()
+            },
+            Mod::More(value) => Self {
+                more: value,
+                ..default()
+            },
+        }
     }
 }
 

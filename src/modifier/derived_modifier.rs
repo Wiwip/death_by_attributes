@@ -1,10 +1,9 @@
 use crate::attributes::Attribute;
-use crate::condition::{AttributeExtractor, BoxExtractor};
 use crate::graph::{AttributeTypeId, NodeType};
 use crate::modifier::calculator::AttributeCalculator;
 use crate::modifier::{Mutator, Who};
 use crate::prelude::*;
-use crate::systems::attribute_changed_observer;
+use crate::systems::on_change_attribute_observer;
 use crate::{AttributesMut, AttributesRef, OnAttributeValueChanged};
 use bevy::log::debug;
 use bevy::prelude::{Commands, Entity, Name, Observer, Query, Reflect, Trigger};
@@ -51,7 +50,7 @@ where
         let scaled_modifier = self.modifier * self.scaling_factor;
 
         // We observe the target entity for update the source attribute
-        let observer = Observer::new(attribute_changed_observer::<S, T>);
+        let observer = Observer::new(on_change_attribute_observer::<S, T>);
 
         commands
             .spawn((
@@ -60,12 +59,14 @@ where
                 EffectTarget(target_entity),
                 Name::new(format!("{}", type_name::<T>())),
                 AttributeModifier::<T>::new(scaled_modifier, self.who),
+                AttributeDependency::<S>::new(target_entity),
                 observer,
             ))
             .id()
     }
 
     fn apply(&self, actor_entity: &mut AttributesMut) -> bool {
+        todo!();
         let Some(origin_value) = actor_entity.get::<S>() else {
             panic!("Should have found source attribute");
         };

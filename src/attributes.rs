@@ -1,31 +1,37 @@
 use crate::graph::AttributeTypeId;
 use crate::inspector::pretty_type_name;
 use crate::prelude::{AttributeCalculator, AttributeCalculatorCached};
-use crate::OnAttributeValueChanged;
+use crate::{AttributeError, AttributesMut, AttributesRef, OnAttributeValueChanged};
 use bevy::ecs::component::Mutable;
 use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
 use bevy::reflect::GetTypeRegistration;
+use std::any::TypeId;
+use std::collections::{Bound, HashSet};
+use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
-use std::ops::DerefMut;
+use std::ops::{RangeBounds};
+use crate::effect::AttributeDependencies;
+use crate::systems::{NotifyAttributeChanged, NotifyDirtyNode};
 
 pub trait Attribute:
     Component<Mutability = Mutable> + Clone + Reflect + TypePath + GetTypeRegistration
 {
     fn new(value: f64) -> Self;
+
     fn base_value(&self) -> f64;
     fn set_base_value(&mut self, value: f64);
     fn current_value(&self) -> f64;
     fn set_current_value(&mut self, value: f64);
+
     fn attribute_type_id() -> AttributeTypeId;
 }
 
 #[macro_export]
 macro_rules! attribute {
     ( $StructName:ident) => {
-        #[derive(bevy::prelude::Component, Default, Clone, Copy, bevy::prelude::Reflect, Debug)]
+        #[derive(bevy::prelude::Component, Clone, Copy, bevy::prelude::Reflect, Debug)]
         #[reflect(AccessAttribute)]
-        //#[require($crate::prelude::ModAggregator<$StructName>)]
         pub struct $StructName {
             base_value: f64,
             current_value: f64,
@@ -124,70 +130,61 @@ impl<T: Attribute> AttributeQueryDataItem<'_, T> {
 }
 
 #[derive(Component, Clone)]
-pub enum AttributeClamp<A> {
-    Phantom(PhantomData<A>),
-    Min(f64),
-    Max(f64),
-    MinMax(f64, f64),
+pub struct Clamp<A> {
+    bounds: (Bound<f64>, Bound<f64>),
+    phantom_data: PhantomData<A>,
 }
 
-pub(crate) fn clamp_attributes_system<A: Component<Mutability = Mutable> + Attribute>(
-    mut query: Query<(&mut A, &AttributeClamp<A>)>,
-) {
-    for (mut attribute, clamp) in query.iter_mut() {
-        match clamp {
-            AttributeClamp::Min(min) => {
-                let new_base = attribute.base_value().min(*min);
-                attribute.set_base_value(new_base);
-
-                let new_current = attribute.current_value().min(*min);
-                attribute.set_current_value(new_current);
-            }
-            AttributeClamp::Max(max) => {
-                let new_base = attribute.base_value().max(*max);
-                attribute.set_base_value(new_base);
-
-                let new_current = attribute.current_value().max(*max);
-                attribute.set_current_value(new_current);
-            }
-            AttributeClamp::MinMax(min, max) => {
-                let new_base = attribute.base_value().clamp(*min, *max);
-                attribute.set_base_value(new_base);
-
-                let new_current = attribute.current_value().clamp(*min, *max);
-                attribute.set_current_value(new_current);
-            }
-            _ => {}
+impl<A: Attribute> Clamp<A> {
+    pub fn new(range: impl RangeBounds<f64> + Send + Sync + 'static) -> Self {
+        Self {
+            bounds: (range.start_bound().cloned(), range.end_bound().cloned()),
+            phantom_data: PhantomData,
         }
     }
 }
 
-pub(crate) fn update_max_clamp_values<T, C>(
-    trigger: Trigger<OnAttributeValueChanged<T>>,
-    attribute: Query<&C>,
-    mut query: Query<&mut AttributeClamp<T>>,
-) where
-    T: Component<Mutability = Mutable> + Attribute,
-    C: Component<Mutability = Mutable> + Attribute,
-{
-    let Ok(mut clamp) = query.get_mut(trigger.target()) else {
+pub(crate) fn clamp_attributes_observer<A: Attribute>(
+    trigger: Trigger<OnAttributeValueChanged<A>>,
+    mut query: Query<(&mut A, &Clamp<A>)>,
+) {
+    let Ok((mut attribute, clamp)) = query.get_mut(trigger.target()) else {
         return;
     };
-    let Ok(attribute) = attribute.get(trigger.target()) else {
-        return;
-    };
-    match clamp.deref_mut() {
-        AttributeClamp::Min(_) => {}
-        AttributeClamp::Max(max) => *max = attribute.current_value(),
-        AttributeClamp::MinMax(_, max) => *max = attribute.current_value(),
-        _ => {}
+
+    match clamp.bounds.0 {
+        Bound::Included(min) => {
+            if attribute.base_value() < min {
+                attribute.set_base_value(min);
+            }
+        }
+        Bound::Excluded(min) => {
+            if attribute.base_value() <= min {
+                attribute.set_base_value(min + f64::EPSILON);
+            }
+        }
+        Bound::Unbounded => {}
+    }
+
+    match clamp.bounds.1 {
+        Bound::Included(max) => {
+            if attribute.base_value() > max {
+                attribute.set_base_value(max);
+            }
+        }
+        Bound::Excluded(max) => {
+            if attribute.base_value() >= max {
+                attribute.set_base_value(max - f64::EPSILON);
+            }
+        }
+        Bound::Unbounded => {}
     }
 }
 
 #[reflect_trait] // Generates a `ReflectMyTrait` type
 pub trait AccessAttribute {
-    fn base_value(&self) -> f64;
-    fn current_value(&self) -> f64;
+    fn access_base_value(&self) -> f64;
+    fn access_current_value(&self) -> f64;
     fn name(&self) -> String;
 }
 
@@ -195,13 +192,145 @@ impl<T> AccessAttribute for T
 where
     T: Attribute,
 {
-    fn base_value(&self) -> f64 {
+    fn access_base_value(&self) -> f64 {
         self.base_value()
     }
-    fn current_value(&self) -> f64 {
+    fn access_current_value(&self) -> f64 {
         self.current_value()
     }
     fn name(&self) -> String {
         pretty_type_name::<T>()
+    }
+}
+
+pub trait AttributeAccessor: Send + Sync + 'static {
+    fn current_value(&self, entity: &AttributesRef) -> Result<f64, AttributeError>;
+    fn set_current_value(
+        &self,
+        value: f64,
+        entity: &mut AttributesMut,
+    ) -> Result<(), AttributeError>;
+    fn base_value(&self, entity: &AttributesRef) -> Result<f64, AttributeError>;
+    fn set_base_value(&self, value: f64, entity: &mut AttributesMut) -> Result<(), AttributeError>;
+    fn name(&self) -> &str;
+    fn attribute_type_id(&self) -> AttributeTypeId;
+}
+
+#[derive(TypePath, Deref, DerefMut)]
+pub struct BoxAttributeAccessor(pub Box<dyn AttributeAccessor>);
+
+impl BoxAttributeAccessor {
+    pub fn new<T: AttributeAccessor + 'static>(evaluator: T) -> Self {
+        Self(Box::new(evaluator))
+    }
+}
+
+impl std::fmt::Debug for BoxAttributeAccessor {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("BoxExtractor").field(&self.0.name()).finish()
+    }
+}
+
+pub struct AttributeExtractor<A: Attribute> {
+    phantom_data: PhantomData<A>,
+}
+
+impl<A: Attribute> AttributeExtractor<A> {
+    pub fn new() -> Self {
+        Self {
+            phantom_data: PhantomData,
+        }
+    }
+}
+
+impl<A: Attribute> AttributeAccessor for AttributeExtractor<A> {
+    fn current_value(&self, entity: &AttributesRef) -> Result<f64, AttributeError> {
+        Ok(entity
+            .get::<A>()
+            .ok_or(AttributeError::AttributeNotPresent(TypeId::of::<A>()))?
+            .current_value())
+    }
+
+    fn set_current_value(
+        &self,
+        value: f64,
+        entity: &mut AttributesMut,
+    ) -> Result<(), AttributeError> {
+        entity
+            .get_mut::<A>()
+            .ok_or(AttributeError::AttributeNotPresent(TypeId::of::<A>()))?
+            .set_current_value(value);
+        Ok(())
+    }
+
+    fn base_value(&self, entity: &AttributesRef) -> Result<f64, AttributeError> {
+        Ok(entity
+            .get::<A>()
+            .ok_or(AttributeError::AttributeNotPresent(TypeId::of::<A>()))?
+            .base_value())
+    }
+
+    fn set_base_value(&self, value: f64, entity: &mut AttributesMut) -> Result<(), AttributeError> {
+        entity
+            .get_mut::<A>()
+            .ok_or(AttributeError::AttributeNotPresent(TypeId::of::<A>()))?
+            .set_base_value(value);
+        Ok(())
+    }
+
+    fn name(&self) -> &'static str {
+        A::type_path()
+    }
+
+    fn attribute_type_id(&self) -> AttributeTypeId {
+        A::attribute_type_id()
+    }
+}
+
+pub fn on_add_attribute<T: Attribute>(trigger: Trigger<OnInsert, T>, mut commands: Commands) {
+    /*commands
+        .entity(trigger.target())
+        .trigger(NotifyDirtyNode::<T>::default());
+
+    println!("Dirty<{}>: {:?}", pretty_type_name::<T>(), trigger.target());*/
+}
+
+
+pub fn on_change_notify_attribute_dependencies<T: Attribute>(
+    query: Query<(&T, &AttributeDependencies<T>), Changed<T>>,
+    mut commands: Commands,
+) {
+    for (attribute, dependencies) in query.iter() {
+        let unique_entities: HashSet<Entity> = dependencies.iter().collect();
+        let notify_targets: Vec<Entity> = unique_entities.into_iter().collect();
+
+        debug!(
+            "Attribute<{}> changed. Notify: {:?} ",
+            pretty_type_name::<T>(),
+            notify_targets
+        );
+        commands.trigger_targets(
+            NotifyAttributeChanged::<T> {
+                base_value: attribute.base_value(),
+                current_value: attribute.current_value(),
+                phantom_data: Default::default(),
+            },
+            notify_targets,
+        );
+    }
+}
+
+pub fn on_change_notify_attribute_parents<T: Attribute>(
+    query: Query<Entity, Changed<T>>,
+    mut commands: Commands,
+) {
+    for entity in query.iter() {
+        debug!(
+            "Attribute<{}> changed. Notify parent chain.",
+            pretty_type_name::<T>(),
+        );
+        commands.entity(entity).trigger(
+            NotifyDirtyNode::<T>::default(),
+        );
     }
 }

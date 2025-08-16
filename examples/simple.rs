@@ -1,13 +1,12 @@
-use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use bevy::ecs::schedule::{LogLevel, ScheduleBuildSettings};
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::window::PresentMode;
 use bevy_egui::EguiPlugin;
 use bevy_inspector_egui::DefaultInspectorConfigPlugin;
-use petgraph::Graph;
-use petgraph::dot::Dot;
-use ptree::TreeBuilder;
+use bevy_inspector_egui::quick::WorldInspectorPlugin;
+use petgraph::prelude::Dfs;
+use petgraph::visit::{DfsEvent, depth_first_search};
 use root_attribute::ability::{AbilityBuilder, TargetData, TryActivateAbility};
 use root_attribute::actors::ActorBuilder;
 use root_attribute::assets::{AbilityDef, ActorDef, EffectDef};
@@ -16,15 +15,13 @@ use root_attribute::attributes::ReflectAccessAttribute;
 use root_attribute::condition::AttributeCondition;
 use root_attribute::context::EffectContext;
 use root_attribute::effect::{EffectStackingPolicy, Stacks};
+use root_attribute::graph::QueryGraphAdapter;
 use root_attribute::inspector::ActorInspectorPlugin;
 use root_attribute::inspector::debug_overlay::DebugOverlayMarker;
 use root_attribute::prelude::*;
 use root_attribute::{AttributesMut, AttributesPlugin, attribute, init_attribute};
 use std::fmt::Debug;
 use std::time::Duration;
-use petgraph::prelude::{Bfs, Dfs};
-use petgraph::visit::{depth_first_search, DfsEvent};
-use root_attribute::graph::QueryGraphAdapter;
 
 attribute!(Strength);
 attribute!(Agility);
@@ -134,7 +131,7 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
             .build(),
     );
 
-    let a = AttributeCondition::new::<Health>(..=100.0, Who::Source);
+    let cond = AttributeCondition::new::<Health>(..=100.0, Who::Source);
 
     // Magic Power effect
     let mp_buff = effects.add(
@@ -142,7 +139,7 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
             .name("MagicPower Buff".into())
             .modify::<MagicPower>(Mod::Add(10.0), Who::Target)
             //.when_attribute::<Health>(..=100.0)
-            .when_condition(a)
+            .when_condition(cond)
             .with_stacking_policy(EffectStackingPolicy::Add {
                 count: 1,
                 max_stack: 10,
@@ -152,7 +149,7 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
 
     // Effect 1 - Passive Max Health Boost
     let hp_buff = effects.add(
-        EffectBuilder::permanent()
+        EffectBuilder::for_seconds(5.0)
             .name("MaxHealth Increase".into())
             .modify::<MaxHealth>(Mod::Inc(0.10), Who::Target)
             .with_stacking_policy(EffectStackingPolicy::RefreshDuration)
@@ -225,7 +222,7 @@ fn setup_actor(
             .with::<Agility>(7.0)
             .with::<Intelligence>(1.0)
             .with::<Health>(85.0)
-            .clamp_max::<Health, MaxHealth>(0.0)
+            .clamp::<Health>(0.0..5000.0)
             .with::<MaxHealth>(1000.0)
             .with::<HealthRegen>(2.0)
             .with::<Mana>(100.0)
@@ -304,19 +301,19 @@ pub fn analyze_dependencies_with_petgraph(
             match event {
                 DfsEvent::Discover(entity, time) => {
                     println!("  Discovered: {} at time {}", entity, time.0);
-                },
+                }
                 DfsEvent::TreeEdge(source, target) => {
                     println!("  Tree edge: {} -> {}", source, target);
-                },
+                }
                 DfsEvent::BackEdge(source, target) => {
                     warn!("  Back edge (cycle): {} -> {}", source, target);
-                },
+                }
                 DfsEvent::CrossForwardEdge(source, target) => {
                     println!("  Cross edge: {} -> {}", source, target);
-                },
+                }
                 DfsEvent::Finish(entity, time) => {
                     println!("  Finished: {} at time {}", entity, time.0);
-                },
+                }
             }
             petgraph::visit::Control::<Entity>::Continue
         });
@@ -330,7 +327,6 @@ pub fn analyze_dependencies_with_petgraph(
         info!("Actor {:?} has {} reachable nodes", actor_entity, count);
     }
 }
-
 
 fn do_gameplay_stuff() {
     std::thread::sleep(Duration::from_millis(12));
