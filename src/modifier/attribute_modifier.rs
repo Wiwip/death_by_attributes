@@ -18,6 +18,7 @@ use std::marker::PhantomData;
 pub struct AttributeModifier<T: Attribute> {
     pub who: Who,
     pub modifier: Mod,
+    pub scaling: f64,
     #[reflect(ignore)]
     marker: PhantomData<T>,
 }
@@ -26,10 +27,11 @@ impl<T> AttributeModifier<T>
 where
     T: Attribute + 'static,
 {
-    pub fn new(modifier: Mod, who: Who) -> Self {
+    pub fn new(modifier: Mod, who: Who, scaling: f64) -> Self {
         Self {
             who,
             modifier,
+            scaling,
             marker: Default::default(),
         }
     }
@@ -68,6 +70,7 @@ where
                 AttributeModifier::<T> {
                     who: self.who,
                     modifier: self.modifier,
+                    scaling: self.scaling,
                     marker: Default::default(),
                 },
                 Name::new(format!("Mod<{}> ({:?})", pretty_type_name::<T>(), self.who)),
@@ -97,6 +100,10 @@ where
 
     fn modifier(&self) -> Mod {
         self.modifier
+    }
+
+    fn as_accessor(&self) -> BoxAttributeAccessor {
+        BoxAttributeAccessor::new(AttributeExtractor::<T>::new())
     }
 
     fn attribute_type_id(&self) -> AttributeTypeId {

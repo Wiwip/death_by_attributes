@@ -2,7 +2,7 @@
 use crate::prelude::*;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use petgraph::visit::Visitable;
+use petgraph::visit::{Visitable};
 use petgraph::visit::{GraphBase, IntoNeighbors};
 use std::collections::HashSet;
 use std::collections::hash_map::DefaultHasher;

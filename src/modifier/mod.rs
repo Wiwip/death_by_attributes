@@ -3,7 +3,7 @@ mod calculator;
 mod derived_modifier;
 mod events;
 
-use crate::attributes::Attribute;
+use crate::attributes::{Attribute, BoxAttributeAccessor};
 use crate::condition::ConditionContext;
 use crate::graph::AttributeTypeId;
 use crate::inspector::pretty_type_name;
@@ -30,6 +30,7 @@ pub trait Mutator: Send + Sync {
     fn apply(&self, actor_entity: &mut AttributesMut) -> bool;
     fn who(&self) -> Who;
     fn modifier(&self) -> Mod;
+    fn as_accessor(&self) -> BoxAttributeAccessor;
     fn attribute_type_id(&self) -> AttributeTypeId;
 }
 

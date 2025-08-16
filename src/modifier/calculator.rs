@@ -8,7 +8,7 @@ use std::ops::Mul;
 pub enum Mod {
     Set(f64),
     Add(f64),
-    Inc(f64),
+    Increase(f64),
     More(f64),
     //Less(f64),
 }
@@ -18,8 +18,18 @@ impl Mod {
         match self {
             Mod::Set(value) => value,
             Mod::Add(value) => value,
-            Mod::Inc(value) => value,
+            Mod::Increase(value) => value,
             Mod::More(value) => value,
+            //Mod::Less(value) => value,
+        }
+    }
+    
+    pub fn value(&self) -> f64 {
+        match self {
+            Mod::Set(value) => *value,
+            Mod::Add(value) => *value,
+            Mod::Increase(value) => *value,
+            Mod::More(value) => *value,
             //Mod::Less(value) => value,
         }
     }
@@ -38,7 +48,7 @@ impl Mul<f64> for Mod {
         match self {
             Mod::Set(value) => Mod::Set(value * rhs),
             Mod::Add(value) => Mod::Add(value * rhs),
-            Mod::Inc(value) => Mod::Inc(value * rhs),
+            Mod::Increase(value) => Mod::Increase(value * rhs),
             Mod::More(value) => Mod::More(value * rhs),
             //Mod::Less(value) => Mod::Less(value * rhs),
         }
@@ -56,7 +66,7 @@ impl Display for Mod {
                     write!(f, "{:.1}", value)
                 }
             }
-            Mod::Inc(value) => write!(f, "{:.1}%", value * 100.0),
+            Mod::Increase(value) => write!(f, "{:.1}%", value * 100.0),
             Mod::More(value) => write!(f, "{:.1}%", value * 100.0),
             //Mod::Less(value) => write!(f, "{:.1}%", value * 100.0),
         }
@@ -152,7 +162,7 @@ impl From<Mod> for AttributeCalculator {
                 additive: value,
                 ..default()
             },
-            Mod::Inc(value) => Self {
+            Mod::Increase(value) => Self {
                 increased: value,
                 ..default()
             },
@@ -192,7 +202,7 @@ impl From<&Vec<Mod>> for AttributeCalculator {
         let increased: f64 = modifiers
             .iter()
             .filter_map(|m| match m {
-                Mod::Inc(value) => Some(value),
+                Mod::Increase(value) => Some(value),
                 _ => None,
             })
             .sum();

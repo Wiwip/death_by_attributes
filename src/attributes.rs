@@ -288,11 +288,9 @@ impl<A: Attribute> AttributeAccessor for AttributeExtractor<A> {
 }
 
 pub fn on_add_attribute<T: Attribute>(trigger: Trigger<OnInsert, T>, mut commands: Commands) {
-    /*commands
+    commands
         .entity(trigger.target())
         .trigger(NotifyDirtyNode::<T>::default());
-
-    println!("Dirty<{}>: {:?}", pretty_type_name::<T>(), trigger.target());*/
 }
 
 

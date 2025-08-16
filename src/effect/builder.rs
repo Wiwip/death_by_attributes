@@ -68,22 +68,21 @@ impl EffectBuilder {
         ));
 
         self.modifiers
-            .push(Box::new(AttributeModifier::<T>::new(modifier, who)));
+            .push(Box::new(AttributeModifier::<T>::new(modifier, who, 1.0)));
         self
     }
 
     /// Spawns an observer watching the actor's attributes on the modifier entity.
     /// When OnValueChanged is triggered, it takes the current value of the attribute,
     /// it applies the scaling factor and updates the modifier's value to the new value.
-    pub fn modify_by_ref<T, S>(
+    pub fn modify_by_ref<S, T>(
         mut self,
-        scaling_factor: f64,
         modifier: Mod,
         mod_target: Who,
     ) -> Self
     where
-        T: Attribute,
         S: Attribute,
+        T: Attribute,
     {
         self.effect_entity_commands.push(Box::new(
             move |effect_entity: &mut EntityCommands, _: Entity| {
@@ -91,10 +90,10 @@ impl EffectBuilder {
             },
         ));
 
-        self.modifiers.push(Box::new(DerivedModifier::<T, S>::new(
+        self.modifiers.push(Box::new(DerivedModifier::<S, T>::new(
             modifier,
-            scaling_factor,
             mod_target,
+            modifier.value(),
         )));
         self
     }
@@ -117,7 +116,7 @@ impl EffectBuilder {
         self
     }
 
-    pub fn when_condition(mut self, condition: impl crate::condition::Condition + 'static) -> Self {
+    pub fn while_condition(mut self, condition: impl crate::condition::Condition + 'static) -> Self {
         self.conditions.push(BoxCondition::new(condition));
         self
     }
@@ -168,6 +167,11 @@ impl EffectBuilder {
         }));
         self
     }*/
+
+    pub fn with_execution_context(mut self, context: impl EffectExecution + 'static) -> Self {
+        self.custom_execution = Some(Box::new(context));
+        self
+    }
 
     pub fn name(mut self, name: String) -> Self {
         self.effect_entity_commands.push(Box::new(

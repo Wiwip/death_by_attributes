@@ -19,7 +19,7 @@ use crate::prelude::Attribute;
 use crate::schedule::EffectsSet;
 pub use application::{ApplyEffectEvent, EffectApplicationPolicy};
 pub use builder::EffectBuilder;
-pub use execution::{EffectCalculationContext, EffectCaptureContext, EffectExecution};
+pub use execution::{CalculationContext, CaptureContext, EffectExecution};
 pub use stacks::{EffectIntensity, EffectStackingPolicy, Stacks};
 pub use targeting::EffectTargeting;
 pub use timing::{EffectDuration, EffectTicker};

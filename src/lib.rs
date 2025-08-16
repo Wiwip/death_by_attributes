@@ -1,5 +1,5 @@
 use crate::systems::{
-    apply_periodic_effect, observe_dirty_effect_notifications, update_effect_system,
+    apply_periodic_effect, observe_dirty_node_notifications, update_effect_system,
 };
 use bevy::prelude::*;
 use std::any::TypeId;
@@ -111,7 +111,7 @@ pub fn init_attribute<T: Attribute>(app: &mut App) {
     );
 
     app.add_observer(clamp_attributes_observer::<T>);
-    app.add_observer(observe_dirty_effect_notifications::<T>);
+    app.add_observer(observe_dirty_node_notifications::<T>);
     app.add_observer(on_add_attribute::<T>);
 
     //EventRegistry::register_event::<OnBaseValueChange<T>>(world);

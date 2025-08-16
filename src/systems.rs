@@ -21,23 +21,19 @@ impl<T: Attribute> Default for NotifyDirtyNode<T> {
     }
 }
 
-pub fn observe_dirty_effect_notifications<T: Attribute>(
+/// Observes [`NotifyDirtyNode`] triggers for specific attributes and propagates
+/// the event upward through using the [`EffectTarget`] chain.
+///
+/// Stops when it encounters a dirty node indicating that all later nodes are already dirty.
+pub fn observe_dirty_node_notifications<T: Attribute>(
     mut trigger: Trigger<NotifyDirtyNode<T>>,
     dirty_nodes: Query<&Dirty<T>>,
     mut commands: Commands,
-    time: Res<Time>,
 ) {
     if dirty_nodes.contains(trigger.target()) {
         trigger.propagate(false);
         return;
     }
-
-    println!(
-        "{:?}:{}: Dirty<{}>",
-        time.elapsed(),
-        trigger.target(),
-        pretty_type_name::<T>()
-    );
     commands
         .entity(trigger.target())
         .try_insert(Dirty::<T>::default());
@@ -58,8 +54,10 @@ pub fn on_change_attribute_observer<S: Attribute, T: Attribute>(
     let (mod_entity, mut modifier) = attribute_modifiers_query
         .get_mut(trigger.observer())
         .unwrap();
+
+    let scaling = modifier.scaling;
     let mod_value = modifier.modifier.value_mut();
-    *mod_value = trigger.current_value;
+    *mod_value = trigger.current_value * scaling;
 
     commands
         .entity(mod_entity)
@@ -128,16 +126,11 @@ fn update_effect_tree_attributes<T: Attribute>(
         return AttributeCalculator::default();
     }
     if !dirty_nodes.contains(current_entity) {
-        println!(
-            "{}: Early return on: {}",
-            pretty_type_name::<T>(),
-            current_entity
-        );
         match attributes.get(current_entity) {
             Ok(attribute) => {
                 return attribute.calculator_cache.calculator;
             }
-            _ => {}
+            _ => {} // Continue traversing the tree.
         }
     }
 

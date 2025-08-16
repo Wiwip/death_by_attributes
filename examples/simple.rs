@@ -126,8 +126,8 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
     let ap_buff = effects.add(
         EffectBuilder::permanent()
             .name("AttackPower Buff".into())
-            .modify_by_ref::<AttackPower, Health>(0.10, Mod::Add(1.0), Who::Target)
-            .modify_by_ref::<Intelligence, Health>(0.25, Mod::Add(1.0), Who::Target)
+            .modify_by_ref::<Health, AttackPower>(Mod::Add(0.1), Who::Target)
+            .modify_by_ref::<Health, Intelligence>(Mod::Add(0.25), Who::Target)
             .build(),
     );
 
@@ -138,8 +138,7 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
         EffectBuilder::permanent()
             .name("MagicPower Buff".into())
             .modify::<MagicPower>(Mod::Add(10.0), Who::Target)
-            //.when_attribute::<Health>(..=100.0)
-            .when_condition(cond)
+            .while_condition(cond)
             .with_stacking_policy(EffectStackingPolicy::Add {
                 count: 1,
                 max_stack: 10,
@@ -151,7 +150,7 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
     let hp_buff = effects.add(
         EffectBuilder::for_seconds(5.0)
             .name("MaxHealth Increase".into())
-            .modify::<MaxHealth>(Mod::Inc(0.10), Who::Target)
+            .modify::<MaxHealth>(Mod::Increase(0.10), Who::Target)
             .with_stacking_policy(EffectStackingPolicy::RefreshDuration)
             .build(),
     );
@@ -161,7 +160,7 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
         EffectBuilder::every_seconds(1.0)
             .name("Health Regen".into())
             .modify::<Health>(Mod::Add(3.0), Who::Target)
-            .modify_by_ref::<Health, HealthRegen>(1.0, Mod::Add(1.0), Who::Target)
+            .modify_by_ref::<HealthRegen, Health>(Mod::Add(1.0), Who::Target)
             .build(),
     );
 
@@ -249,7 +248,7 @@ fn setup_actor(
 }
 
 #[derive(Component, Copy, Clone)]
-struct Player;
+pub struct Player;
 
 #[derive(Component)]
 pub struct EntityHealthMarker;
@@ -267,7 +266,7 @@ fn inputs(
     graph: QueryGraphAdapter,
     actors: Query<Entity, With<Player>>,
 ) {
-    if let Ok((player_entity, attribute)) = players.single_mut() {
+    if let Ok((player_entity, _)) = players.single_mut() {
         if keys.just_pressed(KeyCode::KeyQ) {
             commands
                 .entity(player_entity)
@@ -283,8 +282,6 @@ fn inputs(
         }
         if keys.just_pressed(KeyCode::KeyR) {
             analyze_dependencies_with_petgraph(graph, actors);
-            //let cv = graph.calculate_attribute_value::<AttackPower>(attribute.base_value);
-            //println!("{:?}", cv);
         }
     }
 }
@@ -321,7 +318,7 @@ pub fn analyze_dependencies_with_petgraph(
         // Use petgraph's DFS iterator
         let mut dfs = Dfs::new(&graph, actor_entity);
         let mut count = 0;
-        while let Some(entity) = dfs.next(&graph) {
+        while let Some(_) = dfs.next(&graph) {
             count += 1;
         }
         info!("Actor {:?} has {} reachable nodes", actor_entity, count);

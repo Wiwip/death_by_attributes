@@ -1,14 +1,14 @@
 use crate::attributes::Attribute;
+use crate::effect::EffectTargeting;
 use crate::modifier::Mutator;
+use crate::prelude::{AppliedEffects, Effect};
 use crate::{AttributesMut, AttributesRef};
 use bevy::prelude::*;
 use std::any::TypeId;
 use std::collections::HashMap;
-use crate::effect::EffectTargeting;
-use crate::prelude::{Effect, AppliedEffects};
 
 #[derive(Component)]
-pub struct EffectCalculationContext<'a> {
+pub struct CalculationContext<'a> {
     source_map: HashMap<TypeId, f64>,
     target_map: HashMap<TypeId, f64>,
     source_actor: AttributesRef<'a>,
@@ -16,8 +16,8 @@ pub struct EffectCalculationContext<'a> {
     pub modifiers: Vec<Box<dyn Mutator>>,
 }
 
-impl<'a> EffectCalculationContext<'a> {
-    pub fn new(capture_context: EffectCaptureContext<'a>) -> Self {
+impl<'a> CalculationContext<'a> {
+    pub fn new(capture_context: CaptureContext<'a>) -> Self {
         Self {
             source_map: capture_context.source_map,
             target_map: capture_context.target_map,
@@ -47,27 +47,27 @@ impl<'a> EffectCalculationContext<'a> {
         Ok(())
     }
 
-    pub fn get_source<T: Attribute>(&self) -> Option<&f64> {
+    pub fn source<T: Attribute>(&self) -> Option<&f64> {
         self.source_map.get(&TypeId::of::<T>())
     }
 
-    pub fn get_target<T: Attribute>(&self) -> Option<&f64> {
+    pub fn target<T: Attribute>(&self) -> Option<&f64> {
         self.target_map.get(&TypeId::of::<T>())
     }
 
-    pub fn to_modifiers(self) -> Vec<Box<dyn Mutator>> {
+    pub fn into_modifiers(self) -> Vec<Box<dyn Mutator>> {
         self.modifiers
     }
 }
 
-pub struct EffectCaptureContext<'a> {
-    pub(crate) target_map: HashMap<TypeId, f64>,
-    pub(crate) source_map: HashMap<TypeId, f64>,
-    pub(crate) source_actor: AttributesRef<'a>,
-    pub(crate) target_actor: AttributesRef<'a>,
+pub struct CaptureContext<'a> {
+    pub target_map: HashMap<TypeId, f64>,
+    pub source_map: HashMap<TypeId, f64>,
+    pub source_actor: AttributesRef<'a>,
+    pub target_actor: AttributesRef<'a>,
 }
 
-impl<'a> EffectCaptureContext<'a> {
+impl<'a> CaptureContext<'a> {
     pub fn capture_source<T: Attribute>(&mut self) -> Result<(), BevyError> {
         let value = self
             .source_actor
@@ -98,8 +98,8 @@ impl<'a> EffectCaptureContext<'a> {
                 (actor, actor)
             }
             EffectTargeting::Targeted { source, target } => {
-                let ( _, source_actor_ref) = actors.get(*target).unwrap();
-                let ( _, target_actor_ref) = actors.get(*source).unwrap();
+                let (_, source_actor_ref) = actors.get(*target).unwrap();
+                let (_, target_actor_ref) = actors.get(*source).unwrap();
                 (source_actor_ref, target_actor_ref)
             }
         };
@@ -114,14 +114,12 @@ impl<'a> EffectCaptureContext<'a> {
 }
 
 pub trait EffectExecution: Send + Sync {
-    fn capture_attributes(
-        &self,
-        context: &mut EffectCaptureContext,
-    ) -> Result<(), BevyError>;
-    fn execute_effect(
-        &self,
-        context: &mut EffectCalculationContext,
-    ) -> Result<(), BevyError>;
+    /// The method is executed when the effect is created.
+    /// Provides an opportunity to snapshot attributes if necessary.
+    fn capture_attributes(&self, context: &mut CaptureContext) -> Result<(), BevyError>;
+
+    /// The method is executed when the effect is applied to a target entity.
+    fn execute_effect(&self, context: &mut CalculationContext) -> Result<(), BevyError>;
 }
 
 #[cfg(test)]
