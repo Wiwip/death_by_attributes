@@ -1,4 +1,3 @@
-use root_attribute::attributes::U32F0Proxy;
 use bevy::ecs::schedule::{LogLevel, ScheduleBuildSettings};
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
@@ -6,7 +5,7 @@ use bevy::window::PresentMode;
 use bevy_egui::EguiPlugin;
 use bevy_inspector_egui::DefaultInspectorConfigPlugin;
 use fixed::prelude::ToFixed;
-use fixed::types::{U16F16, U32F0, U8F0};
+use fixed::types::{U8F0, U16F16, U24F8, U32F0};
 use petgraph::prelude::Dfs;
 use petgraph::visit::{DfsEvent, depth_first_search};
 use root_attribute::ability::{AbilityBuilder, TargetData, TryActivateAbility};
@@ -14,8 +13,6 @@ use root_attribute::actors::ActorBuilder;
 use root_attribute::assets::{AbilityDef, ActorDef, EffectDef};
 use root_attribute::attributes::Attribute;
 use root_attribute::attributes::ReflectAccessAttribute;
-use root_attribute::attributes::U8F0Proxy;
-use root_attribute::attributes::U16F16Proxy;
 use root_attribute::condition::AttributeCondition;
 use root_attribute::context::EffectContext;
 use root_attribute::effect::{EffectStackingPolicy, Stacks};
@@ -42,6 +39,9 @@ attribute!(ManaRegen, U8F0);
 attribute!(AttackPower);
 attribute!(Armour);
 attribute!(MagicPower);
+
+attribute!(TestU32Attribute, u32);
+attribute!(TestU8Attribute, u8);
 
 fn main() {
     App::new()
@@ -130,8 +130,8 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
     let ap_buff = effects.add(
         Effect::permanent()
             .name("AttackPower Buff".into())
-            .modify_by_ref::<Health, AttackPower>(Mod::add(0.1), Who::Target)
-            .modify_by_ref::<Health, Intelligence>(Mod::add(0.25), Who::Target)
+            .modify_from::<Health, AttackPower>(Mod::add(0.1), Who::Target)
+            .modify_from::<Health, Intelligence>(Mod::add(0.25), Who::Target)
             .build(),
     );
 
@@ -152,10 +152,10 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
 
     // Effect 1 - Passive Max Health Boost
     let hp_buff = effects.add(
-        Effect::temporary(5.0)
+        Effect::permanent()
             .name("MaxHealth Increase".into())
             .modify::<MaxHealth>(Mod::increase(0.10), Who::Target)
-            .modify_by_ref::<Health, Mana>(Mod::increase(500), Who::Target)
+            .modify_from::<Health, ManaPool>(Mod::add(0.1), Who::Target)
             .with_stacking_policy(EffectStackingPolicy::RefreshDuration)
             .build(),
     );
@@ -165,8 +165,8 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
         Effect::permanent_ticking(1.0)
             .name("Health Regen".into())
             .modify::<Health>(Mod::add(3.0), Who::Target)
-            .modify_by_ref::<HealthRegen, Health>(Mod::add(1.0), Who::Target)
-            .modify_by_ref::<ManaRegen, Mana>(Mod::add(1.0), Who::Target)
+            .modify_from::<HealthRegen, Health>(Mod::add(1.0), Who::Target)
+            .modify_from::<ManaRegen, Mana>(Mod::add(0.22), Who::Target)
             .build(),
     );
 
@@ -348,8 +348,8 @@ fn damage_event_calculations(
         return;
     };
 
-    let armour_reduction = U16F16::from_num(1.0) - armour.current_value();
-    let damage_taken = U16F16::from_num(trigger.damage) * armour_reduction;
+    let armour_reduction = U24F8::from_num(1.0) - armour.current_value();
+    let damage_taken = U24F8::from_num(trigger.damage) * armour_reduction;
 
     let new_health = health.current_value() - damage_taken;
     health.set_base_value(new_health);

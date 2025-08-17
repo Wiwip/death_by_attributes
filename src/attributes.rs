@@ -11,7 +11,7 @@ use bevy::reflect::{GetTypeRegistration, Typed};
 use bevy_inspector_egui::__macro_exports::bevy_reflect::ReflectRemote;
 use fixed::prelude::{LossyInto, ToFixed};
 use fixed::traits::Fixed;
-use fixed::types::{I16F16, I32F32, U16F16, U32F0, U32F32, U64F0, U8F0};
+use fixed::types::{I16F0, I16F16, I32F0, I32F32, I48F16, I64F0, I8F8, U12F4, U16F0, U16F16, U24F8, U32F0, U32F32, U64F0, U8F0, U8F8};
 use std::any::TypeId;
 use std::collections::{Bound, HashSet};
 use std::fmt::Display;
@@ -44,16 +44,25 @@ pub trait Attribute:
 #[macro_export]
 macro_rules! attribute {
     ( $StructName:ident ) => {
-        $crate::attribute!($StructName, U16F16);
+        $crate::attribute!($StructName, U24F8);
+    };
+    ( $StructName:ident, f16 ) => {
+        $crate::attribute!($StructName, U12F4);
     };
     ( $StructName:ident, f32 ) => {
-        $crate::attribute!($StructName, $crate::attributes::U16F16);
+        $crate::attribute!($StructName, U16F16);
+    };
+    ( $StructName:ident, u8 ) => {
+        $crate::attribute!($StructName, U8F0);
+    };
+    ( $StructName:ident, u16 ) => {
+        $crate::attribute!($StructName, U16F0);
     };
     ( $StructName:ident, u32 ) => {
-        $crate::attribute!($StructName, $crate::attributes::U32F0);
+        $crate::attribute!($StructName, U32F0);
     };
     ( $StructName:ident, u64 ) => {
-        $crate::attribute!($StructName, $crate::attributes::U64F0);
+        $crate::attribute!($StructName, U64F0);
     };
 
     ( $StructName:ident, $ValueType:ty ) => {
@@ -61,9 +70,9 @@ macro_rules! attribute {
             #[derive(bevy::prelude::Component, Clone, Copy, bevy::prelude::Reflect, Debug)]
             #[reflect(AccessAttribute)]
             pub struct $StructName {
-                #[reflect(remote = [<$ValueType Proxy>])]
+                #[reflect(remote = $crate::attributes::[<$ValueType Proxy>])]
                 base_value: $ValueType,
-                #[reflect(remote = [<$ValueType Proxy>])]
+                #[reflect(remote = $crate::attributes::[<$ValueType Proxy>])]
                 current_value: $ValueType,
             }
         }
@@ -71,7 +80,7 @@ macro_rules! attribute {
         impl $crate::attributes::Attribute for $StructName {
             type Property = $ValueType;
 
-            fn new<T: ToFixed + Copy>(value: T) -> Self {
+            fn new<T: ::fixed::prelude::ToFixed + Copy>(value: T) -> Self {
                 Self {
                     base_value: value.to_fixed(),
                     current_value: value.to_fixed(),
@@ -338,12 +347,12 @@ pub fn on_change_notify_attribute_parents<T: Attribute>(
 
 #[macro_export]
 macro_rules! impl_reflect_remote_fixed {
-    ($proxy_name:ident, $remote_type:ty, $bits_type:ty) => {
-        #[derive(Reflect, Debug)]
+    ($proxy_name:ident, $remote_type:ident, $bits_type:ty) => {
+        #[derive(::bevy::reflect::Reflect, ::std::fmt::Debug)]
         pub struct $proxy_name($bits_type);
 
         impl ReflectRemote for $proxy_name {
-            type Remote = $remote_type;
+            type Remote = ::fixed::types::$remote_type;
 
             fn as_remote(&self) -> &Self::Remote {
                 // SAFETY: Fixed types are repr(transparent) over their bits type, so this cast is safe
@@ -376,19 +385,26 @@ macro_rules! impl_reflect_remote_fixed {
     };
 }
 
+// 8-bit types
 impl_reflect_remote_fixed!(U8F0Proxy, U8F0, u8);
 
-// Generate proxy for I16F16 (backed by i32)
+// 16-bit types
+impl_reflect_remote_fixed!(I8F8Proxy, I8F8, i16);
+impl_reflect_remote_fixed!(U8F8Proxy, U8F8, u16);
+impl_reflect_remote_fixed!(U12F4Proxy, U12F4, u16);
+impl_reflect_remote_fixed!(I16F0Proxy, I16F0, i16);
+impl_reflect_remote_fixed!(U16F0Proxy, U16F0, u16);
+
+// 32-bit types
 impl_reflect_remote_fixed!(I16F16Proxy, I16F16, i32);
-
-// Generate proxy for U16F16 (backed by u32)
 impl_reflect_remote_fixed!(U16F16Proxy, U16F16, u32);
-
-// Generate proxy for I32F32 (backed by i64)
-impl_reflect_remote_fixed!(I32F32Proxy, I32F32, i64);
-
-// Generate proxy for U32F0 (backed by u32)
+impl_reflect_remote_fixed!(U24F8Proxy, U24F8, u32);
+impl_reflect_remote_fixed!(I32F0Proxy, I32F0, i32);
 impl_reflect_remote_fixed!(U32F0Proxy, U32F0, u32);
-impl_reflect_remote_fixed!(U32F32Proxy, U32F32, u64);
 
+// 64-bit types
+impl_reflect_remote_fixed!(I32F32Proxy, I32F32, i64);
+impl_reflect_remote_fixed!(I48F16Proxy, I48F16, i64);
+impl_reflect_remote_fixed!(I64F0Proxy, I64F0, i64);
+impl_reflect_remote_fixed!(U32F32Proxy, U32F32, u64);
 impl_reflect_remote_fixed!(U64F0Proxy, U64F0, u64);

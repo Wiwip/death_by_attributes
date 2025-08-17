@@ -76,7 +76,7 @@ impl EffectBuilder {
     /// Spawns an observer watching the actor's attributes on the modifier entity.
     /// When OnValueChanged is triggered, it takes the current value of the attribute,
     /// it applies the scaling factor and updates the modifier's value to the new value.
-    pub fn modify_by_ref<S, T>(
+    pub fn modify_from<S, T>(
         mut self,
         modifier: Mod<T::Property>,
         mod_target: Who,

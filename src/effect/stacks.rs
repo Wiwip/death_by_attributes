@@ -10,7 +10,7 @@ use crate::graph::AttributeTypeId;
 use crate::prelude::{Attribute, Effect};
 use bevy::prelude::*;
 use fixed::prelude::ToFixed;
-use fixed::types::{I16F16, U16F16, U32F0};
+use fixed::types::{I16F16, U32F0};
 
 pub enum EffectStackingPolicy {
     None, // Each effect is independently added to the entity

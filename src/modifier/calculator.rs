@@ -1,3 +1,4 @@
+use crate::inspector::pretty_type_name;
 use crate::prelude::Attribute;
 use bevy::prelude::*;
 use fixed::prelude::ToFixed;
@@ -5,7 +6,6 @@ use fixed::traits::Fixed;
 use std::fmt::{Debug, Display, Formatter};
 use std::marker::PhantomData;
 use std::ops::Mul;
-use crate::inspector::pretty_type_name;
 
 #[derive(Debug, Clone, Copy, Reflect)]
 pub enum Mod<M: Fixed + ToFixed> {
@@ -98,7 +98,7 @@ where
 
 impl<M> Display for Mod<M>
 where
-    M: Fixed + Display + Debug,
+    M: Fixed + Display + Debug + Copy + Clone,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -109,8 +109,8 @@ where
             Mod::Sub(value) => {
                 write!(f, "-{:.1}", value)
             }
-            Mod::Increase(value) => write!(f, "{:.1}%", value),
-            Mod::More(value) => write!(f, "{:.1}%", value),
+            Mod::Increase(value) => write!(f, "{:.1}%", value.mul(M::from_num(100))),
+            Mod::More(value) => write!(f, "{:.1}%", value.mul(M::from_num(100))),
             //Mod::Less(value) => write!(f, "{:.1}%", value * 100.0),
         }
     }
@@ -130,7 +130,6 @@ impl<T: Attribute> Default for AttributeCalculatorCached<T> {
     }
 }
 
-
 #[derive(Debug, Clone, Copy, Reflect)]
 pub struct AttributeCalculator<T: Attribute> {
     pub(crate) set: Option<T::Property>,
@@ -143,14 +142,17 @@ pub struct AttributeCalculator<T: Attribute> {
 impl<T: Attribute> AttributeCalculator<T> {
     pub fn eval(&self, base_value: T::Property) -> T::Property {
         if let Some(set) = self.set {
-            return set
+            return set;
         }
 
         // Step 1 - Additions
         let addition_result = match base_value.checked_add(self.additive) {
             Some(value) => value,
             None => {
-                error!("Overflow from additive step in AttributeCalculator::eval for {}", pretty_type_name::<T>());
+                error!(
+                    "Overflow from additive step in AttributeCalculator::eval for {}",
+                    pretty_type_name::<T>()
+                );
                 base_value.saturating_add(self.additive)
             }
         };
@@ -159,7 +161,10 @@ impl<T: Attribute> AttributeCalculator<T> {
         let subtraction_result = match addition_result.checked_sub(self.subtractive) {
             Some(value) => value,
             None => {
-                error!("Overflow from subtraction step in AttributeCalculator::eval for {}", pretty_type_name::<T>());
+                error!(
+                    "Overflow from subtraction step in AttributeCalculator::eval for {}",
+                    pretty_type_name::<T>()
+                );
                 addition_result.saturating_sub(self.subtractive)
             }
         };
@@ -167,10 +172,15 @@ impl<T: Attribute> AttributeCalculator<T> {
         // Step 3 - Additive Multiplication
         // Clamp self.increase to prevent negative increase to attributes
         let clamped_increase = self.increase.max(T::Property::from_num(0.0));
-        let add_multi_result = match subtraction_result.checked_mul(T::Property::from_num(1.0) + clamped_increase) {
+        let add_multi_result = match subtraction_result
+            .checked_mul(T::Property::from_num(1.0) + clamped_increase)
+        {
             Some(value) => value,
             None => {
-                error!("Overflow from additive multiplication step in AttributeCalculator::eval for {}", pretty_type_name::<T>());
+                error!(
+                    "Overflow from additive multiplication step in AttributeCalculator::eval for {}",
+                    pretty_type_name::<T>()
+                );
                 subtraction_result.saturating_mul(T::Property::from_num(1.0) + self.increase)
             }
         };
@@ -179,7 +189,10 @@ impl<T: Attribute> AttributeCalculator<T> {
         let result = match add_multi_result.checked_mul(self.more) {
             Some(value) => value,
             None => {
-                error!("Overflow from more multiplicative step in AttributeCalculator::eval for {}", pretty_type_name::<T>());
+                error!(
+                    "Overflow from more multiplicative step in AttributeCalculator::eval for {}",
+                    pretty_type_name::<T>()
+                );
                 add_multi_result.saturating_mul(self.more)
             }
         };
