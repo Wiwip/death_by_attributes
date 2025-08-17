@@ -1,28 +1,34 @@
-use crate::attributes::{Attribute, AttributeExtractor, BoxAttributeAccessor};
+use crate::attributes::Attribute;
 use crate::graph::{AttributeTypeId, NodeType};
 use crate::modifier::calculator::AttributeCalculator;
 use crate::modifier::{Mutator, Who};
 use crate::prelude::*;
 use crate::systems::on_change_attribute_observer;
-use crate::{AttributesMut, AttributesRef, OnAttributeValueChanged};
+use crate::{AttributesMut, AttributesRef};
 use bevy::log::debug;
-use bevy::prelude::{Commands, Entity, Name, Observer, Query, Reflect, Trigger};
+use bevy::prelude::{Commands, Entity, Name, Observer, Reflect};
+use fixed::prelude::{LossyFrom, LossyInto};
+use fixed::traits::Fixed;
 use std::any::type_name;
 use std::marker::PhantomData;
 
 #[derive(Copy, Clone, Debug, Reflect)]
-pub struct DerivedModifier<S, T> {
+pub struct DerivedModifier<S: Attribute, T: Attribute> {
     #[reflect(ignore)]
     _target: PhantomData<T>,
     #[reflect(ignore)]
     _source: PhantomData<S>,
     pub who: Who,
-    pub modifier: Mod,
+    pub modifier: Mod<T::Property>,
     pub scaling: f64,
 }
 
-impl<S, T> DerivedModifier<S, T> {
-    pub fn new(modifier: Mod, who: Who, scaling: f64) -> Self {
+impl<S, T> DerivedModifier<S, T>
+where
+    S: Attribute,
+    T: Attribute,
+{
+    pub fn new(modifier: Mod<T::Property>, who: Who, scaling: f64) -> Self {
         Self {
             _target: Default::default(),
             _source: Default::default(),
@@ -37,6 +43,7 @@ impl<S, T> Mutator for DerivedModifier<S, T>
 where
     S: Attribute,
     T: Attribute,
+    T::Property: LossyFrom<S::Property>,
 {
     fn spawn(&self, commands: &mut Commands, actor_entity: AttributesRef) -> Entity {
         debug!(
@@ -66,11 +73,13 @@ where
         let value = origin_value.current_value();
 
         if let Some(mut target_attribute) = actor_entity.get_mut::<T>() {
-            let scaled_modifier = self.modifier * value;
-            let calculator = AttributeCalculator::from(scaled_modifier);
+            let source_value = T::Property::lossy_from(value);
+            let scaled_modifier = self.modifier * source_value;
+            let calculator = AttributeCalculator::<T>::from(scaled_modifier);
             let new_val = calculator.eval(target_attribute.base_value());
 
-            if (new_val - target_attribute.base_value()).abs() > f64::EPSILON {
+            let is_value_changed = new_val.abs_diff(target_attribute.base_value()) > 0;
+            if is_value_changed {
                 target_attribute.set_base_value(new_val);
                 true
             } else {
@@ -85,13 +94,13 @@ where
         self.who
     }
 
-    fn modifier(&self) -> Mod {
+    /*fn modifier(&self) -> Mod<T::Property> {
         self.modifier
     }
 
-    fn as_accessor(&self) -> BoxAttributeAccessor {
+    fn as_accessor(&self) -> BoxAttributeAccessor<T> {
         BoxAttributeAccessor::new(AttributeExtractor::<T>::new())
-    }
+    }*/
 
     fn attribute_type_id(&self) -> AttributeTypeId {
         T::attribute_type_id()

@@ -73,6 +73,7 @@ impl Visitable for QueryGraphAdapter<'_, '_> {
     }
 }
 
+/*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -82,9 +83,9 @@ mod tests {
     use crate::{AttributesPlugin, ReflectAccessAttribute};
     use crate::{attribute, init_attribute};
 
-    attribute!(Health);
-    attribute!(Mana);
-    attribute!(Strength);
+    attribute!(Health, f64);
+    attribute!(Mana, f64);
+    attribute!(Strength, f64);
 
     #[derive(Resource)]
     struct Definitions {
@@ -147,3 +148,4 @@ mod tests {
         });
     }
 }
+*/

@@ -3,11 +3,11 @@ mod calculator;
 mod derived_modifier;
 mod events;
 
-use crate::attributes::{Attribute, BoxAttributeAccessor};
+use crate::attributes::Attribute;
 use crate::condition::ConditionContext;
 use crate::graph::AttributeTypeId;
 use crate::inspector::pretty_type_name;
-use crate::prelude::{AttributeModifier, Mod};
+use crate::prelude::AttributeModifier;
 use crate::{AttributesMut, AttributesRef};
 use bevy::prelude::{Commands, Component, Entity, EntityCommands, Reflect, reflect_trait};
 use std::fmt::{Debug, Formatter};
@@ -29,8 +29,8 @@ pub trait Mutator: Send + Sync {
     fn spawn(&self, commands: &mut Commands, actor_entity: AttributesRef) -> Entity;
     fn apply(&self, actor_entity: &mut AttributesMut) -> bool;
     fn who(&self) -> Who;
-    fn modifier(&self) -> Mod;
-    fn as_accessor(&self) -> BoxAttributeAccessor;
+    //fn modifier(&self) -> Mod<T::Property>;
+    //fn as_accessor(&self) -> BoxAttributeAccessor<T>;
     fn attribute_type_id(&self) -> AttributeTypeId;
 }
 

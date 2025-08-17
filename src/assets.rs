@@ -25,7 +25,7 @@ pub struct EffectDef {
     pub application: EffectApplicationPolicy,
     pub conditions: Vec<BoxCondition>,
     pub stacking_policy: EffectStackingPolicy,
-    pub intensity: Option<f64>,
+    pub intensity: Option<f32>,
 }
 
 #[derive(Asset, TypePath)]

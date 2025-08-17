@@ -1,18 +1,59 @@
+
+use crate::attributes::U16F16Proxy;
+use crate::attributes::U32F0Proxy;
 use crate::ReflectAccessAttribute;
 use crate::assets::EffectDef;
-use bevy::prelude::*;
 use crate::attribute;
+use crate::attributes::I16F16Proxy;
 use crate::effect::timing::EffectDuration;
+use crate::graph::AttributeTypeId;
 use crate::prelude::{Attribute, Effect};
+use bevy::prelude::*;
+use fixed::prelude::ToFixed;
+use fixed::types::{I16F16, U16F16, U32F0};
 
 pub enum EffectStackingPolicy {
     None, // Each effect is independently added to the entity
-    Add { count: u32, max_stack: u32 },
+    Add { count: U32F0, max_stack: U32F0 },
     RefreshDuration, // The effect overrides previous applications
-    //RefreshDurationWithOverflow, // The effect overrides previous applications
+                     //RefreshDurationWithOverflow, // The effect overrides previous applications
 }
 
-attribute!(EffectIntensity);
+//attribute!(EffectIntensity, U16F16);
+
+#[derive(bevy::prelude::Component, Clone, Copy, bevy::prelude::Reflect, Debug)]
+#[reflect(AccessAttribute)]
+pub struct EffectIntensity {
+    #[reflect(remote=I16F16Proxy)]
+    base_value: I16F16,
+    #[reflect(remote=I16F16Proxy)]
+    current_value: I16F16,
+}
+impl Attribute for EffectIntensity {
+    type Property = I16F16;
+
+    fn new<T: ToFixed + Copy>(value: T) -> Self {
+        Self {
+            base_value: value.to_fixed(),
+            current_value: value.to_fixed(),
+        }
+    }
+    fn base_value(&self) -> Self::Property {
+        self.base_value
+    }
+    fn set_base_value(&mut self, value: Self::Property) {
+        self.base_value = value;
+    }
+    fn current_value(&self) -> Self::Property {
+        self.current_value
+    }
+    fn set_current_value(&mut self, value: Self::Property) {
+        self.current_value = value;
+    }
+    fn attribute_type_id() -> AttributeTypeId {
+        AttributeTypeId::of::<Self>()
+    }
+}
 
 impl Default for EffectIntensity {
     fn default() -> Self {
@@ -20,11 +61,11 @@ impl Default for EffectIntensity {
     }
 }
 
-attribute!(Stacks);
+attribute!(Stacks, U32F0);
 
 impl Default for Stacks {
     fn default() -> Self {
-        Stacks::new(1.0) // By default, a new effect has 1 stack
+        Stacks::new(1) // By default, a new effect has 1 stack
     }
 }
 
@@ -40,10 +81,10 @@ impl Stacks {
             EffectStackingPolicy::Add { count, max_stack } => {
                 // Apply additive stacking, increasing stack count up to max
                 if let Ok(mut stack_count) = stacks.get_mut(effect_entity) {
-                    let mut base_stacks = stack_count.base_value() as u32;
-                    base_stacks += *count;
-                    stack_count.set_base_value(base_stacks.clamp(1, *max_stack) as f64);
-                    stack_count.set_current_value(base_stacks.clamp(1, *max_stack) as f64);
+                    let mut base_stacks = stack_count.base_value();
+                    base_stacks += count;
+                    stack_count.set_base_value(base_stacks.clamp(1.to_fixed(), max_stack.to_fixed()));
+                    stack_count.set_current_value(base_stacks.clamp(1.to_fixed(), max_stack.to_fixed()));
                 } else {
                     error!(
                         "Failed to find component Stacks for entity: {:?}",

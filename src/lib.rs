@@ -31,8 +31,9 @@ use crate::condition::ConditionPlugin;
 use crate::effect::{EffectIntensity, EffectsPlugin};
 use crate::inspector::pretty_type_name;
 use crate::prelude::{
-    AppliedEffects, ApplyAttributeModifierEvent, AttributeModifier, Effect, EffectDuration,
-    EffectSource, EffectSources, EffectTarget, EffectTicker, Stacks, apply_modifier_events,
+    AppliedEffects, ApplyAttributeModifierEvent, AttributeCalculatorCached, AttributeModifier,
+    Effect, EffectDuration, EffectSource, EffectSources, EffectTarget, EffectTicker, Mod, Stacks,
+    apply_modifier_events,
 };
 use crate::schedule::EffectsSet;
 use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
@@ -55,14 +56,14 @@ impl Plugin for AttributesPlugin {
             .init_asset::<ActorDef>()
             .init_asset::<EffectDef>()
             .init_asset::<AbilityDef>()
-            .add_event::<ApplyAttributeModifierEvent>()
+            //.add_event::<ApplyAttributeModifierEvent>()
             .register_type::<AppliedEffects>()
             .register_type::<EffectTarget>();
 
-        app.add_systems(
+        /*app.add_systems(
             Update,
             apply_modifier_events.in_set(EffectsSet::UpdateBaseValues),
-        );
+        );*/
 
         app.configure_sets(
             Update,
@@ -88,11 +89,18 @@ impl AttributesPlugin {
 pub fn init_attribute<T: Attribute>(app: &mut App) {
     app.register_type::<T>();
     app.register_type::<AttributeModifier<T>>();
+    app.register_type::<AttributeCalculatorCached<T>>();
     app.register_type_data::<T, ReflectAccessAttribute>();
+    app.add_event::<ApplyAttributeModifierEvent<T>>();
 
     app.add_systems(
         Update,
         apply_periodic_effect::<T>.in_set(EffectsSet::Prepare),
+    );
+
+    app.add_systems(
+        Update,
+        apply_modifier_events::<T>.in_set(EffectsSet::UpdateBaseValues),
     );
 
     app.add_systems(
@@ -117,22 +125,6 @@ pub fn init_attribute<T: Attribute>(app: &mut App) {
     //EventRegistry::register_event::<OnBaseValueChange<T>>(world);
     //EventRegistry::register_event::<OnCurrentValueChanged<T>>(world);
     //EventRegistry::register_event::<OnAttributeValueChanged<T>>(world);
-
-    /*world.schedule_scope(PreUpdate, |_, schedule| {
-        //schedule.add_systems(apply_periodic_effect::<T>.after(tick_effect_tickers));
-        //schedule.add_systems(update_effect_system::<T>.after(apply_periodic_effect::<T>));
-        //schedule.add_systems(update_effect_graph::<T>.after(apply_periodic_effect::<T>));
-    });
-
-    world.schedule_scope(Update, |_, schedule| {});
-
-    world.schedule_scope(PostUpdate, |_, schedule| {
-        //schedule.add_systems(flag_dirty_modifier::<T>);
-        //schedule.add_systems();
-        //schedule.add_systems(update_changed_attributes::<T>);
-    });*/
-
-    //world.add_observer(observe_dirty_modifier_notifications::<T>);
 
     debug!(
         "Registered Systems for attribute: {}.",

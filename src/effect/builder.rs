@@ -8,6 +8,7 @@ use crate::prelude::{AttributeCalculatorCached, AttributeModifier, DerivedModifi
 use bevy::ecs::component::Mutable;
 use bevy::prelude::{Bundle, Component, Entity, EntityCommands, Name};
 use std::ops::RangeBounds;
+use fixed::prelude::{LossyFrom, LossyInto};
 
 pub struct EffectBuilder {
     effect_entity_commands: Vec<Box<ModifierFn>>,
@@ -17,11 +18,11 @@ pub struct EffectBuilder {
     application: EffectApplicationPolicy,
     conditions: Vec<BoxCondition>,
     stacking_policy: EffectStackingPolicy,
-    intensity: Option<f64>,
+    intensity: Option<f32>,
 }
 
 impl EffectBuilder {
-    fn new(application: EffectApplicationPolicy) -> Self {
+    pub fn new(application: EffectApplicationPolicy) -> Self {
         Self {
             effect_entity_commands: vec![],
             effects: vec![],
@@ -58,7 +59,7 @@ impl EffectBuilder {
 
     pub fn modify<T: Attribute + Component<Mutability = Mutable>>(
         mut self,
-        modifier: Mod,
+        modifier: Mod<T::Property>,
         who: Who,
     ) -> Self {
         self.effect_entity_commands.push(Box::new(
@@ -77,12 +78,13 @@ impl EffectBuilder {
     /// it applies the scaling factor and updates the modifier's value to the new value.
     pub fn modify_by_ref<S, T>(
         mut self,
-        modifier: Mod,
+        modifier: Mod<T::Property>,
         mod_target: Who,
     ) -> Self
     where
         S: Attribute,
         T: Attribute,
+        T::Property: LossyFrom<S::Property> + LossyInto<f64>,
     {
         self.effect_entity_commands.push(Box::new(
             move |effect_entity: &mut EntityCommands, _: Entity| {
@@ -93,25 +95,12 @@ impl EffectBuilder {
         self.modifiers.push(Box::new(DerivedModifier::<S, T>::new(
             modifier,
             mod_target,
-            modifier.value(),
+            modifier.value().lossy_into(),
         )));
         self
     }
-    
-    /*pub fn with_trigger<E: Event, B: Bundle, M>(
-        mut self,
-        _observer: impl IntoObserverSystem<E, B, M>,
-    ) -> Self {
-        self.effect_entity_commands.push(Box::new(
-            move |_effect_entity: &mut EntityCommands, _: Entity| {
-                //effect_entity.insert(Condition::<T>::default());
-            },
-        ));
-        //self
-        todo!()
-    }*/
-    
-    pub fn intensity(mut self, intensity: f64) -> Self {
+
+    pub fn intensity(mut self, intensity: f32) -> Self {
         self.intensity = Some(intensity);
         self
     }
@@ -123,18 +112,18 @@ impl EffectBuilder {
 
     pub fn when_source_attribute<T: Attribute>(
         mut self,
-        range: impl RangeBounds<f64> + Send + Sync + 'static,
+        range: impl RangeBounds<T::Property> + Send + Sync + 'static,
     ) -> Self {
-        let predicate = AttributeCondition::new::<T>(range, Who::Source);
+        let predicate = AttributeCondition::<T>::new(range, Who::Source);
         self.conditions.push(BoxCondition::new(predicate));
         self
     }
 
     pub fn when_target_attribute<T: Attribute>(
         mut self,
-        range: impl RangeBounds<f64> + Send + Sync + 'static,
+        range: impl RangeBounds<T::Property> + Send + Sync + 'static,
     ) -> Self {
-        let predicate = AttributeCondition::new::<T>(range, Who::Target);
+        let predicate = AttributeCondition::<T>::new(range, Who::Target);
         self.conditions.push(BoxCondition::new(predicate));
         self
     }

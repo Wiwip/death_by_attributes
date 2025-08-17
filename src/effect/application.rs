@@ -1,14 +1,17 @@
-use crate::{AttributesMut};
+use crate::AttributesMut;
 use crate::assets::EffectDef;
 use crate::effect::stacks::NotifyAddStackEvent;
 use crate::effect::timing::{EffectDuration, EffectTicker};
 use crate::effect::{
-    AppliedEffects, Effect, CalculationContext, CaptureContext, EffectStackingPolicy,
+    AppliedEffects, CalculationContext, CaptureContext, Effect, EffectStackingPolicy,
     EffectTargeting,
 };
 use crate::graph::NodeType;
 use crate::modifier::{Mutator, Who};
-use crate::prelude::{EffectInactive, EffectSource, EffectTarget, EffectIntensity, Attribute, ApplyAttributeModifierEvent};
+use crate::prelude::{
+    ApplyAttributeModifierEvent, Attribute, EffectInactive, EffectIntensity, EffectSource,
+    EffectTarget,
+};
 use bevy::asset::{Assets, Handle};
 use bevy::log::debug;
 use bevy::prelude::*;
@@ -145,7 +148,7 @@ impl ApplyEffectEvent {
     fn apply_instant_effect(
         &self,
         mut actors: &mut Query<(Option<&AppliedEffects>, AttributesMut), Without<Effect>>,
-        mut apply_modifier_writer: EventWriter<ApplyAttributeModifierEvent>,
+        //mut apply_modifier_writer: EventWriter<ApplyAttributeModifierEvent>,
         effect: &EffectDef,
     ) -> Result<(), BevyError> {
         debug!("Applying instant effect to {}", self.targeting.target());
@@ -160,10 +163,10 @@ impl ApplyEffectEvent {
 
             // Apply the collected modifiers
             let modifiers = execution_context.into_modifiers();
-            self.apply_modifiers(&mut actors, &mut modifiers.iter(), &mut apply_modifier_writer);
+            self.apply_modifiers(&mut actors, &mut modifiers.iter());
         };
 
-        self.apply_modifiers(&mut actors, &mut effect.modifiers.iter(), &mut apply_modifier_writer);
+        self.apply_modifiers(&mut actors, &mut effect.modifiers.iter());
 
         Ok(())
     }
@@ -172,7 +175,7 @@ impl ApplyEffectEvent {
         &self,
         actors: &mut Query<(Option<&AppliedEffects>, AttributesMut), Without<Effect>>,
         modifiers: &mut I,
-        apply_modifier_writer: &mut EventWriter<ApplyAttributeModifierEvent>
+        //apply_modifier_writer: &mut EventWriter<ApplyAttributeModifierEvent>
     ) where
         I: Iterator<Item = &'a Box<dyn Mutator>>,
     {
@@ -180,19 +183,19 @@ impl ApplyEffectEvent {
             match modifier.who() {
                 Who::Target => {
                     let (_, target) = actors.get(self.targeting.target()).unwrap();
-                    apply_modifier_writer.write(ApplyAttributeModifierEvent {
+                    /*apply_modifier_writer.write(ApplyAttributeModifierEvent {
                         target: target.id(),
                         modifier: modifier.modifier(),
                         attribute: modifier.as_accessor(),
-                    });
+                    });*/
                 }
                 Who::Source => {
                     let (_, source) = actors.get(self.targeting.source()).unwrap();
-                    apply_modifier_writer.write(ApplyAttributeModifierEvent {
+                    /*apply_modifier_writer.write(ApplyAttributeModifierEvent {
                         target: source.id(),
                         modifier: modifier.modifier(),
                         attribute: modifier.as_accessor(),
-                    });
+                    });*/
                 }
                 Who::Effect => {
                     todo!()
@@ -313,7 +316,7 @@ pub(crate) fn apply_effect_event_observer(
     mut actors: Query<(Option<&AppliedEffects>, AttributesMut), Without<Effect>>,
     mut effects: Query<&Effect>,
     effect_assets: Res<Assets<EffectDef>>,
-    apply_modifier_writer: EventWriter<ApplyAttributeModifierEvent>,
+    //apply_modifier_writer: EventWriter<ApplyAttributeModifierEvent>,
     mut event_writer: EventWriter<NotifyAddStackEvent>,
     mut commands: Commands,
 ) -> Result<(), BevyError> {
@@ -322,7 +325,7 @@ pub(crate) fn apply_effect_event_observer(
         .ok_or("No effect asset.")?;
 
     if effect.application.should_apply_now() {
-        trigger.apply_instant_effect(&mut actors, apply_modifier_writer, effect)?;
+        trigger.apply_instant_effect(&mut actors, effect)?;
     }
 
     if effect.application != EffectApplicationPolicy::Instant {

@@ -1,10 +1,12 @@
+use root_attribute::attributes::U32F0Proxy;
 use bevy::ecs::schedule::{LogLevel, ScheduleBuildSettings};
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::window::PresentMode;
 use bevy_egui::EguiPlugin;
 use bevy_inspector_egui::DefaultInspectorConfigPlugin;
-use bevy_inspector_egui::quick::WorldInspectorPlugin;
+use fixed::prelude::ToFixed;
+use fixed::types::{U16F16, U32F0, U8F0};
 use petgraph::prelude::Dfs;
 use petgraph::visit::{DfsEvent, depth_first_search};
 use root_attribute::ability::{AbilityBuilder, TargetData, TryActivateAbility};
@@ -12,6 +14,8 @@ use root_attribute::actors::ActorBuilder;
 use root_attribute::assets::{AbilityDef, ActorDef, EffectDef};
 use root_attribute::attributes::Attribute;
 use root_attribute::attributes::ReflectAccessAttribute;
+use root_attribute::attributes::U8F0Proxy;
+use root_attribute::attributes::U16F16Proxy;
 use root_attribute::condition::AttributeCondition;
 use root_attribute::context::EffectContext;
 use root_attribute::effect::{EffectStackingPolicy, Stacks};
@@ -23,7 +27,7 @@ use root_attribute::{AttributesMut, AttributesPlugin, attribute, init_attribute}
 use std::fmt::Debug;
 use std::time::Duration;
 
-attribute!(Strength);
+attribute!(Strength, U16F16);
 attribute!(Agility);
 attribute!(Intelligence);
 
@@ -31,9 +35,9 @@ attribute!(Health);
 attribute!(MaxHealth);
 attribute!(HealthRegen);
 
-attribute!(Mana);
+attribute!(Mana, U32F0);
 attribute!(ManaPool);
-attribute!(ManaRegen);
+attribute!(ManaRegen, U8F0);
 
 attribute!(AttackPower);
 attribute!(Armour);
@@ -42,7 +46,7 @@ attribute!(MagicPower);
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(LogPlugin {
-            filter: "error,root_attribute=debug".into(),
+            filter: "error,root_attribute=info".into(),
             level: bevy::log::Level::DEBUG,
             ..default()
         }))
@@ -67,7 +71,7 @@ fn main() {
         ))
         .add_plugins(EguiPlugin::default())
         .add_plugins(DefaultInspectorConfigPlugin)
-        .add_plugins(WorldInspectorPlugin::default())
+        //.add_plugins(WorldInspectorPlugin::default())
         .add_plugins(ActorInspectorPlugin)
         .add_systems(
             Startup,
@@ -124,43 +128,45 @@ struct EffectsDatabase {
 fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands) {
     // Attack Power effect
     let ap_buff = effects.add(
-        EffectBuilder::permanent()
+        Effect::permanent()
             .name("AttackPower Buff".into())
-            .modify_by_ref::<Health, AttackPower>(Mod::Add(0.1), Who::Target)
-            .modify_by_ref::<Health, Intelligence>(Mod::Add(0.25), Who::Target)
+            .modify_by_ref::<Health, AttackPower>(Mod::add(0.1), Who::Target)
+            .modify_by_ref::<Health, Intelligence>(Mod::add(0.25), Who::Target)
             .build(),
     );
 
-    let cond = AttributeCondition::new::<Health>(..=100.0, Who::Source);
+    let cond = AttributeCondition::<Health>::new(..=100.0, Who::Source);
 
     // Magic Power effect
     let mp_buff = effects.add(
-        EffectBuilder::permanent()
+        Effect::permanent()
             .name("MagicPower Buff".into())
-            .modify::<MagicPower>(Mod::Add(10.0), Who::Target)
+            .modify::<MagicPower>(Mod::add(10.0), Who::Target)
             .while_condition(cond)
             .with_stacking_policy(EffectStackingPolicy::Add {
-                count: 1,
-                max_stack: 10,
+                count: 1.to_fixed(),
+                max_stack: 10.to_fixed(),
             })
             .build(),
     );
 
     // Effect 1 - Passive Max Health Boost
     let hp_buff = effects.add(
-        EffectBuilder::for_seconds(5.0)
+        Effect::temporary(5.0)
             .name("MaxHealth Increase".into())
-            .modify::<MaxHealth>(Mod::Increase(0.10), Who::Target)
+            .modify::<MaxHealth>(Mod::increase(0.10), Who::Target)
+            .modify_by_ref::<Health, Mana>(Mod::increase(500), Who::Target)
             .with_stacking_policy(EffectStackingPolicy::RefreshDuration)
             .build(),
     );
 
     // Effect 2 - Periodic Health Regen
-    let hp_regen = effects.add(
-        EffectBuilder::every_seconds(1.0)
+    let regen = effects.add(
+        Effect::permanent_ticking(1.0)
             .name("Health Regen".into())
-            .modify::<Health>(Mod::Add(3.0), Who::Target)
-            .modify_by_ref::<HealthRegen, Health>(Mod::Add(1.0), Who::Target)
+            .modify::<Health>(Mod::add(3.0), Who::Target)
+            .modify_by_ref::<HealthRegen, Health>(Mod::add(1.0), Who::Target)
+            .modify_by_ref::<ManaRegen, Mana>(Mod::add(1.0), Who::Target)
             .build(),
     );
 
@@ -168,7 +174,7 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
         ap_buff,
         mp_buff,
         hp_buff,
-        hp_regen,
+        hp_regen: regen,
     });
 }
 
@@ -342,11 +348,10 @@ fn damage_event_calculations(
         return;
     };
 
-    let new_health = health.current_value() - trigger.damage * (1.0 - armour.current_value());
+    let armour_reduction = U16F16::from_num(1.0) - armour.current_value();
+    let damage_taken = U16F16::from_num(trigger.damage) * armour_reduction;
+
+    let new_health = health.current_value() - damage_taken;
     health.set_base_value(new_health);
-    debug!(
-        "{} took {} damage",
-        trigger.target(),
-        trigger.damage * (1.0 - armour.current_value())
-    );
+    debug!("{} took {} damage", trigger.target(), damage_taken);
 }

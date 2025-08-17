@@ -17,13 +17,14 @@ codegen-units = 1
 debug = true
 
 [dependencies]
-attributes_macro = { path = "attributes_macro" }
 rand = "0.9"
 ptree = "0.5"
 bevy_egui = "0.36"
-bevy-inspector-egui = "0.32"
+bevy-inspector-egui = "0.33"
 disqualified = "1.0"
 petgraph = "0.8"
+fixed = "1.29.0"
+paste = "1.0"
 
 [dependencies.bevy]
 version = "0.16"

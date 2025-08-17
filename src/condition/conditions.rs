@@ -1,45 +1,51 @@
 use crate::ability::Ability;
 use crate::assets::AbilityDef;
-use crate::attributes::{AccessAttribute, Attribute, AttributeExtractor, BoxAttributeAccessor};
-use crate::condition::{Condition, ConditionContext};
+use crate::attributes::{Attribute, AttributeExtractor, BoxAttributeAccessor};
+use crate::condition::{Condition, ConditionContext, convert_bound};
 use crate::effect::Stacks;
+use crate::inspector::pretty_type_name;
 use crate::modifier::Who;
 use bevy::asset::AssetId;
 use bevy::log::error;
 use bevy::prelude::{Component, TypePath};
+use fixed::prelude::ToFixed;
+use fixed::traits::Fixed;
 use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::ops::{Bound, RangeBounds};
 
+pub type StackCondition = AttributeCondition<Stacks>;
+
 #[derive(TypePath)]
-pub struct AttributeCondition {
+pub struct AttributeCondition<T: Attribute> {
     who: Who,
-    extractor: BoxAttributeAccessor,
-    bounds: (Bound<f64>, Bound<f64>),
+    extractor: BoxAttributeAccessor<T>,
+    bounds: (Bound<T::Property>, Bound<T::Property>),
 }
 
-impl AttributeCondition {
-    pub fn new<'a, A: Attribute>(
-        range: impl RangeBounds<f64> + Send + Sync + 'static,
-        who: Who,
-    ) -> Self {
+impl<T: Attribute> AttributeCondition<T> {
+    pub fn new<'a, R>(range: impl RangeBounds<R>, who: Who) -> Self
+    where
+        R: ToFixed + Copy,
+    {
+        let bounds = convert_bound::<T, R>(range);
         Self {
             who,
-            extractor: BoxAttributeAccessor::new(AttributeExtractor::<A>::new()),
-            bounds: (range.start_bound().cloned(), range.end_bound().cloned()),
+            extractor: BoxAttributeAccessor::new(AttributeExtractor::<T>::new()),
+            bounds,
         }
     }
 
-    pub fn target<A: Attribute>(range: impl RangeBounds<f64> + Send + Sync + 'static) -> Self {
-        Self::new::<A>(range, Who::Target)
+    pub fn target(range: impl RangeBounds<T::Property> + Send + Sync + 'static) -> Self {
+        AttributeCondition::<T>::new(range, Who::Target)
     }
 
-    pub fn source<A: Attribute>(range: impl RangeBounds<f64> + Send + Sync + 'static) -> Self {
-        Self::new::<A>(range, Who::Source)
+    pub fn source(range: impl RangeBounds<T::Property> + Send + Sync + 'static) -> Self {
+        AttributeCondition::<T>::new(range, Who::Source)
     }
 }
 
-impl Condition for AttributeCondition {
+impl<T: Attribute> Condition for AttributeCondition<T> {
     fn evaluate(&self, context: &ConditionContext) -> bool {
         let entity = self.who.get_entity(context);
 
@@ -53,7 +59,7 @@ impl Condition for AttributeCondition {
     }
 }
 
-impl std::fmt::Display for AttributeCondition {
+impl<T: Attribute> std::fmt::Display for AttributeCondition<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let (start, end) = &self.bounds;
 
@@ -80,7 +86,7 @@ impl std::fmt::Display for AttributeCondition {
     }
 }
 
-#[derive(Clone)]
+/*#[derive(Clone)]
 pub struct StackCondition {
     pub bounds: (Bound<u32>, Bound<u32>),
 }
@@ -102,7 +108,7 @@ impl std::fmt::Display for StackCondition {
 impl Condition for StackCondition {
     fn evaluate(&self, context: &ConditionContext) -> bool {
         match context.owner.get::<Stacks>() {
-            Some(value) => self.bounds.contains(&(value.current_value() as u32)),
+            Some(value) => self.bounds.contains(&(value.current_value())),
             None => {
                 error!(
                     "Effect {}: StackCondition requires a Stacks component.",
@@ -112,7 +118,7 @@ impl Condition for StackCondition {
             }
         }
     }
-}
+}*/
 
 pub struct And<C1, C2> {
     c1: C1,

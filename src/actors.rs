@@ -2,12 +2,15 @@ use crate::OnAttributeValueChanged;
 use crate::ability::{AbilityOf, GrantAbilityCommand};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::attributes::{Attribute, Clamp};
+use crate::condition::convert_bound;
 use crate::effect::EffectTargeting;
 use crate::graph::NodeType;
 use crate::mutator::EntityMutator;
 use crate::prelude::{ApplyEffectEvent, AttributeCalculatorCached};
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
+use fixed::prelude::ToFixed;
+use std::collections::Bound;
 use std::ops::RangeBounds;
 
 #[derive(Component, Clone, Debug)]
@@ -92,7 +95,10 @@ impl ActorBuilder {
         self
     }
 
-    pub fn with<T: Attribute>(mut self, value: f64) -> ActorBuilder {
+    pub fn with<T: Attribute>(
+        mut self,
+        value: impl ToFixed + Copy + Send + Sync + 'static,
+    ) -> ActorBuilder {
         self.mutators.push(EntityMutator::new(
             move |entity_commands: &mut EntityCommands| {
                 entity_commands.insert((T::new(value), AttributeCalculatorCached::<T>::default()));
@@ -116,10 +122,11 @@ impl ActorBuilder {
         self
     }*/
 
-    pub fn clamp<T>(mut self, bounds: impl RangeBounds<f64> + Send + Sync + 'static) -> ActorBuilder
+    pub fn clamp<T>(mut self, range: impl RangeBounds<f64>) -> ActorBuilder
     where
         T: Attribute,
     {
+        let bounds = convert_bound::<T, f64>(range);
         let clamp = Clamp::<T>::new(bounds);
 
         self.mutators.push(EntityMutator::new(

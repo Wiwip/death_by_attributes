@@ -7,6 +7,9 @@ use crate::modifier::Who;
 use crate::prelude::*;
 use crate::{Dirty, OnAttributeValueChanged};
 use bevy::prelude::*;
+use fixed::prelude::LossyInto;
+use fixed::traits::Fixed;
+use fixed::types::{U16F0, U32F0};
 use petgraph::visit::IntoNeighbors;
 use std::any::type_name;
 use std::marker::PhantomData;
@@ -41,8 +44,8 @@ pub fn observe_dirty_node_notifications<T: Attribute>(
 
 #[derive(Event)]
 pub struct NotifyAttributeChanged<T: Attribute> {
-    pub base_value: f64,
-    pub current_value: f64,
+    pub base_value: T::Property,
+    pub current_value: T::Property,
     pub phantom_data: PhantomData<T>,
 }
 
@@ -57,19 +60,23 @@ pub fn on_change_attribute_observer<S: Attribute, T: Attribute>(
 
     let scaling = modifier.scaling;
     let mod_value = modifier.modifier.value_mut();
-    *mod_value = trigger.current_value * scaling;
+
+    let converted_source_attribute = T::Property::from_num(trigger.current_value);
+    let scaled_converted_source_attribute =
+        converted_source_attribute * T::Property::from_num(scaling);
+    *mod_value = scaled_converted_source_attribute; // * scaling;
 
     commands
         .entity(mod_entity)
         .trigger(NotifyDirtyNode::<T>::default());
 
-    debug!(
+    /*debug!(
         "{} <{},{}>: Attribute changed. New value: {} ",
         trigger.observer(),
         pretty_type_name::<S>(),
         pretty_type_name::<T>(),
         trigger.current_value,
-    );
+    );*/
 }
 
 /// Navigates the tree descendants to update the tree attribute values
@@ -113,7 +120,7 @@ fn update_effect_tree_attributes<T: Attribute>(
     attributes: &mut Query<AttributeQueryData<T>>,
     modifiers: &Query<&AttributeModifier<T>>,
     commands: &mut Commands,
-) -> AttributeCalculator {
+) -> AttributeCalculator<T> {
     let Ok(node_type) = nodes.get(current_entity) else {
         error!("{}: Error getting node type.", current_entity);
         return AttributeCalculator::default();
@@ -190,7 +197,7 @@ pub fn apply_periodic_effect<T: Attribute>(
         &EffectSource,
     )>,
     modifiers: Query<&AttributeModifier<T>>,
-    mut event_writer: EventWriter<ApplyAttributeModifierEvent>,
+    mut event_writer: EventWriter<ApplyAttributeModifierEvent<T>>,
 ) {
     for (timer, effect_modifiers, stacks, target, source) in effects.iter() {
         if !timer.just_finished() {
@@ -204,7 +211,8 @@ pub fn apply_periodic_effect<T: Attribute>(
             };
 
             // Apply the stack count to the modifier
-            let scaled_modifier = attribute_modifier.modifier.clone() * stacks.current_value();
+            let stack = T::Property::from_num(stacks.current_value());
+            let scaled_modifier = attribute_modifier.modifier.clone() * stack;
 
             match attribute_modifier.who {
                 Who::Target => {

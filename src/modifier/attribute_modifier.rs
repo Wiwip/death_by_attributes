@@ -1,42 +1,41 @@
+use crate::attributes::AccessAttribute;
 use crate::attributes::{Attribute, AttributeExtractor, BoxAttributeAccessor};
 use crate::graph::{AttributeTypeId, NodeType};
 use crate::inspector::pretty_type_name;
 use crate::modifier::calculator::{AttributeCalculator, Mod};
 use crate::modifier::{ModifierMarker, Mutator};
 use crate::modifier::{ReflectAccessModifier, Who};
-use crate::prelude::{EffectTarget, EffectSource};
+use crate::prelude::{EffectSource, EffectTarget};
 use crate::{AttributesMut, AttributesRef};
 use bevy::prelude::*;
+use fixed::traits::Fixed;
 use std::any::type_name;
 use std::fmt::Debug;
 use std::fmt::Display;
-use std::marker::PhantomData;
 
 #[derive(Component, Copy, Clone, Debug, Reflect)]
 #[reflect(AccessModifier)]
 #[require(ModifierMarker)]
 pub struct AttributeModifier<T: Attribute> {
     pub who: Who,
-    pub modifier: Mod,
-    pub scaling: f64,
     #[reflect(ignore)]
-    marker: PhantomData<T>,
+    pub modifier: Mod<T::Property>,
+    pub scaling: f64,
 }
 
 impl<T> AttributeModifier<T>
 where
     T: Attribute + 'static,
 {
-    pub fn new(modifier: Mod, who: Who, scaling: f64) -> Self {
+    pub fn new(modifier: Mod<T::Property>, who: Who, scaling: f64) -> Self {
         Self {
             who,
             modifier,
             scaling,
-            marker: Default::default(),
         }
     }
 
-    pub fn as_accessor(&self) -> BoxAttributeAccessor {
+    pub fn as_accessor(&self) -> BoxAttributeAccessor<T> {
         BoxAttributeAccessor::new(AttributeExtractor::<T>::new())
     }
 }
@@ -46,7 +45,7 @@ where
     T: Attribute,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Mod<{}>({:.1})", type_name::<T>(), self.modifier)
+        write!(f, "Mod<{}>({:.1})", pretty_type_name::<T>(), self.modifier)
     }
 }
 
@@ -55,12 +54,12 @@ where
     T: Attribute,
 {
     fn spawn(&self, commands: &mut Commands, actor_entity: AttributesRef) -> Entity {
-        debug!(
+        /*debug!(
             "[{}] Added Mod<{}> [{}]",
             actor_entity.id(),
             pretty_type_name::<T>(),
             self.modifier,
-        );
+        );*/
 
         commands
             .spawn((
@@ -71,7 +70,6 @@ where
                     who: self.who,
                     modifier: self.modifier,
                     scaling: self.scaling,
-                    marker: Default::default(),
                 },
                 Name::new(format!("Mod<{}> ({:?})", pretty_type_name::<T>(), self.who)),
             ))
@@ -80,10 +78,17 @@ where
 
     fn apply(&self, actor_entity: &mut AttributesMut) -> bool {
         if let Some(mut attribute) = actor_entity.get_mut::<T>() {
-            let calculator = AttributeCalculator::from(self.modifier);
+            println!(
+                "Directly applying modifier {} to {}",
+                self.modifier,
+                attribute.name()
+            );
+            let calculator = AttributeCalculator::<T>::from(self.modifier);
             let new_val = calculator.eval(attribute.base_value());
             // Ensure that the modifier meaningfully changed the value before we trigger the event.
-            if (new_val - &attribute.base_value()).abs() > f64::EPSILON {
+
+            let has_changed = new_val.abs_diff(attribute.base_value()) > 0;
+            if has_changed {
                 attribute.set_base_value(new_val);
                 true
             } else {
@@ -98,13 +103,13 @@ where
         self.who
     }
 
-    fn modifier(&self) -> Mod {
+    /*fn modifier(&self) -> Mod<T::Property> {
         self.modifier
     }
 
-    fn as_accessor(&self) -> BoxAttributeAccessor {
+    fn as_accessor(&self) -> BoxAttributeAccessor<T> {
         BoxAttributeAccessor::new(AttributeExtractor::<T>::new())
-    }
+    }*/
 
     fn attribute_type_id(&self) -> AttributeTypeId {
         T::attribute_type_id()

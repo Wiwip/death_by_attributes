@@ -36,7 +36,7 @@ pub fn try_activate_ability_observer(
             .get(&ability.0.clone())
             .ok_or("No ability asset.")?;
 
-        let can_activate = try_activate_ability(
+        let can_activate = can_activate_ability(
             &ability_ref,
             &source_actor_ref,
             &target_entity_ref,
@@ -57,7 +57,7 @@ pub fn try_activate_ability_observer(
     Ok(())
 }
 
-fn try_activate_ability(
+fn can_activate_ability(
     ability_entity: &AttributesRef,
     source_entity_ref: &AttributesRef,
     target_entity_ref: &AttributesRef,
