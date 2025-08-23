@@ -1,16 +1,16 @@
+use fixed::traits::Fixed;
 use crate::OnAttributeValueChanged;
 use crate::ability::{AbilityOf, GrantAbilityCommand};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
-use crate::attributes::{Attribute, Clamp};
-use crate::condition::convert_bound;
+use crate::attributes::{Attribute, Clamp, DerivedClamp, derived_clamp_attributes_observer};
+use crate::condition::convert_bounds;
 use crate::effect::EffectTargeting;
 use crate::graph::NodeType;
-use crate::mutator::EntityMutator;
+use crate::mutator::EntityActions;
 use crate::prelude::{ApplyEffectEvent, AttributeCalculatorCached};
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use fixed::prelude::ToFixed;
-use std::collections::Bound;
+use fixed::prelude::{LossyInto, ToFixed};
 use std::ops::RangeBounds;
 
 #[derive(Component, Clone, Debug)]
@@ -75,7 +75,7 @@ impl EntityCommand for SpawnActorCommand {
 
 pub struct ActorBuilder {
     name: String,
-    mutators: Vec<EntityMutator>,
+    builder_actions: Vec<EntityActions>,
     abilities: Vec<Handle<AbilityDef>>,
     effects: Vec<Handle<EffectDef>>,
 }
@@ -84,7 +84,7 @@ impl ActorBuilder {
     pub fn new() -> ActorBuilder {
         Self {
             name: "Actor".to_string(),
-            mutators: vec![],
+            builder_actions: vec![],
             abilities: vec![],
             effects: vec![],
         }
@@ -99,10 +99,9 @@ impl ActorBuilder {
         mut self,
         value: impl ToFixed + Copy + Send + Sync + 'static,
     ) -> ActorBuilder {
-        self.mutators.push(EntityMutator::new(
+        self.builder_actions.push(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
                 entity_commands.insert((T::new(value), AttributeCalculatorCached::<T>::default()));
-                //entity_commands.observe(apply_modifier_on_trigger::<T>);
             },
         ));
         self
@@ -113,33 +112,49 @@ impl ActorBuilder {
         self
     }
 
-    /*pub fn clamp<T: Attribute>(mut self, clamp: AttributeClamp<T>) -> ActorBuilder {
-        self.mutators.push(EntityMutator::new(
-            move |entity_commands: &mut EntityCommands| {
-                entity_commands.insert(clamp.clone());
-            },
-        ));
-        self
-    }*/
-
     pub fn clamp<T>(mut self, range: impl RangeBounds<f64>) -> ActorBuilder
     where
         T: Attribute,
     {
-        let bounds = convert_bound::<T, f64>(range);
+        let bounds = convert_bounds::<T, f64>(range);
         let clamp = Clamp::<T>::new(bounds);
 
-        self.mutators.push(EntityMutator::new(
+        self.builder_actions.push(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
                 entity_commands.insert(clamp.clone());
-                entity_commands.trigger(OnAttributeValueChanged::<T>::default());
             },
         ));
         self
     }
 
+    pub fn clamp_from<S, T>(
+        mut self,
+        limits: impl RangeBounds<f64> + Send + Sync + 'static,
+    ) -> ActorBuilder
+    where
+        S: Attribute,
+        T: Attribute,
+        S::Property: LossyInto<T::Property>,
+    {
+        let bounds = (limits.start_bound().cloned(), limits.end_bound().cloned());
+
+        self.builder_actions.push(EntityActions::new(
+            move |entity_commands: &mut EntityCommands| {
+                let mut observer = Observer::new(derived_clamp_attributes_observer::<S, T>);
+                observer.watch_entity(entity_commands.id());
+
+                entity_commands.insert((
+                    DerivedClamp::<T>::new(bounds),
+                    children![observer],
+                ));
+            },
+        ));
+
+        self
+    }
+
     pub fn with_component<T: Bundle + Clone + 'static>(mut self, bundle: T) -> ActorBuilder {
-        self.mutators.push(EntityMutator::new(
+        self.builder_actions.push(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
                 entity_commands.insert(bundle.clone());
             },
@@ -156,7 +171,7 @@ impl ActorBuilder {
         ActorDef {
             name: self.name,
             description: "".to_string(),
-            mutators: self.mutators,
+            mutators: self.builder_actions,
             abilities: self.abilities,
             effects: self.effects,
         }

@@ -1,6 +1,6 @@
 use crate::attributes::Attribute;
 use crate::effect::EffectTargeting;
-use crate::modifier::Mutator;
+use crate::modifier::Modifier;
 use crate::prelude::{AppliedEffects, Effect};
 use crate::{AttributesMut, AttributesRef};
 use bevy::prelude::*;
@@ -14,7 +14,7 @@ pub struct CalculationContext<'a> {
     target_map: HashMap<TypeId, f64>,
     source_actor: AttributesRef<'a>,
     target_actor: AttributesRef<'a>,
-    pub modifiers: Vec<Box<dyn Mutator>>,
+    pub modifiers: Vec<Box<dyn Modifier>>,
 }
 
 impl<'a> CalculationContext<'a> {
@@ -56,7 +56,7 @@ impl<'a> CalculationContext<'a> {
         self.target_map.get(&TypeId::of::<T>())
     }
 
-    pub fn into_modifiers(self) -> Vec<Box<dyn Mutator>> {
+    pub fn into_modifiers(self) -> Vec<Box<dyn Modifier>> {
         self.modifiers
     }
 }

@@ -1,19 +1,20 @@
 use crate::attributes::AccessAttribute;
 use crate::attributes::{Attribute, AttributeExtractor, BoxAttributeAccessor};
-use crate::graph::{AttributeTypeId, NodeType};
+use crate::graph::{ NodeType};
 use crate::inspector::pretty_type_name;
 use crate::modifier::calculator::{AttributeCalculator, Mod};
-use crate::modifier::{ModifierMarker, Mutator};
+use crate::modifier::{ModifierMarker, Modifier};
 use crate::modifier::{ReflectAccessModifier, Who};
-use crate::prelude::{EffectSource, EffectTarget};
+use crate::prelude::{ApplyAttributeModifierEvent, AttributeTypeId, EffectSource, EffectTarget};
 use crate::{AttributesMut, AttributesRef};
 use bevy::prelude::*;
 use fixed::traits::Fixed;
 use std::any::type_name;
 use std::fmt::Debug;
 use std::fmt::Display;
+use serde::Serialize;
 
-#[derive(Component, Copy, Clone, Debug, Reflect)]
+#[derive(Component, Copy, Clone, Debug, Reflect, Serialize)]
 #[reflect(AccessModifier)]
 #[require(ModifierMarker)]
 pub struct AttributeModifier<T: Attribute> {
@@ -35,7 +36,7 @@ where
         }
     }
 
-    pub fn as_accessor(&self) -> BoxAttributeAccessor<T> {
+    pub fn as_accessor(&self) -> BoxAttributeAccessor<T::Property> {
         BoxAttributeAccessor::new(AttributeExtractor::<T>::new())
     }
 }
@@ -49,18 +50,11 @@ where
     }
 }
 
-impl<T> Mutator for AttributeModifier<T>
+impl<T> Modifier for AttributeModifier<T>
 where
     T: Attribute,
 {
     fn spawn(&self, commands: &mut Commands, actor_entity: AttributesRef) -> Entity {
-        /*debug!(
-            "[{}] Added Mod<{}> [{}]",
-            actor_entity.id(),
-            pretty_type_name::<T>(),
-            self.modifier,
-        );*/
-
         commands
             .spawn((
                 NodeType::Modifier,
@@ -99,17 +93,17 @@ where
         }
     }
 
+    fn write_event(&self, target: Entity, commands: &mut Commands) {
+        commands.send_event(ApplyAttributeModifierEvent::<T> {
+            target,
+            modifier: self.modifier,
+            attribute: BoxAttributeAccessor::new(AttributeExtractor::<T>::new()),
+        });
+    }
+
     fn who(&self) -> Who {
         self.who
     }
-
-    /*fn modifier(&self) -> Mod<T::Property> {
-        self.modifier
-    }
-
-    fn as_accessor(&self) -> BoxAttributeAccessor<T> {
-        BoxAttributeAccessor::new(AttributeExtractor::<T>::new())
-    }*/
 
     fn attribute_type_id(&self) -> AttributeTypeId {
         T::attribute_type_id()

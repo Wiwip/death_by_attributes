@@ -1,7 +1,7 @@
-use crate::attributes::Attribute;
-use crate::graph::{AttributeTypeId, NodeType};
+use crate::attributes::{Attribute, AttributeExtractor, BoxAttributeAccessor};
+use crate::graph::{NodeType};
 use crate::modifier::calculator::AttributeCalculator;
-use crate::modifier::{Mutator, Who};
+use crate::modifier::{Modifier, Who};
 use crate::prelude::*;
 use crate::systems::on_change_attribute_observer;
 use crate::{AttributesMut, AttributesRef};
@@ -39,7 +39,7 @@ where
     }
 }
 
-impl<S, T> Mutator for DerivedModifier<S, T>
+impl<S, T> Modifier for DerivedModifier<S, T>
 where
     S: Attribute,
     T: Attribute,
@@ -94,6 +94,14 @@ where
         self.who
     }
 
+    fn write_event(&self, target: Entity, commands: &mut Commands) {
+        commands.send_event(ApplyAttributeModifierEvent::<T> {
+            target,
+            modifier: self.modifier,
+            attribute: BoxAttributeAccessor::new(AttributeExtractor::<T>::new()),
+        });
+    }
+    
     /*fn modifier(&self) -> Mod<T::Property> {
         self.modifier
     }

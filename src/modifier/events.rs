@@ -8,7 +8,7 @@ use fixed::traits::Fixed;
 pub struct ApplyAttributeModifierEvent<T: Attribute> {
     pub target: Entity,
     pub modifier: Mod<T::Property>,
-    pub attribute: BoxAttributeAccessor<T>,
+    pub attribute: BoxAttributeAccessor<T::Property>,
 }
 
 pub fn apply_modifier_events<T: Attribute>(
@@ -34,7 +34,7 @@ pub fn apply_modifier<T: Attribute>(
     let base_value = ev.attribute.base_value(&attributes_ref)?;
     let calculator = AttributeCalculator::<T>::from(ev.modifier);
     let new_base_value = calculator.eval(base_value);
-        
+
     let has_changed = new_base_value.abs_diff(base_value) > 0;
     if has_changed {
         let mut attributes_mut = attributes.get_mut(ev.target)?;

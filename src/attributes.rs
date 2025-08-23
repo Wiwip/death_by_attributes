@@ -1,27 +1,40 @@
+use crate::condition::{convert_bounds, multiply_bounds};
 use crate::effect::AttributeDependencies;
-use crate::graph::AttributeTypeId;
 use crate::inspector::pretty_type_name;
 use crate::prelude::{AttributeCalculator, AttributeCalculatorCached};
-use crate::systems::{NotifyAttributeChanged, NotifyDirtyNode};
+use crate::systems::{NotifyAttributeDependencyChanged, NotifyDirtyNode};
 use crate::{AttributeError, AttributesMut, AttributesRef, OnAttributeValueChanged};
 use bevy::ecs::component::Mutable;
 use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
-use bevy::reflect::{GetTypeRegistration, Typed};
+use bevy::reflect::GetTypeRegistration;
+use bevy::ui::debug::print_ui_layout_tree;
 use bevy_inspector_egui::__macro_exports::bevy_reflect::ReflectRemote;
 use fixed::prelude::{LossyInto, ToFixed};
 use fixed::traits::Fixed;
-use fixed::types::{I16F0, I16F16, I32F0, I32F32, I48F16, I64F0, I8F8, U12F4, U16F0, U16F16, U24F8, U32F0, U32F32, U64F0, U8F0, U8F8};
-use std::any::TypeId;
+use fixed::types::{
+    I0F8, I0F16, I8F8, I16F0, I16F16, I32F0, I32F32, I48F16, I64F0, U0F8, U0F16, U8F0, U8F8, U12F4,
+    U16F0, U16F16, U24F8, U32F0, U32F32, U64F0,
+};
+use serde::Serialize;
+use std::any::{TypeId, type_name};
 use std::collections::{Bound, HashSet};
 use std::fmt::Display;
 use std::fmt::{Debug, Formatter};
+use std::hash::Hasher;
+use std::hash::{DefaultHasher, Hash};
 use std::marker::PhantomData;
 use std::ops::RangeBounds;
-use fixed::types::extra::U8;
 
 pub trait Attribute:
-    Component<Mutability = Mutable> + Copy + Clone + Reflect + Debug + TypePath + GetTypeRegistration
+    Component<Mutability = Mutable>
+    + Copy
+    + Clone
+    + Reflect
+    + Debug
+    + TypePath
+    + GetTypeRegistration
+    + Serialize
 {
     type Property: Fixed
         + LossyInto<f64>
@@ -31,6 +44,7 @@ pub trait Attribute:
         + Display
         + Debug
         + Send
+        + Serialize
         + Sync;
 
     fn new<T: ToFixed + Copy>(value: T) -> Self;
@@ -68,6 +82,7 @@ macro_rules! attribute {
     ( $StructName:ident, $ValueType:ty ) => {
         ::paste::paste! {
             #[derive(bevy::prelude::Component, Clone, Copy, bevy::prelude::Reflect, Debug)]
+            #[derive(serde::Serialize)]
             #[reflect(AccessAttribute)]
             pub struct $StructName {
                 #[reflect(remote = $crate::attributes::[<$ValueType Proxy>])]
@@ -98,11 +113,28 @@ macro_rules! attribute {
             fn set_current_value(&mut self, value: $ValueType) {
                 self.current_value = value;
             }
-            fn attribute_type_id() -> $crate::graph::AttributeTypeId {
-                $crate::graph::AttributeTypeId::of::<Self>()
+            fn attribute_type_id() -> $crate::prelude::AttributeTypeId {
+                $crate::prelude::AttributeTypeId::of::<Self>()
             }
         }
     };
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
+pub struct AttributeTypeId(pub u64);
+
+impl AttributeTypeId {
+    pub fn of<T: TypePath>() -> Self {
+        let mut hasher = DefaultHasher::new();
+        T::type_path().hash(&mut hasher);
+        Self(hasher.finish())
+    }
+
+    pub fn from_reflect(reflect: &dyn Reflect) -> Self {
+        let mut hasher = DefaultHasher::new();
+        reflect.reflect_type_path().hash(&mut hasher);
+        Self(hasher.finish())
+    }
 }
 
 #[derive(QueryData, Debug)]
@@ -115,8 +147,6 @@ pub struct AttributeQueryData<T: Attribute + 'static> {
 
 impl<T: Attribute> AttributeQueryDataItem<'_, T> {
     pub fn update_attribute(&mut self, calculator: &AttributeCalculator<T>) -> bool {
-        let a = self.attribute.base_value();
-
         let new_val = calculator.eval(self.attribute.base_value());
 
         let has_changed = new_val.abs_diff(self.attribute.current_value()) > 0;
@@ -155,41 +185,83 @@ impl<A: Attribute> Clamp<A> {
     }
 }
 
-pub(crate) fn clamp_attributes_observer<A: Attribute>(
-    trigger: Trigger<OnAttributeValueChanged<A>>,
-    mut query: Query<(&mut A, &Clamp<A>)>,
+#[derive(Component)]
+pub struct DerivedClamp<T>
+where
+    T: Attribute,
+{
+    limits: (Bound<T::Property>, Bound<T::Property>),
+    bounds: (Bound<T::Property>, Bound<T::Property>),
+}
+
+impl<T> DerivedClamp<T>
+where
+    T: Attribute,
+{
+    pub fn new(limits: impl RangeBounds<f64> + Send + Sync + Copy + 'static) -> Self {
+        Self {
+            limits: convert_bounds::<T, _>(limits),
+            bounds: (Bound::Unbounded, Bound::Unbounded),
+        }
+    }
+}
+
+/// When the Source attribute changes, we update the bounds of the target attribute
+pub fn derived_clamp_attributes_observer<S, T>(
+    trigger: Trigger<OnAttributeValueChanged<S>>,
+    mut query: Query<(&mut DerivedClamp<T>, &S)>,
+) where
+    S: Attribute,
+    T: Attribute,
+    S::Property: LossyInto<T::Property>,
+{
+    let Ok((mut derived_clamp, source_attribute)) = query.get_mut(trigger.target()) else {
+        return;
+    };
+    let source_value: T::Property = source_attribute.current_value().lossy_into();
+
+    // Multiply the source value by the limit to get the derived limit
+    let limit_bounds = multiply_bounds::<T>(derived_clamp.limits, source_value);
+    derived_clamp.bounds = convert_bounds::<T, _>(limit_bounds);
+}
+
+pub fn apply_derived_clamp_attributes<T>(mut query: Query<(&mut T, &DerivedClamp<T>), Changed<T>>)
+where
+    T: Attribute,
+{
+    for (mut attribute, clamp) in query.iter_mut() {
+        let clamp_value = bound_clamp(attribute.base_value(), clamp.bounds);
+        attribute.set_base_value(clamp_value);
+    }
+}
+
+pub(crate) fn clamp_attributes_observer<T: Attribute>(
+    trigger: Trigger<OnAttributeValueChanged<T>>,
+    mut query: Query<(&mut T, &Clamp<T>)>,
 ) {
     let Ok((mut attribute, clamp)) = query.get_mut(trigger.target()) else {
         return;
     };
 
-    match clamp.bounds.0 {
-        Bound::Included(min) => {
-            if attribute.base_value() < min {
-                attribute.set_base_value(min);
-            }
-        }
-        Bound::Excluded(min) => {
-            if attribute.base_value() <= min {
-                attribute.set_base_value(min);
-            }
-        }
-        Bound::Unbounded => {}
-    }
+    let clamp_value = bound_clamp(attribute.base_value(), clamp.bounds);
+    attribute.set_base_value(clamp_value);
+}
 
-    match clamp.bounds.1 {
-        Bound::Included(max) => {
-            if attribute.base_value() > max {
-                attribute.set_base_value(max);
-            }
-        }
-        Bound::Excluded(max) => {
-            if attribute.base_value() >= max {
-                attribute.set_base_value(max);
-            }
-        }
-        Bound::Unbounded => {}
-    }
+fn bound_clamp<V: Fixed>(value: V, clamp: impl RangeBounds<V>) -> V {
+       
+    let value = match clamp.start_bound() {
+        Bound::Included(&min) => value.max(min),
+        Bound::Excluded(&min) => value.max(min + V::MIN),
+        Bound::Unbounded => value,
+    };
+
+    let value = match clamp.end_bound() {
+        Bound::Included(&max) => value.min(max),
+        Bound::Excluded(&max) => value.min(max - V::MIN),
+        Bound::Unbounded => value,
+    };
+
+    value
 }
 
 #[reflect_trait] // Generates a `ReflectMyTrait` type
@@ -214,26 +286,43 @@ where
     }
 }
 
-pub trait AttributeAccessor<N>: Send + Sync + 'static {
-    fn current_value(&self, entity: &AttributesRef) -> Result<N, AttributeError>;
-    fn set_current_value(&self, value: N, entity: &mut AttributesMut)
-    -> Result<(), AttributeError>;
-    fn base_value(&self, entity: &AttributesRef) -> Result<N, AttributeError>;
-    fn set_base_value(&self, value: N, entity: &mut AttributesMut) -> Result<(), AttributeError>;
+pub trait AttributeAccessor: Send + Sync + 'static {
+    type Property: Fixed
+        + LossyInto<f64>
+        + PartialOrd
+        + Copy
+        + Clone
+        + Display
+        + Debug
+        + Send
+        + Sync;
+
+    fn current_value(&self, entity: &AttributesRef) -> Result<Self::Property, AttributeError>;
+    fn set_current_value(
+        &self,
+        value: Self::Property,
+        entity: &mut AttributesMut,
+    ) -> Result<(), AttributeError>;
+    fn base_value(&self, entity: &AttributesRef) -> Result<Self::Property, AttributeError>;
+    fn set_base_value(
+        &self,
+        value: Self::Property,
+        entity: &mut AttributesMut,
+    ) -> Result<(), AttributeError>;
     fn name(&self) -> &str;
     fn attribute_type_id(&self) -> AttributeTypeId;
 }
 
 #[derive(TypePath, Deref, DerefMut)]
-pub struct BoxAttributeAccessor<T: Attribute>(pub Box<dyn AttributeAccessor<T::Property>>);
+pub struct BoxAttributeAccessor<P: Fixed>(pub Box<dyn AttributeAccessor<Property = P>>);
 
-impl<T: Attribute> BoxAttributeAccessor<T> {
-    pub fn new(evaluator: AttributeExtractor<T>) -> Self {
+impl<P: Fixed> BoxAttributeAccessor<P> {
+    pub fn new<T: Attribute<Property = P>>(evaluator: AttributeExtractor<T>) -> Self {
         Self(Box::new(evaluator))
     }
 }
 
-impl<T: Attribute> std::fmt::Debug for BoxAttributeAccessor<T> {
+impl<P: Fixed> std::fmt::Debug for BoxAttributeAccessor<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         todo!();
         //f.debug_tuple("BoxExtractor").field(&self.0.name()).finish()
@@ -252,7 +341,9 @@ impl<A: Attribute> AttributeExtractor<A> {
     }
 }
 
-impl<T: Attribute> AttributeAccessor<T::Property> for AttributeExtractor<T> {
+impl<T: Attribute> AttributeAccessor for AttributeExtractor<T> {
+    type Property = T::Property;
+
     fn current_value(&self, entity: &AttributesRef) -> Result<T::Property, AttributeError> {
         Ok(entity
             .get::<T>()
@@ -320,7 +411,7 @@ pub fn on_change_notify_attribute_dependencies<T: Attribute>(
             notify_targets
         );
         commands.trigger_targets(
-            NotifyAttributeChanged::<T> {
+            NotifyAttributeDependencyChanged::<T> {
                 base_value: attribute.base_value(),
                 current_value: attribute.current_value(),
                 phantom_data: Default::default(),
@@ -386,9 +477,13 @@ macro_rules! impl_reflect_remote_fixed {
 }
 
 // 8-bit types
+impl_reflect_remote_fixed!(U0F8Proxy, U0F8, u8);
+impl_reflect_remote_fixed!(I0F8Proxy, I0F8, i8);
 impl_reflect_remote_fixed!(U8F0Proxy, U8F0, u8);
 
 // 16-bit types
+impl_reflect_remote_fixed!(U0F16Proxy, U0F16, u16);
+impl_reflect_remote_fixed!(I0F16Proxy, I0F16, i16);
 impl_reflect_remote_fixed!(I8F8Proxy, I8F8, i16);
 impl_reflect_remote_fixed!(U8F8Proxy, U8F8, u16);
 impl_reflect_remote_fixed!(U12F4Proxy, U12F4, u16);

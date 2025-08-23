@@ -2,8 +2,8 @@ use crate::ability::AbilityActivationFn;
 use crate::condition::BoxCondition;
 use crate::effect::EffectExecution;
 use crate::effect::EffectStackingPolicy;
-use crate::modifier::{ModifierFn, Mutator};
-use crate::mutator::EntityMutator;
+use crate::modifier::{ModifierFn, Modifier};
+use crate::mutator::EntityActions;
 use crate::prelude::EffectApplicationPolicy;
 use bevy::prelude::*;
 
@@ -11,7 +11,7 @@ use bevy::prelude::*;
 pub struct ActorDef {
     pub name: String,
     pub description: String,
-    pub mutators: Vec<EntityMutator>,
+    pub mutators: Vec<EntityActions>,
     pub abilities: Vec<Handle<AbilityDef>>,
     pub effects: Vec<Handle<EffectDef>>,
 }
@@ -19,9 +19,9 @@ pub struct ActorDef {
 #[derive(Asset, TypePath)]
 pub struct EffectDef {
     pub effect_fn: Vec<Box<ModifierFn>>,
-    pub effect_modifiers: Vec<Box<dyn Mutator>>,
+    pub effect_modifiers: Vec<Box<dyn Modifier>>,
     pub custom_execution: Option<Box<dyn EffectExecution>>,
-    pub modifiers: Vec<Box<dyn Mutator>>,
+    pub modifiers: Vec<Box<dyn Modifier>>,
     pub application: EffectApplicationPolicy,
     pub conditions: Vec<BoxCondition>,
     pub stacking_policy: EffectStackingPolicy,
@@ -32,8 +32,8 @@ pub struct EffectDef {
 pub struct AbilityDef {
     pub name: String,
     pub description: String,
-    pub mutators: Vec<EntityMutator>,
+    pub mutators: Vec<EntityActions>,
     pub cost: Vec<BoxCondition>,
-    pub cost_effects: Vec<Box<dyn Mutator>>,
+    pub cost_effects: Vec<Box<dyn Modifier>>,
     pub activation_fn: AbilityActivationFn,
 }

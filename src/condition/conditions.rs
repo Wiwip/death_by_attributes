@@ -1,7 +1,7 @@
 use crate::ability::Ability;
 use crate::assets::AbilityDef;
 use crate::attributes::{Attribute, AttributeExtractor, BoxAttributeAccessor};
-use crate::condition::{Condition, ConditionContext, convert_bound};
+use crate::condition::{Condition, ConditionContext, convert_bounds};
 use crate::effect::Stacks;
 use crate::inspector::pretty_type_name;
 use crate::modifier::Who;
@@ -9,7 +9,6 @@ use bevy::asset::AssetId;
 use bevy::log::error;
 use bevy::prelude::{Component, TypePath};
 use fixed::prelude::ToFixed;
-use fixed::traits::Fixed;
 use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::ops::{Bound, RangeBounds};
@@ -19,7 +18,7 @@ pub type StackCondition = AttributeCondition<Stacks>;
 #[derive(TypePath)]
 pub struct AttributeCondition<T: Attribute> {
     who: Who,
-    extractor: BoxAttributeAccessor<T>,
+    extractor: BoxAttributeAccessor<T::Property>,
     bounds: (Bound<T::Property>, Bound<T::Property>),
 }
 
@@ -28,7 +27,7 @@ impl<T: Attribute> AttributeCondition<T> {
     where
         R: ToFixed + Copy,
     {
-        let bounds = convert_bound::<T, R>(range);
+        let bounds = convert_bounds::<T, R>(range);
         Self {
             who,
             extractor: BoxAttributeAccessor::new(AttributeExtractor::<T>::new()),
@@ -47,7 +46,7 @@ impl<T: Attribute> AttributeCondition<T> {
 
 impl<T: Attribute> Condition for AttributeCondition<T> {
     fn evaluate(&self, context: &ConditionContext) -> bool {
-        let entity = self.who.get_entity(context);
+        let entity = self.who.resolve_entity(context);
 
         match self.extractor.0.current_value(entity) {
             Ok(value) => self.bounds.contains(&value),
@@ -217,7 +216,7 @@ impl<C: Component> TagCondition<C> {
 
 impl<C: Component> Condition for TagCondition<C> {
     fn evaluate(&self, context: &ConditionContext) -> bool {
-        self.target.get_entity(context).contains::<C>()
+        self.target.resolve_entity(context).contains::<C>()
     }
 }
 

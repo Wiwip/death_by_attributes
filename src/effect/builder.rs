@@ -3,7 +3,7 @@ use crate::attributes::Attribute;
 use crate::condition::{AttributeCondition, BoxCondition};
 use crate::effect::application::EffectApplicationPolicy;
 use crate::effect::{EffectExecution, EffectStackingPolicy};
-use crate::modifier::{ModifierFn, Mutator, Who};
+use crate::modifier::{ModifierFn, Modifier, Who};
 use crate::prelude::{AttributeCalculatorCached, AttributeModifier, DerivedModifier, Mod};
 use bevy::ecs::component::Mutable;
 use bevy::prelude::{Bundle, Component, Entity, EntityCommands, Name};
@@ -12,9 +12,9 @@ use fixed::prelude::{LossyFrom, LossyInto};
 
 pub struct EffectBuilder {
     effect_entity_commands: Vec<Box<ModifierFn>>,
-    effects: Vec<Box<dyn Mutator>>,
+    effects: Vec<Box<dyn Modifier>>,
     custom_execution: Option<Box<dyn EffectExecution>>,
-    modifiers: Vec<Box<dyn Mutator>>,
+    modifiers: Vec<Box<dyn Modifier>>,
     application: EffectApplicationPolicy,
     conditions: Vec<BoxCondition>,
     stacking_policy: EffectStackingPolicy,
@@ -57,17 +57,11 @@ impl EffectBuilder {
         ))
     }
 
-    pub fn modify<T: Attribute + Component<Mutability = Mutable>>(
+    pub fn modify<T: Attribute>(
         mut self,
         modifier: Mod<T::Property>,
         who: Who,
     ) -> Self {
-        self.effect_entity_commands.push(Box::new(
-            move |entity_mut: &mut EntityCommands, _: Entity| {
-                entity_mut.insert(AttributeCalculatorCached::<T>::default());
-            },
-        ));
-
         self.modifiers
             .push(Box::new(AttributeModifier::<T>::new(modifier, who, 1.0)));
         self
@@ -84,14 +78,8 @@ impl EffectBuilder {
     where
         S: Attribute,
         T: Attribute,
-        T::Property: LossyFrom<S::Property> + LossyInto<f64>,
+        T::Property: LossyFrom<S::Property>,
     {
-        self.effect_entity_commands.push(Box::new(
-            move |effect_entity: &mut EntityCommands, _: Entity| {
-                effect_entity.insert(AttributeCalculatorCached::<T>::default());
-            },
-        ));
-
         self.modifiers.push(Box::new(DerivedModifier::<S, T>::new(
             modifier,
             mod_target,
@@ -127,35 +115,6 @@ impl EffectBuilder {
         self.conditions.push(BoxCondition::new(predicate));
         self
     }
-
-    /*pub fn when_predicate(mut self, condition: impl crate::conditions::Condition + 'static) -> Self {
-        //self.conditions.push(ErasedCondition::new(condition));
-        self
-    }
-
-    pub fn with_tag_requirement<T: AttributeComponent + Component<Mutability = Mutable>>(
-        mut self,
-        condition_check: fn(f64) -> bool,
-    ) -> Self {
-        self.effects.push(Box::new(Condition::<T> {
-            _target: Default::default(),
-            condition_fn: condition_check,
-        }));
-        self
-    }
-
-    pub fn with_predicate<T: AttributeComponent + Component<Mutability = Mutable>>(
-        mut self,
-        condition_check: fn(f64) -> bool,
-    ) -> Self {
-
-
-        self.effects.push(Box::new(Condition::<T> {
-            _target: Default::default(),
-            condition_fn: condition_check,
-        }));
-        self
-    }*/
 
     pub fn with_execution_context(mut self, context: impl EffectExecution + 'static) -> Self {
         self.custom_execution = Some(Box::new(context));

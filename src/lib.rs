@@ -20,26 +20,27 @@ mod modifier;
 pub mod mutator;
 mod schedule;
 mod systems;
+mod trigger;
 
 use crate::ability::{Abilities, Ability, AbilityCooldown, AbilityOf, AbilityPlugin};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::attributes::{
-    Attribute, ReflectAccessAttribute, clamp_attributes_observer, on_add_attribute,
-    on_change_notify_attribute_dependencies, on_change_notify_attribute_parents,
+    Attribute, ReflectAccessAttribute, apply_derived_clamp_attributes, clamp_attributes_observer,
+    on_add_attribute, on_change_notify_attribute_dependencies, on_change_notify_attribute_parents,
 };
 use crate::condition::ConditionPlugin;
 use crate::effect::{EffectIntensity, EffectsPlugin};
 use crate::inspector::pretty_type_name;
 use crate::prelude::{
     AppliedEffects, ApplyAttributeModifierEvent, AttributeCalculatorCached, AttributeModifier,
-    Effect, EffectDuration, EffectSource, EffectSources, EffectTarget, EffectTicker, Mod, Stacks,
+    Effect, EffectDuration, EffectSource, EffectSources, EffectTarget, EffectTicker, Stacks,
     apply_modifier_events,
 };
 use crate::schedule::EffectsSet;
 use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
 
 pub mod prelude {
-    pub use crate::attributes::Attribute;
+    pub use crate::attributes::{Attribute, AttributeTypeId};
     pub use crate::effect::*;
     pub use crate::modifier::prelude::*;
     pub use crate::modifier::*;
@@ -56,14 +57,8 @@ impl Plugin for AttributesPlugin {
             .init_asset::<ActorDef>()
             .init_asset::<EffectDef>()
             .init_asset::<AbilityDef>()
-            //.add_event::<ApplyAttributeModifierEvent>()
             .register_type::<AppliedEffects>()
             .register_type::<EffectTarget>();
-
-        /*app.add_systems(
-            Update,
-            apply_modifier_events.in_set(EffectsSet::UpdateBaseValues),
-        );*/
 
         app.configure_sets(
             Update,
@@ -105,7 +100,12 @@ pub fn init_attribute<T: Attribute>(app: &mut App) {
 
     app.add_systems(
         Update,
-        update_effect_system::<T>.in_set(EffectsSet::UpdateCurrentValues),
+        (
+            update_effect_system::<T>,
+            apply_derived_clamp_attributes::<T>,
+        )
+            .chain()
+            .in_set(EffectsSet::UpdateCurrentValues),
     );
 
     app.add_systems(

@@ -1,29 +1,10 @@
-
 use crate::prelude::*;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use petgraph::visit::{Visitable};
 use petgraph::visit::{GraphBase, IntoNeighbors};
+use petgraph::visit::Visitable;
 use std::collections::HashSet;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
-pub struct AttributeTypeId(pub u64);
-
-impl AttributeTypeId {
-    pub fn of<T: TypePath>() -> Self {
-        let mut hasher = DefaultHasher::new();
-        T::type_path().hash(&mut hasher);
-        Self(hasher.finish())
-    }
-
-    pub fn from_reflect(reflect: &dyn Reflect) -> Self {
-        let mut hasher = DefaultHasher::new();
-        reflect.reflect_type_path().hash(&mut hasher);
-        Self(hasher.finish())
-    }
-}
+use std::hash::Hash;
 
 /// Attributes are Components and inserted on Entities.
 /// - Derived attributes could be used

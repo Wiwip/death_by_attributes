@@ -2,14 +2,11 @@ use crate::actors::Actor;
 use crate::attributes::{Attribute, AttributeQueryData};
 use crate::effect::Stacks;
 use crate::graph::{NodeType, QueryGraphAdapter};
-use crate::inspector::pretty_type_name;
 use crate::modifier::Who;
 use crate::prelude::*;
 use crate::{Dirty, OnAttributeValueChanged};
 use bevy::prelude::*;
-use fixed::prelude::LossyInto;
 use fixed::traits::Fixed;
-use fixed::types::{U16F0, U32F0};
 use petgraph::visit::IntoNeighbors;
 use std::any::type_name;
 use std::marker::PhantomData;
@@ -43,14 +40,14 @@ pub fn observe_dirty_node_notifications<T: Attribute>(
 }
 
 #[derive(Event)]
-pub struct NotifyAttributeChanged<T: Attribute> {
+pub struct NotifyAttributeDependencyChanged<T: Attribute> {
     pub base_value: T::Property,
     pub current_value: T::Property,
     pub phantom_data: PhantomData<T>,
 }
 
 pub fn on_change_attribute_observer<S: Attribute, T: Attribute>(
-    trigger: Trigger<NotifyAttributeChanged<S>>,
+    trigger: Trigger<NotifyAttributeDependencyChanged<S>>,
     mut attribute_modifiers_query: Query<(Entity, &mut AttributeModifier<T>)>,
     mut commands: Commands,
 ) {

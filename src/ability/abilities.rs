@@ -3,8 +3,8 @@ use crate::ability::{Ability, AbilityActivationFn, AbilityCooldown};
 use crate::assets::AbilityDef;
 use crate::attributes::Attribute;
 use crate::condition::{AttributeCondition, BoxCondition};
-use crate::modifier::{Mutator, Who};
-use crate::mutator::EntityMutator;
+use crate::modifier::{Modifier, Who};
+use crate::mutator::EntityActions;
 use crate::prelude::{AttributeModifier, Mod};
 use bevy::asset::{Assets, Handle};
 use bevy::ecs::world::CommandQueue;
@@ -50,9 +50,9 @@ impl EntityCommand for GrantAbilityCommand {
 
 pub struct AbilityBuilder {
     name: String,
-    mutators: Vec<EntityMutator>,
+    mutators: Vec<EntityActions>,
     cost_condition: Vec<BoxCondition>,
-    cost_mods: Vec<Box<dyn Mutator>>,
+    cost_mods: Vec<Box<dyn Modifier>>,
     activation_fn: AbilityActivationFn,
 }
 
@@ -87,7 +87,7 @@ impl AbilityBuilder {
     }
 
     pub fn with_cooldown(mut self, seconds: f32) -> Self {
-        self.mutators.push(EntityMutator::new(
+        self.mutators.push(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
                 entity_commands.insert(AbilityCooldown(Timer::from_seconds(
                     seconds,
@@ -107,7 +107,7 @@ impl AbilityBuilder {
     }
 
     pub fn with_tag<T: Component + Default>(mut self) -> Self {
-        self.mutators.push(EntityMutator::new(
+        self.mutators.push(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
                 entity_commands.insert(T::default());
             },

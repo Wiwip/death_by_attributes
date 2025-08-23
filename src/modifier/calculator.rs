@@ -4,10 +4,10 @@ use bevy::prelude::*;
 use fixed::prelude::ToFixed;
 use fixed::traits::Fixed;
 use std::fmt::{Debug, Display, Formatter};
-use std::marker::PhantomData;
 use std::ops::Mul;
+use serde::{Serialize};
 
-#[derive(Debug, Clone, Copy, Reflect)]
+#[derive(Debug, Clone, Copy, Reflect, Serialize)]
 pub enum Mod<M: Fixed + ToFixed> {
     Set(M),
     Add(M),

@@ -3,13 +3,13 @@ mod calculator;
 mod derived_modifier;
 mod events;
 
-use crate::attributes::Attribute;
+use crate::attributes::{Attribute};
 use crate::condition::ConditionContext;
-use crate::graph::AttributeTypeId;
 use crate::inspector::pretty_type_name;
-use crate::prelude::AttributeModifier;
+use crate::prelude::{AttributeModifier, AttributeTypeId};
 use crate::{AttributesMut, AttributesRef};
 use bevy::prelude::{Commands, Component, Entity, EntityCommands, Reflect, reflect_trait};
+use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Formatter};
 
 pub mod prelude {
@@ -25,12 +25,11 @@ pub type ModifierFn = dyn Fn(&mut EntityCommands, Entity) + Send + Sync;
 #[derive(Component, Default, Copy, Clone, Debug, Reflect)]
 pub struct ModifierMarker;
 
-pub trait Mutator: Send + Sync {
+pub trait Modifier: Send + Sync {
     fn spawn(&self, commands: &mut Commands, actor_entity: AttributesRef) -> Entity;
     fn apply(&self, actor_entity: &mut AttributesMut) -> bool;
+    fn write_event(&self, target: Entity, commands: &mut Commands);
     fn who(&self) -> Who;
-    //fn modifier(&self) -> Mod<T::Property>;
-    //fn as_accessor(&self) -> BoxAttributeAccessor<T>;
     fn attribute_type_id(&self) -> AttributeTypeId;
 }
 
@@ -52,7 +51,7 @@ where
     }
 }
 
-#[derive(Copy, Clone, Reflect)]
+#[derive(Copy, Clone, Reflect, Serialize, Deserialize)]
 pub enum Who {
     Target,
     Source,
@@ -61,7 +60,7 @@ pub enum Who {
 
 impl Who {
     /// Resolves the `Who` variant to a specific entity from the context.
-    pub fn get_entity<'a>(&self, context: &'a ConditionContext<'a>) -> &'a AttributesRef<'a> {
+    pub fn resolve_entity<'a>(&self, context: &'a ConditionContext<'a>) -> &'a AttributesRef<'a> {
         match self {
             Who::Target => context.target_actor,
             Who::Source => context.source_actor,
