@@ -49,7 +49,11 @@ impl<'s, 'w> EffectContext<'w, 's> {
         handle
     }
 
-    pub fn apply_dynamic_effect_to_self(&mut self, source: Entity, effect: EffectDef) -> Handle<EffectDef> {
+    pub fn apply_dynamic_effect_to_self(
+        &mut self,
+        source: Entity,
+        effect: EffectDef,
+    ) -> Handle<EffectDef> {
         self.apply_dynamic_effect_to_target(source, source, effect)
     }
 

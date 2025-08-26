@@ -1,16 +1,15 @@
-
+use crate::actors::Actor;
 use crate::attributes::ReflectAccessAttribute;
+use crate::effect::Stacks;
 use crate::inspector::pretty_type_name_str;
 use crate::modifier::{ModifierMarker, ReflectAccessModifier};
+use crate::prelude::{AppliedEffects, Attribute, Effect};
 use bevy::ecs::component::{ComponentId, Components};
 use bevy::prelude::*;
 use bevy::reflect::ReflectFromPtr;
 use bevy_inspector_egui::restricted_world_view::Error;
 use ptree::{TreeBuilder, write_tree};
 use std::any::TypeId;
-use crate::actors::Actor;
-use crate::effect::Stacks;
-use crate::prelude::{Effect, AppliedEffects, Attribute};
 
 #[derive(Component, Copy, Clone)]
 pub struct DebugOverlayMarker;
@@ -153,7 +152,10 @@ fn list_effects(
             Some(name) => name,
         };
 
-        builder.begin_child(format!("[{effect_entity}] {name} [{}]", stacks.current_value()));
+        builder.begin_child(format!(
+            "[{effect_entity}] {name} [{}]",
+            stacks.current_value()
+        ));
 
         let Some(modifiers) = modifiers else {
             continue;

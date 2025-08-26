@@ -4,9 +4,9 @@ use crate::modifier::Modifier;
 use crate::prelude::{AppliedEffects, Effect};
 use crate::{AttributesMut, AttributesRef};
 use bevy::prelude::*;
+use fixed::prelude::LossyInto;
 use std::any::TypeId;
 use std::collections::HashMap;
-use fixed::prelude::LossyInto;
 
 #[derive(Component)]
 pub struct CalculationContext<'a> {

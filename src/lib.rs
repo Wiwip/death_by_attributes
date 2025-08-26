@@ -37,14 +37,18 @@ use crate::prelude::{
     apply_modifier_events,
 };
 use crate::schedule::EffectsSet;
-use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
+use bevy::ecs::world::{EntityMutExcept, EntityRefExcept, FilteredEntityRef};
 
 pub mod prelude {
-    pub use crate::attributes::{Attribute, AttributeTypeId};
+    pub use crate::attributes::{
+        AccessAttribute, Attribute, AttributeTypeId, ReflectAccessAttribute,
+    };
     pub use crate::effect::*;
     pub use crate::modifier::prelude::*;
     pub use crate::modifier::*;
 }
+
+pub use {fixed, paste};
 
 pub struct AttributesPlugin;
 
@@ -169,6 +173,7 @@ pub type AttributesRef<'w> = EntityRefExcept<
         AbilityCooldown,
     ),
 >;
+
 
 #[derive(Component, Copy, Clone, Debug)]
 #[component(storage = "SparseSet")]

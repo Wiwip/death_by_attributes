@@ -62,7 +62,7 @@ impl Effect {
     pub fn instant() -> EffectBuilder {
         EffectBuilder::new(EffectApplicationPolicy::Instant)
     }
-    
+
     pub fn permanent() -> EffectBuilder {
         EffectBuilder::new(EffectApplicationPolicy::Permanent)
     }
@@ -77,7 +77,8 @@ impl Effect {
 
     pub fn temporary_ticking(tick_rate_secs: f32, duration: f32) -> EffectBuilder {
         EffectBuilder::new(EffectApplicationPolicy::every_seconds_for_duration(
-            tick_rate_secs, duration,
+            tick_rate_secs,
+            duration,
         ))
     }
 }

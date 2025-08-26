@@ -3,12 +3,11 @@ use crate::attributes::Attribute;
 use crate::condition::{AttributeCondition, BoxCondition};
 use crate::effect::application::EffectApplicationPolicy;
 use crate::effect::{EffectExecution, EffectStackingPolicy};
-use crate::modifier::{ModifierFn, Modifier, Who};
-use crate::prelude::{AttributeCalculatorCached, AttributeModifier, DerivedModifier, Mod};
-use bevy::ecs::component::Mutable;
-use bevy::prelude::{Bundle, Component, Entity, EntityCommands, Name};
-use std::ops::RangeBounds;
+use crate::modifier::{Modifier, ModifierFn, Who};
+use crate::prelude::{AttributeModifier, DerivedModifier, Mod};
+use bevy::prelude::{Bundle, Entity, EntityCommands, Name};
 use fixed::prelude::{LossyFrom, LossyInto};
+use std::ops::RangeBounds;
 
 pub struct EffectBuilder {
     effect_entity_commands: Vec<Box<ModifierFn>>,
@@ -57,11 +56,7 @@ impl EffectBuilder {
         ))
     }
 
-    pub fn modify<T: Attribute>(
-        mut self,
-        modifier: Mod<T::Property>,
-        who: Who,
-    ) -> Self {
+    pub fn modify<T: Attribute>(mut self, modifier: Mod<T::Property>, who: Who) -> Self {
         self.modifiers
             .push(Box::new(AttributeModifier::<T>::new(modifier, who, 1.0)));
         self
@@ -70,11 +65,7 @@ impl EffectBuilder {
     /// Spawns an observer watching the actor's attributes on the modifier entity.
     /// When OnValueChanged is triggered, it takes the current value of the attribute,
     /// it applies the scaling factor and updates the modifier's value to the new value.
-    pub fn modify_from<S, T>(
-        mut self,
-        modifier: Mod<T::Property>,
-        mod_target: Who,
-    ) -> Self
+    pub fn modify_from<S, T>(mut self, modifier: Mod<T::Property>, mod_target: Who) -> Self
     where
         S: Attribute,
         T: Attribute,
@@ -93,7 +84,10 @@ impl EffectBuilder {
         self
     }
 
-    pub fn while_condition(mut self, condition: impl crate::condition::Condition + 'static) -> Self {
+    pub fn while_condition(
+        mut self,
+        condition: impl crate::condition::Condition + 'static,
+    ) -> Self {
         self.conditions.push(BoxCondition::new(condition));
         self
     }

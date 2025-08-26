@@ -20,16 +20,16 @@ pub struct ConditionPlugin;
 impl Plugin for ConditionPlugin {
     fn build(&self, app: &mut App) {
         // This system is responsible for checking conditions and
-        // activating/deactivating effects.
+        // activating/deactivating their related effects.
         app.add_systems(PreUpdate, evaluate_effect_conditions);
     }
 }
 
 pub trait Condition: Send + Sync + 'static {
-    fn evaluate(&self, context: &ConditionContext) -> bool;
+    fn eval(&self, context: &ConditionContext) -> bool;
 }
 
-pub struct BoxCondition(pub(crate) Box<dyn Condition>);
+pub struct BoxCondition(pub Box<dyn Condition>);
 
 impl BoxCondition {
     pub fn new<C: Condition + 'static>(condition: C) -> Self {
@@ -42,6 +42,7 @@ pub struct ConditionContext<'a> {
     pub source_actor: &'a AttributesRef<'a>,
     pub owner: &'a AttributesRef<'a>,
 }
+
 
 pub fn convert_bounds<T: Attribute, R>(
     bounds: impl RangeBounds<R>,

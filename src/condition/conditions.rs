@@ -1,6 +1,6 @@
 use crate::ability::Ability;
 use crate::assets::AbilityDef;
-use crate::attributes::{Attribute, AttributeExtractor, BoxAttributeAccessor};
+use crate::attributes::{Attribute, AttributeAccessor, AttributeExtractor};
 use crate::condition::{Condition, ConditionContext, convert_bounds};
 use crate::effect::Stacks;
 use crate::inspector::pretty_type_name;
@@ -9,16 +9,16 @@ use bevy::asset::AssetId;
 use bevy::log::error;
 use bevy::prelude::{Component, TypePath};
 use fixed::prelude::ToFixed;
+use serde::Serialize;
 use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::ops::{Bound, RangeBounds};
 
 pub type StackCondition = AttributeCondition<Stacks>;
 
-#[derive(TypePath)]
+#[derive(TypePath, Serialize)]
 pub struct AttributeCondition<T: Attribute> {
     who: Who,
-    extractor: BoxAttributeAccessor<T::Property>,
     bounds: (Bound<T::Property>, Bound<T::Property>),
 }
 
@@ -28,11 +28,7 @@ impl<T: Attribute> AttributeCondition<T> {
         R: ToFixed + Copy,
     {
         let bounds = convert_bounds::<T, R>(range);
-        Self {
-            who,
-            extractor: BoxAttributeAccessor::new(AttributeExtractor::<T>::new()),
-            bounds,
-        }
+        Self { who, bounds }
     }
 
     pub fn target(range: impl RangeBounds<T::Property> + Send + Sync + 'static) -> Self {
@@ -45,10 +41,11 @@ impl<T: Attribute> AttributeCondition<T> {
 }
 
 impl<T: Attribute> Condition for AttributeCondition<T> {
-    fn evaluate(&self, context: &ConditionContext) -> bool {
+    fn eval(&self, context: &ConditionContext) -> bool {
         let entity = self.who.resolve_entity(context);
 
-        match self.extractor.0.current_value(entity) {
+        let extractor = AttributeExtractor::<T>::new();
+        match extractor.current_value(entity) {
             Ok(value) => self.bounds.contains(&value),
             Err(e) => {
                 error!("Error evaluating attribute condition: {:?}", e);
@@ -77,47 +74,13 @@ impl<T: Attribute> std::fmt::Display for AttributeCondition<T> {
         write!(
             f,
             "Attribute {} on {:?} in range {}, {}",
-            self.extractor.0.name(),
+            pretty_type_name::<T>(),
             self.who,
             start_str,
             end_str
         )
     }
 }
-
-/*#[derive(Clone)]
-pub struct StackCondition {
-    pub bounds: (Bound<u32>, Bound<u32>),
-}
-
-impl StackCondition {
-    pub fn new(range: impl RangeBounds<u32> + Send + Sync + 'static) -> Self {
-        Self {
-            bounds: (range.start_bound().cloned(), range.end_bound().cloned()),
-        }
-    }
-}
-
-impl std::fmt::Display for StackCondition {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "StackCondition with bounds: {:?}", self.bounds)
-    }
-}
-
-impl Condition for StackCondition {
-    fn evaluate(&self, context: &ConditionContext) -> bool {
-        match context.owner.get::<Stacks>() {
-            Some(value) => self.bounds.contains(&(value.current_value())),
-            None => {
-                error!(
-                    "Effect {}: StackCondition requires a Stacks component.",
-                    context.owner.id()
-                );
-                false
-            }
-        }
-    }
-}*/
 
 pub struct And<C1, C2> {
     c1: C1,
@@ -129,8 +92,8 @@ where
     C1: Condition,
     C2: Condition,
 {
-    fn evaluate(&self, value: &ConditionContext) -> bool {
-        self.c1.evaluate(value) && self.c2.evaluate(value)
+    fn eval(&self, value: &ConditionContext) -> bool {
+        self.c1.eval(value) && self.c2.eval(value)
     }
 }
 
@@ -144,16 +107,16 @@ where
     C1: Condition,
     C2: Condition,
 {
-    fn evaluate(&self, context: &ConditionContext) -> bool {
-        self.c1.evaluate(context) || self.c2.evaluate(context)
+    fn eval(&self, context: &ConditionContext) -> bool {
+        self.c1.eval(context) || self.c2.eval(context)
     }
 }
 
 pub struct Not<C>(C);
 
 impl<C: Condition> Condition for Not<C> {
-    fn evaluate(&self, context: &ConditionContext) -> bool {
-        !self.0.evaluate(context)
+    fn eval(&self, context: &ConditionContext) -> bool {
+        !self.0.eval(context)
     }
 }
 
@@ -183,7 +146,7 @@ where
     F: Fn(&ConditionContext) -> bool + Send + Sync + 'static,
 {
     /// Evaluates the condition by calling the wrapped function.
-    fn evaluate(&self, context: &ConditionContext) -> bool {
+    fn eval(&self, context: &ConditionContext) -> bool {
         (self.f)(context)
     }
 }
@@ -215,7 +178,7 @@ impl<C: Component> TagCondition<C> {
 }
 
 impl<C: Component> Condition for TagCondition<C> {
-    fn evaluate(&self, context: &ConditionContext) -> bool {
+    fn eval(&self, context: &ConditionContext) -> bool {
         self.target.resolve_entity(context).contains::<C>()
     }
 }
@@ -231,7 +194,7 @@ impl AbilityCondition {
 }
 
 impl Condition for AbilityCondition {
-    fn evaluate(&self, context: &ConditionContext) -> bool {
+    fn eval(&self, context: &ConditionContext) -> bool {
         context
             .owner
             .get::<Ability>()

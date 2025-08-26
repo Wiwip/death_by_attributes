@@ -1,6 +1,7 @@
 use crate::ability::{Abilities, Ability, AbilityCooldown, TargetData, TryActivateAbility};
 use crate::assets::AbilityDef;
 use crate::condition::{BoxCondition, ConditionContext};
+use crate::trigger::{StoredCondition};
 use crate::{AttributesMut, AttributesRef};
 use bevy::asset::Assets;
 use bevy::prelude::*;
@@ -23,7 +24,7 @@ pub fn try_activate_ability_observer(
     for &ability_entity in actor_abilities.0.iter() {
         let (ability_ref, ability, cooldown) = abilities.get(ability_entity)?;
         let target_entity_ref = match trigger.target_data {
-            TargetData::Own => source_actor_ref,
+            TargetData::SelfCast => source_actor_ref,
             TargetData::Target(target) => actors.get(target)?.0,
         };
 
@@ -64,12 +65,12 @@ fn can_activate_ability(
     ability_def: &AbilityDef,
     conditions: &BoxCondition,
 ) -> Result<bool, BevyError> {
-    let evaluation_context = ConditionContext {
+    let context = ConditionContext {
         target_actor: &target_entity_ref,
         source_actor: &source_entity_ref,
         owner: &ability_entity,
     };
-    let meet_conditions = conditions.0.evaluate(&evaluation_context);
+    let meet_conditions = conditions.0.eval(&context);
     if !meet_conditions {
         debug!("Ability conditions not met!");
         return Ok(false);
@@ -78,7 +79,8 @@ fn can_activate_ability(
     let can_activate = ability_def
         .cost
         .iter()
-        .all(|condition| condition.0.evaluate(&evaluation_context));
+        .all(|condition| condition.0.eval(&context));
+
     if !can_activate {
         debug!("Insufficient resources to activate ability!");
         return Ok(false);

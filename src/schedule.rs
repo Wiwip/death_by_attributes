@@ -1,7 +1,6 @@
 use bevy::ecs::schedule::ScheduleLabel;
 use bevy::prelude::SystemSet;
 
-
 // PreUpdate
 // Tick effects and remove those that expired
 

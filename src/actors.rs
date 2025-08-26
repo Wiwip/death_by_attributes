@@ -1,4 +1,3 @@
-use fixed::traits::Fixed;
 use crate::OnAttributeValueChanged;
 use crate::ability::{AbilityOf, GrantAbilityCommand};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
@@ -11,6 +10,7 @@ use crate::prelude::{ApplyEffectEvent, AttributeCalculatorCached};
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use fixed::prelude::{LossyInto, ToFixed};
+use fixed::traits::Fixed;
 use std::ops::RangeBounds;
 
 #[derive(Component, Clone, Debug)]
@@ -143,10 +143,7 @@ impl ActorBuilder {
                 let mut observer = Observer::new(derived_clamp_attributes_observer::<S, T>);
                 observer.watch_entity(entity_commands.id());
 
-                entity_commands.insert((
-                    DerivedClamp::<T>::new(bounds),
-                    children![observer],
-                ));
+                entity_commands.insert((DerivedClamp::<T>::new(bounds), children![observer]));
             },
         ));
 

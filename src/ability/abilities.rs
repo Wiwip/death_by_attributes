@@ -22,7 +22,7 @@ impl EntityCommand for GrantAbilityCommand {
             // Create a temporary scope to borrow the world
             let world = entity.world();
             let actor_assets = world.resource::<Assets<AbilityDef>>();
-            actor_assets.get(&self.handle).unwrap() //.clone() // Clone if needed
+            actor_assets.get(&self.handle).unwrap()
         }; // World borrow ends here
 
         let mut queue = {
@@ -83,6 +83,9 @@ impl AbilityBuilder {
 
         let condition = AttributeCondition::<C>::source(fixed_cost..);
         self.cost_condition.push(BoxCondition::new(condition));
+        /*self.cost_condition.push(Box::new(
+            (move |attribute: &C| attribute.current_value() >= fixed_cost).into_condition(),
+        ));*/
         self
     }
 
@@ -121,6 +124,7 @@ impl AbilityBuilder {
             description: "".to_string(),
             mutators: self.mutators,
             cost: self.cost_condition,
+            condition: vec![],
             cost_effects: self.cost_mods,
             activation_fn: self.activation_fn,
         }

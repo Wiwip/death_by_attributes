@@ -8,7 +8,6 @@ use bevy::ecs::component::Mutable;
 use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
 use bevy::reflect::GetTypeRegistration;
-use bevy::ui::debug::print_ui_layout_tree;
 use bevy_inspector_egui::__macro_exports::bevy_reflect::ReflectRemote;
 use fixed::prelude::{LossyInto, ToFixed};
 use fixed::traits::Fixed;
@@ -17,7 +16,7 @@ use fixed::types::{
     U16F0, U16F16, U24F8, U32F0, U32F32, U64F0,
 };
 use serde::Serialize;
-use std::any::{TypeId, type_name};
+use std::any::TypeId;
 use std::collections::{Bound, HashSet};
 use std::fmt::Display;
 use std::fmt::{Debug, Formatter};
@@ -56,38 +55,16 @@ pub trait Attribute:
 }
 
 #[macro_export]
-macro_rules! attribute {
-    ( $StructName:ident ) => {
-        $crate::attribute!($StructName, U24F8);
-    };
-    ( $StructName:ident, f16 ) => {
-        $crate::attribute!($StructName, U12F4);
-    };
-    ( $StructName:ident, f32 ) => {
-        $crate::attribute!($StructName, U16F16);
-    };
-    ( $StructName:ident, u8 ) => {
-        $crate::attribute!($StructName, U8F0);
-    };
-    ( $StructName:ident, u16 ) => {
-        $crate::attribute!($StructName, U16F0);
-    };
-    ( $StructName:ident, u32 ) => {
-        $crate::attribute!($StructName, U32F0);
-    };
-    ( $StructName:ident, u64 ) => {
-        $crate::attribute!($StructName, U64F0);
-    };
-
-    ( $StructName:ident, $ValueType:ty ) => {
-        ::paste::paste! {
+macro_rules! attribute_impl {
+    ( $StructName:ident, $ValueType:path, $ValueTypeProxy:ident ) => {
+        $crate::paste::paste! {
             #[derive(bevy::prelude::Component, Clone, Copy, bevy::prelude::Reflect, Debug)]
             #[derive(serde::Serialize)]
             #[reflect(AccessAttribute)]
             pub struct $StructName {
-                #[reflect(remote = $crate::attributes::[<$ValueType Proxy>])]
+                #[reflect(remote = $crate::attributes::[<$ValueTypeProxy Proxy>])]
                 base_value: $ValueType,
-                #[reflect(remote = $crate::attributes::[<$ValueType Proxy>])]
+                #[reflect(remote = $crate::attributes::[<$ValueTypeProxy Proxy>])]
                 current_value: $ValueType,
             }
         }
@@ -95,7 +72,7 @@ macro_rules! attribute {
         impl $crate::attributes::Attribute for $StructName {
             type Property = $ValueType;
 
-            fn new<T: ::fixed::prelude::ToFixed + Copy>(value: T) -> Self {
+            fn new<T: $crate::fixed::prelude::ToFixed + Copy>(value: T) -> Self {
                 Self {
                     base_value: value.to_fixed(),
                     current_value: value.to_fixed(),
@@ -117,6 +94,73 @@ macro_rules! attribute {
                 $crate::prelude::AttributeTypeId::of::<Self>()
             }
         }
+    };
+    ( $StructName:ident, $ValueType:ident ) => {
+        $crate::paste::paste! {
+            #[derive(bevy::prelude::Component, Clone, Copy, bevy::prelude::Reflect, Debug)]
+            #[derive(serde::Serialize)]
+            #[reflect(AccessAttribute)]
+            pub struct $StructName {
+                #[reflect(remote = $crate::attributes::[<$ValueType Proxy>])]
+                base_value: $ValueType,
+                #[reflect(remote = $crate::attributes::[<$ValueType Proxy>])]
+                current_value: $ValueType,
+            }
+        }
+
+        impl $crate::attributes::Attribute for $StructName {
+            type Property = $ValueType;
+
+            fn new<T: $crate::fixed::prelude::ToFixed + Copy>(value: T) -> Self {
+                Self {
+                    base_value: value.to_fixed(),
+                    current_value: value.to_fixed(),
+                }
+            }
+            fn base_value(&self) -> $ValueType {
+                self.base_value
+            }
+            fn set_base_value(&mut self, value: $ValueType) {
+                self.base_value = value;
+            }
+            fn current_value(&self) -> $ValueType {
+                self.current_value
+            }
+            fn set_current_value(&mut self, value: $ValueType) {
+                self.current_value = value;
+            }
+            fn attribute_type_id() -> $crate::prelude::AttributeTypeId {
+                $crate::prelude::AttributeTypeId::of::<Self>()
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! attribute {
+    ( $StructName:ident ) => {
+        $crate::attribute_impl!($StructName, $crate::fixed::types::U24F8, U24F8);
+    };
+    ( $StructName:ident, f16 ) => {
+        $crate::attribute_impl!($StructName, $crate::fixed::types::U12F4, U12F4);
+    };
+    ( $StructName:ident, f32 ) => {
+        $crate::attribute_impl!($StructName, $crate::fixed::types::U24F8, U24F8);
+    };
+    ( $StructName:ident, u8 ) => {
+        $crate::attribute_impl!($StructName, $crate::fixed::types::U8F0, U8F0);
+    };
+    ( $StructName:ident, u16 ) => {
+        $crate::attribute_impl!($StructName, $crate::fixed::types::U16F0, U16F0);
+    };
+    ( $StructName:ident, u32 ) => {
+        $crate::attribute_impl!($StructName, $crate::fixed::types::U32F0, U32F0);
+    };
+    ( $StructName:ident, u64 ) => {
+        $crate::attribute_impl!($StructName, $crate::fixed::types::U64F0, U64F0);
+    };
+    ( $StructName:ident, $ValueType:ident  ) => {
+        $crate::attribute_impl!($StructName, $ValueType);
     };
 }
 
@@ -248,7 +292,6 @@ pub(crate) fn clamp_attributes_observer<T: Attribute>(
 }
 
 fn bound_clamp<V: Fixed>(value: V, clamp: impl RangeBounds<V>) -> V {
-       
     let value = match clamp.start_bound() {
         Bound::Included(&min) => value.max(min),
         Bound::Excluded(&min) => value.max(min + V::MIN),

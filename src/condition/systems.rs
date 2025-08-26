@@ -5,7 +5,7 @@ use crate::prelude::{Effect, EffectInactive, EffectSource, EffectTarget};
 use bevy::asset::Assets;
 use bevy::ecs::relationship::Relationship;
 use bevy::log::error;
-use bevy::prelude::{BevyError, Commands, OnAdd, OnRemove, Query, Res, Trigger};
+use bevy::prelude::*;
 
 pub fn evaluate_effect_conditions(
     mut query: Query<(
@@ -56,7 +56,7 @@ pub fn evaluate_effect_conditions(
         let should_be_active = effect
             .conditions
             .iter()
-            .all(|condition| condition.0.evaluate(&context));
+            .all(|condition| condition.0.eval(&context));
 
         let is_inactive = status.is_some();
         if should_be_active && is_inactive {
@@ -70,21 +70,3 @@ pub fn evaluate_effect_conditions(
         }
     }
 }
-
-/*fn on_add_effect_inactive(
-    trigger: Trigger<OnAdd>,
-    mut query: Query<&mut EntityGraph>,
-) -> Result<(), BevyError> {
-    let graph = query.get_mut(trigger.target())?;
-    graph.set_status(true, trigger.target());
-    Ok(())
-}
-
-fn on_remove_effect_inactive(
-    trigger: Trigger<OnRemove>,
-    mut query: Query<&mut EntityGraph>,
-) -> Result<(), BevyError> {
-    let graph = query.get_mut(trigger.target())?;
-    graph.set_status(false, trigger.target());
-    Ok(())
-}*/

@@ -3,7 +3,7 @@ mod calculator;
 mod derived_modifier;
 mod events;
 
-use crate::attributes::{Attribute};
+use crate::attributes::Attribute;
 use crate::condition::ConditionContext;
 use crate::inspector::pretty_type_name;
 use crate::prelude::{AttributeModifier, AttributeTypeId};

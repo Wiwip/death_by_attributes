@@ -1,5 +1,5 @@
 use crate::attributes::{Attribute, AttributeExtractor, BoxAttributeAccessor};
-use crate::graph::{NodeType};
+use crate::graph::NodeType;
 use crate::modifier::calculator::AttributeCalculator;
 use crate::modifier::{Modifier, Who};
 use crate::prelude::*;
@@ -101,7 +101,7 @@ where
             attribute: BoxAttributeAccessor::new(AttributeExtractor::<T>::new()),
         });
     }
-    
+
     /*fn modifier(&self) -> Mod<T::Property> {
         self.modifier
     }

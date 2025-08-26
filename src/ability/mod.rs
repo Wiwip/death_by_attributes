@@ -6,9 +6,10 @@ use crate::ability::systems::{
     activate_ability, reset_ability_cooldown, tick_ability_cooldown, try_activate_ability_observer,
 };
 use crate::assets::AbilityDef;
-use crate::condition::{AbilityCondition, BoxCondition, TagCondition};
 use bevy::prelude::*;
 
+use crate::condition::{AbilityCondition, BoxCondition, TagCondition};
+use crate::prelude::Who;
 pub use abilities::{AbilityBuilder, GrantAbilityCommand};
 
 pub struct AbilityPlugin;
@@ -64,6 +65,6 @@ impl TryActivateAbility {
 pub struct AbilityCooldown(pub Timer);
 
 pub enum TargetData {
-    Own,
+    SelfCast,
     Target(Entity),
 }

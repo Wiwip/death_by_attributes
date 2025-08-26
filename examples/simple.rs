@@ -142,6 +142,7 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
         Effect::permanent()
             .name("MagicPower Buff".into())
             .modify::<MagicPower>(Mod::add(10.0), Who::Target)
+            //.if_condition(|hp: &Health| hp.current_value() > 120)
             .while_condition(cond)
             .with_stacking_policy(EffectStackingPolicy::Add {
                 count: 1.to_fixed(),
@@ -166,7 +167,7 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
             .name("Health Regen".into())
             .modify::<Health>(Mod::add(3.0), Who::Target)
             .modify_from::<HealthRegen, Health>(Mod::add(1.0), Who::Target)
-            .modify_from::<ManaRegen, Mana>(Mod::add(0.22), Who::Target)
+            .modify_from::<ManaRegen, Mana>(Mod::add(1.0), Who::Target)
             .build(),
     );
 
@@ -231,9 +232,9 @@ fn setup_actor(
             .with::<MaxHealth>(200.0)
             .with::<HealthRegen>(2.0)
             .with::<Mana>(100.0)
-            .clamp_from::<ManaPool, Mana>(5.1..=1.0)
+            .clamp_from::<ManaPool, Mana>(..=1.0)
             .with::<ManaPool>(100.0)
-            .with::<ManaRegen>(8.0)
+            .with::<ManaRegen>(1.0)
             .with::<MagicPower>(1.0)
             .with::<AttackPower>(0.0)
             .with::<Armour>(0.10)
@@ -277,12 +278,12 @@ fn inputs(
         if keys.just_pressed(KeyCode::KeyQ) {
             commands
                 .entity(player_entity)
-                .trigger(TryActivateAbility::by_tag::<Fire>(TargetData::Own));
+                .trigger(TryActivateAbility::by_tag::<Fire>(TargetData::SelfCast));
         }
         if keys.just_pressed(KeyCode::KeyE) {
             commands
                 .entity(player_entity)
-                .trigger(TryActivateAbility::by_tag::<Frost>(TargetData::Own));
+                .trigger(TryActivateAbility::by_tag::<Frost>(TargetData::SelfCast));
         }
         if keys.just_pressed(KeyCode::Backspace) {
             commands.trigger_targets(DamageEvent { damage: 10.0 }, player_entity);

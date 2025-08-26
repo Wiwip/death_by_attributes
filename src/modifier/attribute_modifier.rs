@@ -1,18 +1,18 @@
 use crate::attributes::AccessAttribute;
 use crate::attributes::{Attribute, AttributeExtractor, BoxAttributeAccessor};
-use crate::graph::{ NodeType};
+use crate::graph::NodeType;
 use crate::inspector::pretty_type_name;
 use crate::modifier::calculator::{AttributeCalculator, Mod};
-use crate::modifier::{ModifierMarker, Modifier};
+use crate::modifier::{Modifier, ModifierMarker};
 use crate::modifier::{ReflectAccessModifier, Who};
 use crate::prelude::{ApplyAttributeModifierEvent, AttributeTypeId, EffectSource, EffectTarget};
 use crate::{AttributesMut, AttributesRef};
 use bevy::prelude::*;
 use fixed::traits::Fixed;
+use serde::Serialize;
 use std::any::type_name;
 use std::fmt::Debug;
 use std::fmt::Display;
-use serde::Serialize;
 
 #[derive(Component, Copy, Clone, Debug, Reflect, Serialize)]
 #[reflect(AccessModifier)]
