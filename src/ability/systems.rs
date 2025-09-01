@@ -1,7 +1,6 @@
 use crate::ability::{Abilities, Ability, AbilityCooldown, TargetData, TryActivateAbility};
 use crate::assets::AbilityDef;
 use crate::condition::{BoxCondition, ConditionContext};
-use crate::trigger::{StoredCondition};
 use crate::{AttributesMut, AttributesRef};
 use bevy::asset::Assets;
 use bevy::prelude::*;
@@ -70,7 +69,7 @@ fn can_activate_ability(
         source_actor: &source_entity_ref,
         owner: &ability_entity,
     };
-    let meet_conditions = conditions.0.eval(&context);
+    let meet_conditions = conditions.0.eval(&context).unwrap_or(false);
     if !meet_conditions {
         debug!("Ability conditions not met!");
         return Ok(false);
@@ -79,7 +78,7 @@ fn can_activate_ability(
     let can_activate = ability_def
         .cost
         .iter()
-        .all(|condition| condition.0.eval(&context));
+        .all(|condition| condition.0.eval(&context).unwrap_or(false));
 
     if !can_activate {
         debug!("Insufficient resources to activate ability!");

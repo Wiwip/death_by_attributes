@@ -7,7 +7,7 @@ use crate::systems::on_change_attribute_observer;
 use crate::{AttributesMut, AttributesRef};
 use bevy::log::debug;
 use bevy::prelude::{Commands, Entity, Name, Observer, Reflect};
-use fixed::prelude::{LossyFrom, LossyInto};
+use fixed::prelude::{LossyFrom};
 use fixed::traits::Fixed;
 use std::any::type_name;
 use std::marker::PhantomData;

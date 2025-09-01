@@ -9,7 +9,6 @@ use crate::assets::AbilityDef;
 use bevy::prelude::*;
 
 use crate::condition::{AbilityCondition, BoxCondition, TagCondition};
-use crate::prelude::Who;
 pub use abilities::{AbilityBuilder, GrantAbilityCommand};
 
 pub struct AbilityPlugin;

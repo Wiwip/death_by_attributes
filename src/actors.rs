@@ -1,4 +1,3 @@
-use crate::OnAttributeValueChanged;
 use crate::ability::{AbilityOf, GrantAbilityCommand};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::attributes::{Attribute, Clamp, DerivedClamp, derived_clamp_attributes_observer};
@@ -10,7 +9,6 @@ use crate::prelude::{ApplyEffectEvent, AttributeCalculatorCached};
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use fixed::prelude::{LossyInto, ToFixed};
-use fixed::traits::Fixed;
 use std::ops::RangeBounds;
 
 #[derive(Component, Clone, Debug)]

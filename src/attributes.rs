@@ -59,7 +59,7 @@ macro_rules! attribute_impl {
     ( $StructName:ident, $ValueType:path, $ValueTypeProxy:ident ) => {
         $crate::paste::paste! {
             #[derive(bevy::prelude::Component, Clone, Copy, bevy::prelude::Reflect, Debug)]
-            #[derive(serde::Serialize)]
+            #[derive(serde::Serialize, serde::Deserialize)]
             #[reflect(AccessAttribute)]
             pub struct $StructName {
                 #[reflect(remote = $crate::attributes::[<$ValueTypeProxy Proxy>])]
@@ -98,7 +98,7 @@ macro_rules! attribute_impl {
     ( $StructName:ident, $ValueType:ident ) => {
         $crate::paste::paste! {
             #[derive(bevy::prelude::Component, Clone, Copy, bevy::prelude::Reflect, Debug)]
-            #[derive(serde::Serialize)]
+            #[derive(serde::Serialize, serde::Deserialize)]
             #[reflect(AccessAttribute)]
             pub struct $StructName {
                 #[reflect(remote = $crate::attributes::[<$ValueType Proxy>])]
@@ -366,7 +366,7 @@ impl<P: Fixed> BoxAttributeAccessor<P> {
 }
 
 impl<P: Fixed> std::fmt::Debug for BoxAttributeAccessor<P> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, _f: &mut Formatter<'_>) -> std::fmt::Result {
         todo!();
         //f.debug_tuple("BoxExtractor").field(&self.0.name()).finish()
     }
@@ -546,3 +546,30 @@ impl_reflect_remote_fixed!(I48F16Proxy, I48F16, i64);
 impl_reflect_remote_fixed!(I64F0Proxy, I64F0, i64);
 impl_reflect_remote_fixed!(U32F32Proxy, U32F32, u64);
 impl_reflect_remote_fixed!(U64F0Proxy, U64F0, u64);
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::ReflectAccessAttribute;
+
+    attribute_impl!(TestAttribute, U32F0);
+
+    #[test]
+    fn test_serialize() {
+        let attribute = TestAttribute::new(10);
+        let json_attribute = serde_json::to_string(&attribute).unwrap();
+        let check_json_attribute = r#"{"base_value":{"bits":10},"current_value":{"bits":10}}"#;
+
+        assert_eq!(json_attribute, check_json_attribute);
+    }
+
+    #[test]
+    fn test_deserialize() {
+        let json_attribute = r#"{"base_value":{"bits":50},"current_value":{"bits":500}}"#;
+
+        let attribute: TestAttribute = serde_json::from_str(json_attribute).unwrap();
+
+        assert_eq!(attribute.base_value, 50);
+        assert_eq!(attribute.current_value, 500);
+    }
+}

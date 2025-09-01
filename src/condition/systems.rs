@@ -56,7 +56,7 @@ pub fn evaluate_effect_conditions(
         let should_be_active = effect
             .conditions
             .iter()
-            .all(|condition| condition.0.eval(&context));
+            .all(|condition| condition.0.eval(&context).unwrap_or(false));
 
         let is_inactive = status.is_some();
         if should_be_active && is_inactive {

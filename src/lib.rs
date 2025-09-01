@@ -37,7 +37,7 @@ use crate::prelude::{
     apply_modifier_events,
 };
 use crate::schedule::EffectsSet;
-use bevy::ecs::world::{EntityMutExcept, EntityRefExcept, FilteredEntityRef};
+use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
 
 pub mod prelude {
     pub use crate::attributes::{

@@ -1,18 +1,18 @@
 use crate::condition::systems::evaluate_effect_conditions;
 use bevy::app::{App, Plugin, PreUpdate};
+use bevy::prelude::{BevyError};
 use fixed::prelude::ToFixed;
-use fixed::traits::{Fixed, LossyInto};
 use std::collections::Bound;
 use std::ops::RangeBounds;
+use serde::Serialize;
 
 mod conditions;
 mod systems;
 
-use crate::AttributesRef;
 use crate::attributes::Attribute;
+use crate::AttributesRef;
 pub use conditions::{
-    AbilityCondition, And, AttributeCondition, ConditionExt, FunctionCondition, Not, Or,
-    StackCondition, TagCondition,
+    AbilityCondition, And, AttributeCondition, ConditionExt, Not, Or, StackCondition, TagCondition,
 };
 
 pub struct ConditionPlugin;
@@ -25,9 +25,10 @@ impl Plugin for ConditionPlugin {
     }
 }
 
-pub trait Condition: Send + Sync + 'static {
-    fn eval(&self, context: &ConditionContext) -> bool;
+pub trait Condition: Send + Sync {
+    fn eval(&self, context: &ConditionContext) -> Result<bool, BevyError>;
 }
+
 
 pub struct BoxCondition(pub Box<dyn Condition>);
 
@@ -42,7 +43,6 @@ pub struct ConditionContext<'a> {
     pub source_actor: &'a AttributesRef<'a>,
     pub owner: &'a AttributesRef<'a>,
 }
-
 
 pub fn convert_bounds<T: Attribute, R>(
     bounds: impl RangeBounds<R>,

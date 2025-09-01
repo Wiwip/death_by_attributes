@@ -4,7 +4,6 @@ use bevy::prelude::*;
 use petgraph::visit::Visitable;
 use petgraph::visit::{GraphBase, IntoNeighbors};
 use std::collections::HashSet;
-use std::hash::Hash;
 
 /// Attributes are Components and inserted on Entities.
 /// - Derived attributes could be used

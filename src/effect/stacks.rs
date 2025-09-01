@@ -7,7 +7,7 @@ use crate::ReflectAccessAttribute;
 use bevy::prelude::*;
 use fixed::prelude::ToFixed;
 use fixed::types::{I16F16, U32F0};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub enum EffectStackingPolicy {
     None, // Each effect is independently added to the entity
@@ -18,7 +18,7 @@ pub enum EffectStackingPolicy {
 
 //attribute!(EffectIntensity, U16F16);
 
-#[derive(bevy::prelude::Component, Clone, Copy, bevy::prelude::Reflect, Debug, Serialize)]
+#[derive(bevy::prelude::Component, Clone, Copy, bevy::prelude::Reflect, Debug, Serialize, Deserialize)]
 #[reflect(AccessAttribute)]
 pub struct EffectIntensity {
     #[reflect(remote=I16F16Proxy)]

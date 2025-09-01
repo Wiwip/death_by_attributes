@@ -1,11 +1,9 @@
+use root_attribute::prelude::ReflectAccessAttribute;
 use bevy::prelude::*;
 use criterion::*;
 use rand::Rng;
 use root_attribute::actors::ActorBuilder;
-use root_attribute::attributes::AttributeBuilder;
-use root_attribute::effects::EffectBuilder;
-use root_attribute::modifier::ModType::Additive;
-use root_attribute::{DeathByAttributesPlugin, attribute};
+use root_attribute::{attribute};
 
 criterion_group!(benches, criterion_benchmark);
 criterion_main!(benches);
@@ -17,7 +15,7 @@ attribute!(AttackPower);
 
 fn populate_world(mut commands: Commands, entity: u32, effects: u32) {
     let mut rng = rand::rng();
-    for _ in 0..entity {
+    /*for _ in 0..entity {
         let player_entity = commands.spawn_empty().id();
         ActorBuilder::new(player_entity)
             .with::<Health>(12.0)
@@ -33,12 +31,12 @@ fn populate_world(mut commands: Commands, entity: u32, effects: u32) {
                 .modify_by_scalar::<Health>(rng.random_range(0.0..42.0), Additive)
                 .build(&mut commands);
         }
-    }
+    }*/
 }
 
 fn populate_world_by_ref(mut commands: Commands, entity: u32, effects: u32) {
     let mut rng = rand::rng();
-    for _ in 0..entity {
+    /*for _ in 0..entity {
         let player_entity = commands.spawn_empty().id();
         ActorBuilder::new(player_entity)
             .with::<Health>(12.0)
@@ -59,11 +57,11 @@ fn populate_world_by_ref(mut commands: Commands, entity: u32, effects: u32) {
                 .modify_by_ref::<Health, HealthRegen>(1.0)
                 .build(&mut commands);
         }
-    }
+    }*/
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
-    c.bench_function("populate_world", |b| {
+    /*c.bench_function("populate_world", |b| {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
             .add_plugins(DeathByAttributesPlugin);
@@ -77,5 +75,5 @@ fn criterion_benchmark(c: &mut Criterion) {
             .add_plugins(DeathByAttributesPlugin);
         populate_world_by_ref(app.world_mut().commands(), 1000, 50);
         b.iter(|| app.update())
-    });
+    });*/
 }
