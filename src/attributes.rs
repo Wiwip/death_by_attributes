@@ -8,8 +8,8 @@ use bevy::ecs::component::Mutable;
 use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
 use bevy::reflect::GetTypeRegistration;
-use bevy_inspector_egui::__macro_exports::bevy_reflect::ReflectRemote;
-use fixed::prelude::{LossyInto, ToFixed};
+use bevy::reflect::ReflectRemote;
+use fixed::prelude::{LossyFrom, LossyInto, ToFixed};
 use fixed::traits::Fixed;
 use fixed::types::{
     I0F8, I0F16, I8F8, I16F0, I16F16, I32F0, I32F32, I48F16, I64F0, U0F8, U0F16, U8F0, U8F8, U12F4,
@@ -24,6 +24,7 @@ use std::hash::Hasher;
 use std::hash::{DefaultHasher, Hash};
 use std::marker::PhantomData;
 use std::ops::RangeBounds;
+use num_traits::AsPrimitive;
 
 pub trait Attribute:
     Component<Mutability = Mutable>

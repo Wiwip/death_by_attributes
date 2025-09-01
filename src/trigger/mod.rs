@@ -1,7 +1,7 @@
 mod builder;
 
-use crate::prelude::Attribute;
 use bevy::prelude::*;
+use std::marker::PhantomData;
 
 /// Triggers are essentially automated abilities.
 /// An ability or effect is automatically applied whenever the conditions of the trigger are met.
@@ -9,11 +9,10 @@ use bevy::prelude::*;
 /// - AbilityTrigger
 /// - EffectTrigger
 /// - TimedTrigger
-pub struct TriggerPlugin {}
+pub struct TriggerPlugin;
 
 impl Plugin for TriggerPlugin {
     fn build(&self, _app: &mut App) {
         //app.add_systems();
-
     }
 }
