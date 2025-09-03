@@ -8,7 +8,7 @@ use crate::mutator::EntityActions;
 use crate::prelude::{ApplyEffectEvent, AttributeCalculatorCached};
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use fixed::prelude::{LossyInto, ToFixed};
+use num_traits::{AsPrimitive, Num};
 use std::ops::RangeBounds;
 
 #[derive(Component, Clone, Debug)]
@@ -95,7 +95,7 @@ impl ActorBuilder {
 
     pub fn with<T: Attribute>(
         mut self,
-        value: impl ToFixed + Copy + Send + Sync + 'static,
+        value: impl Num + AsPrimitive<T::Property> + Copy + Send + Sync + 'static,
     ) -> ActorBuilder {
         self.builder_actions.push(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
@@ -113,8 +113,9 @@ impl ActorBuilder {
     pub fn clamp<T>(mut self, range: impl RangeBounds<f64>) -> ActorBuilder
     where
         T: Attribute,
+        f64: AsPrimitive<T::Property>,
     {
-        let bounds = convert_bounds::<T, f64>(range);
+        let bounds = convert_bounds::<f64, T>(range);
         let clamp = Clamp::<T>::new(bounds);
 
         self.builder_actions.push(EntityActions::new(
@@ -132,7 +133,8 @@ impl ActorBuilder {
     where
         S: Attribute,
         T: Attribute,
-        S::Property: LossyInto<T::Property>,
+        S::Property: AsPrimitive<T::Property>,
+        f64: AsPrimitive<T::Property>,
     {
         let bounds = (limits.start_bound().cloned(), limits.end_bound().cloned());
 

@@ -1,9 +1,7 @@
-use root_attribute::prelude::ReflectAccessAttribute;
 use bevy::prelude::*;
 use criterion::*;
-use rand::Rng;
-use root_attribute::actors::ActorBuilder;
-use root_attribute::{attribute};
+use root_attribute::attribute;
+use root_attribute::prelude::ReflectAccessAttribute;
 
 criterion_group!(benches, criterion_benchmark);
 criterion_main!(benches);

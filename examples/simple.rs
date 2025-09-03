@@ -4,8 +4,6 @@ use bevy::prelude::*;
 use bevy::window::PresentMode;
 use bevy_egui::EguiPlugin;
 use bevy_inspector_egui::DefaultInspectorConfigPlugin;
-use fixed::prelude::ToFixed;
-use fixed::types::{U8F0, U16F16, U24F8, U32F0};
 use petgraph::prelude::Dfs;
 use petgraph::visit::{DfsEvent, depth_first_search};
 use root_attribute::ability::{AbilityBuilder, TargetData, TryActivateAbility};
@@ -24,21 +22,22 @@ use root_attribute::{AttributesMut, AttributesPlugin, attribute, init_attribute}
 use std::fmt::Debug;
 use std::time::Duration;
 
-attribute!(Strength, U16F16);
-attribute!(Agility);
-attribute!(Intelligence);
 
-attribute!(Health);
-attribute!(MaxHealth);
-attribute!(HealthRegen);
+attribute!(Strength, u32);
+attribute!(Agility, u32);
+attribute!(Intelligence, u32);
 
-attribute!(Mana, U32F0);
-attribute!(ManaPool);
-attribute!(ManaRegen, U8F0);
+attribute!(Health, u32);
+attribute!(MaxHealth, u32);
+attribute!(HealthRegen, u32);
 
-attribute!(AttackPower);
-attribute!(Armour);
-attribute!(MagicPower);
+attribute!(Mana, u32);
+attribute!(ManaPool, u32);
+attribute!(ManaRegen, u32);
+
+attribute!(AttackPower, u32);
+attribute!(Armour, f32);
+attribute!(MagicPower, u32);
 
 attribute!(TestU32Attribute, u32);
 attribute!(TestU8Attribute, u8);
@@ -135,7 +134,7 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
             .build(),
     );
 
-    let cond = AttributeCondition::<Health>::new(..=100.0, Who::Source);
+    let cond = AttributeCondition::<Health>::new(..=100, Who::Source);
 
     // Magic Power effect
     let mp_buff = effects.add(
@@ -145,8 +144,8 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
             //.if_condition(|hp: &Health| hp.current_value() > 120)
             .while_condition(cond)
             .with_stacking_policy(EffectStackingPolicy::Add {
-                count: 1.to_fixed(),
-                max_stack: 10.to_fixed(),
+                count: 1,
+                max_stack: 10,
             })
             .build(),
     );
@@ -193,7 +192,7 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
                 println!("Fireball! {}", entity.id());
             })
             .with_cooldown(1.0)
-            .with_cost::<Mana>(12.0)
+            .with_cost::<Mana>(12)
             .with_tag::<Fire>()
             .build(),
     );
@@ -205,7 +204,7 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
                 println!("Frostball! {}", entity.id());
             })
             .with_cooldown(1.0)
-            .with_cost::<Mana>(12.0)
+            .with_cost::<Mana>(12)
             .with_tag::<Frost>()
             .build(),
     );
@@ -339,7 +338,7 @@ fn do_gameplay_stuff() {
 
 #[derive(Event)]
 struct DamageEvent {
-    damage: f64,
+    damage: f32,
 }
 
 fn damage_event_calculations(
@@ -350,10 +349,10 @@ fn damage_event_calculations(
         return;
     };
 
-    let armour_reduction = U24F8::from_num(1.0) - armour.current_value();
-    let damage_taken = U24F8::from_num(trigger.damage) * armour_reduction;
+    let armour_reduction = 1.0 - armour.current_value();
+    let damage_taken = trigger.damage * armour_reduction;
 
-    let new_health = health.current_value() - damage_taken;
+    let new_health = health.current_value() - damage_taken as u32;
     health.set_base_value(new_health);
     debug!("{} took {} damage", trigger.target(), damage_taken);
 }

@@ -8,7 +8,6 @@ use crate::modifier::{ReflectAccessModifier, Who};
 use crate::prelude::{ApplyAttributeModifierEvent, AttributeTypeId, EffectSource, EffectTarget};
 use crate::{AttributesMut, AttributesRef};
 use bevy::prelude::*;
-use fixed::traits::Fixed;
 use serde::Serialize;
 use std::any::type_name;
 use std::fmt::Debug;
@@ -21,14 +20,14 @@ pub struct AttributeModifier<T: Attribute> {
     pub who: Who,
     #[reflect(ignore)]
     pub modifier: Mod<T::Property>,
-    pub scaling: f64,
+    pub scaling: T::Property,
 }
 
 impl<T> AttributeModifier<T>
 where
     T: Attribute + 'static,
 {
-    pub fn new(modifier: Mod<T::Property>, who: Who, scaling: f64) -> Self {
+    pub fn new(modifier: Mod<T::Property>, who: Who, scaling: T::Property) -> Self {
         Self {
             who,
             modifier,
@@ -81,13 +80,13 @@ where
             let new_val = calculator.eval(attribute.base_value());
             // Ensure that the modifier meaningfully changed the value before we trigger the event.
 
-            let has_changed = new_val.abs_diff(attribute.base_value()) > 0;
-            if has_changed {
+            //let has_changed = new_val.abs_diff(attribute.base_value()) > 0;
+            //if has_changed {
                 attribute.set_base_value(new_val);
                 true
-            } else {
-                false
-            }
+            //} else {
+            //    false
+            //}
         } else {
             panic!("Could not find attribute {}", type_name::<T>());
         }

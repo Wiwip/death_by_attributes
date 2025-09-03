@@ -48,7 +48,7 @@ pub mod prelude {
     pub use crate::modifier::*;
 }
 
-pub use {fixed, paste};
+pub use {num_traits};
 
 pub struct AttributesPlugin;
 
@@ -173,7 +173,6 @@ pub type AttributesRef<'w> = EntityRefExcept<
         AbilityCooldown,
     ),
 >;
-
 
 #[derive(Component, Copy, Clone, Debug)]
 #[component(storage = "SparseSet")]

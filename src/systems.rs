@@ -6,7 +6,7 @@ use crate::modifier::Who;
 use crate::prelude::*;
 use crate::{Dirty, OnAttributeValueChanged};
 use bevy::prelude::*;
-use fixed::traits::Fixed;
+use num_traits::AsPrimitive;
 use petgraph::visit::IntoNeighbors;
 use std::any::type_name;
 use std::marker::PhantomData;
@@ -50,7 +50,9 @@ pub fn on_change_attribute_observer<S: Attribute, T: Attribute>(
     trigger: Trigger<NotifyAttributeDependencyChanged<S>>,
     mut attribute_modifiers_query: Query<(Entity, &mut AttributeModifier<T>)>,
     mut commands: Commands,
-) {
+) where
+    S::Property: AsPrimitive<T::Property>,
+{
     let (mod_entity, mut modifier) = attribute_modifiers_query
         .get_mut(trigger.observer())
         .unwrap();
@@ -58,9 +60,8 @@ pub fn on_change_attribute_observer<S: Attribute, T: Attribute>(
     let scaling = modifier.scaling;
     let mod_value = modifier.modifier.value_mut();
 
-    let converted_source_attribute = T::Property::from_num(trigger.current_value);
-    let scaled_converted_source_attribute =
-        converted_source_attribute * T::Property::from_num(scaling);
+    let converted_source_attribute = trigger.current_value.as_();
+    let scaled_converted_source_attribute = converted_source_attribute * scaling;
     *mod_value = scaled_converted_source_attribute; // * scaling;
 
     commands
@@ -208,8 +209,8 @@ pub fn apply_periodic_effect<T: Attribute>(
             };
 
             // Apply the stack count to the modifier
-            let stack = T::Property::from_num(stacks.current_value());
-            let scaled_modifier = attribute_modifier.modifier.clone() * stack;
+            let stack_count = stacks.current_value();
+            let scaled_modifier = attribute_modifier.modifier.clone(); // TODO * stack_count;
 
             match attribute_modifier.who {
                 Who::Target => {

@@ -2,7 +2,6 @@ use crate::AttributesMut;
 use crate::attributes::BoxAttributeAccessor;
 use crate::prelude::{Attribute, AttributeCalculator, Mod};
 use bevy::prelude::*;
-use fixed::traits::Fixed;
 
 #[derive(Event)]
 pub struct ApplyAttributeModifierEvent<T: Attribute> {
@@ -35,11 +34,11 @@ pub fn apply_modifier<T: Attribute>(
     let calculator = AttributeCalculator::<T>::from(ev.modifier);
     let new_base_value = calculator.eval(base_value);
 
-    let has_changed = new_base_value.abs_diff(base_value) > 0;
-    if has_changed {
+    //let has_changed = new_base_value.abs_diff(base_value) > 0;
+    //if has_changed {
         let mut attributes_mut = attributes.get_mut(ev.target)?;
         ev.attribute
             .set_base_value(new_base_value, &mut attributes_mut)?;
-    }
+    //}
     Ok(())
 }

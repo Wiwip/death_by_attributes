@@ -1,17 +1,16 @@
+
 use crate::assets::EffectDef;
-use crate::attribute;
-use crate::attributes::I16F16Proxy;
+use crate::{attribute, attribute_impl};
 use crate::effect::timing::EffectDuration;
 use crate::prelude::{Attribute, AttributeTypeId, Effect};
 use crate::ReflectAccessAttribute;
 use bevy::prelude::*;
-use fixed::prelude::ToFixed;
-use fixed::types::{I16F16, U32F0};
+use num_traits::{AsPrimitive, Num};
 use serde::{Deserialize, Serialize};
 
 pub enum EffectStackingPolicy {
     None, // Each effect is independently added to the entity
-    Add { count: U32F0, max_stack: U32F0 },
+    Add { count: u32, max_stack: u32 },
     RefreshDuration, // The effect overrides previous applications
                      //RefreshDurationWithOverflow, // The effect overrides previous applications
 }
@@ -21,18 +20,19 @@ pub enum EffectStackingPolicy {
 #[derive(bevy::prelude::Component, Clone, Copy, bevy::prelude::Reflect, Debug, Serialize, Deserialize)]
 #[reflect(AccessAttribute)]
 pub struct EffectIntensity {
-    #[reflect(remote=I16F16Proxy)]
-    base_value: I16F16,
-    #[reflect(remote=I16F16Proxy)]
-    current_value: I16F16,
+    base_value: f32,
+    current_value: f32,
 }
 impl Attribute for EffectIntensity {
-    type Property = I16F16;
+    type Property = f32;
 
-    fn new<T: ToFixed + Copy>(value: T) -> Self {
+    fn new<T>(value: T) -> Self
+    where
+        T: Num + AsPrimitive<Self::Property> + Copy
+    {
         Self {
-            base_value: value.to_fixed(),
-            current_value: value.to_fixed(),
+            base_value: value.as_(),
+            current_value: value.as_(),
         }
     }
     fn base_value(&self) -> Self::Property {
@@ -58,7 +58,7 @@ impl Default for EffectIntensity {
     }
 }
 
-attribute!(Stacks, U32F0);
+attribute!(Stacks, u32);
 
 impl Default for Stacks {
     fn default() -> Self {
@@ -81,9 +81,9 @@ impl Stacks {
                     let mut base_stacks = stack_count.base_value();
                     base_stacks += count;
                     stack_count
-                        .set_base_value(base_stacks.clamp(1.to_fixed(), max_stack.to_fixed()));
+                        .set_base_value(base_stacks.clamp(1, max_stack.as_()));
                     stack_count
-                        .set_current_value(base_stacks.clamp(1.to_fixed(), max_stack.to_fixed()));
+                        .set_current_value(base_stacks.clamp(1.as_(), max_stack.as_()));
                 } else {
                     error!(
                         "Failed to find component Stacks for entity: {:?}",

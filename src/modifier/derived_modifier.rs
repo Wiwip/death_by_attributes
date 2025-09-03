@@ -7,10 +7,9 @@ use crate::systems::on_change_attribute_observer;
 use crate::{AttributesMut, AttributesRef};
 use bevy::log::debug;
 use bevy::prelude::{Commands, Entity, Name, Observer, Reflect};
-use fixed::prelude::{LossyFrom};
-use fixed::traits::Fixed;
 use std::any::type_name;
 use std::marker::PhantomData;
+use num_traits::AsPrimitive;
 
 #[derive(Copy, Clone, Debug, Reflect)]
 pub struct DerivedModifier<S: Attribute, T: Attribute> {
@@ -20,7 +19,7 @@ pub struct DerivedModifier<S: Attribute, T: Attribute> {
     _source: PhantomData<S>,
     pub who: Who,
     pub modifier: Mod<T::Property>,
-    pub scaling: f64,
+    pub scaling: T::Property,
 }
 
 impl<S, T> DerivedModifier<S, T>
@@ -28,7 +27,7 @@ where
     S: Attribute,
     T: Attribute,
 {
-    pub fn new(modifier: Mod<T::Property>, who: Who, scaling: f64) -> Self {
+    pub fn new(modifier: Mod<T::Property>, who: Who, scaling: T::Property) -> Self {
         Self {
             _target: Default::default(),
             _source: Default::default(),
@@ -43,7 +42,7 @@ impl<S, T> Modifier for DerivedModifier<S, T>
 where
     S: Attribute,
     T: Attribute,
-    T::Property: LossyFrom<S::Property>,
+    S::Property: AsPrimitive<T::Property>,
 {
     fn spawn(&self, commands: &mut Commands, actor_entity: AttributesRef) -> Entity {
         debug!(
@@ -70,21 +69,20 @@ where
         let Some(origin_value) = actor_entity.get::<S>() else {
             panic!("Should have found source attribute");
         };
-        let value = origin_value.current_value();
+        let source_value = origin_value.current_value();
 
         if let Some(mut target_attribute) = actor_entity.get_mut::<T>() {
-            let source_value = T::Property::lossy_from(value);
-            let scaled_modifier = self.modifier * source_value;
+            let scaled_modifier = self.modifier * source_value.as_();
             let calculator = AttributeCalculator::<T>::from(scaled_modifier);
             let new_val = calculator.eval(target_attribute.base_value());
 
-            let is_value_changed = new_val.abs_diff(target_attribute.base_value()) > 0;
-            if is_value_changed {
+            //let is_value_changed = new_val.abs_diff(target_attribute.base_value()) > 0;
+            //if is_value_changed {
                 target_attribute.set_base_value(new_val);
                 true
-            } else {
-                false
-            }
+            //} else {
+            //    false
+            //}
         } else {
             panic!("Could not find target attribute {}", type_name::<T>());
         }

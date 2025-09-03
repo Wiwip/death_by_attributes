@@ -1,14 +1,13 @@
 use crate::inspector::pretty_type_name;
 use crate::prelude::Attribute;
 use bevy::prelude::*;
-use fixed::prelude::ToFixed;
-use fixed::traits::Fixed;
 use serde::Serialize;
 use std::fmt::{Debug, Display, Formatter};
-use std::ops::Mul;
+use std::ops::{Add, Mul, Sub};
+use num_traits::{AsPrimitive, FromPrimitive, Num, One, SaturatingMul, Zero};
 
 #[derive(Debug, Clone, Copy, Reflect, Serialize)]
-pub enum Mod<M: Fixed + ToFixed> {
+pub enum Mod<M> {
     Set(M),
     Add(M),
     Sub(M),
@@ -19,7 +18,7 @@ pub enum Mod<M: Fixed + ToFixed> {
 
 impl<M> Mod<M>
 where
-    M: Fixed + Copy + Clone,
+    M: Num + Copy + Clone,
 {
     pub fn value_mut(&mut self) -> &mut M {
         match self {
@@ -46,41 +45,41 @@ where
 
 impl<M> Mod<M>
 where
-    M: Fixed + ToFixed + Copy + Clone,
+    M: Num + Copy + Clone + 'static,
 {
-    pub fn set<T: ToFixed + Copy>(value: T) -> Self {
-        Self::Set(value.to_fixed())
+    pub fn set<T: Num + AsPrimitive<M> + Copy>(value: T) -> Self {
+        Self::Set(value.as_())
     }
 
-    pub fn add<T: ToFixed + Copy>(value: T) -> Self {
-        Self::Add(value.to_fixed())
+    pub fn add<T: Num + AsPrimitive<M> + Copy>(value: T) -> Self {
+        Self::Add(value.as_())
     }
 
-    pub fn sub<T: ToFixed + Copy>(value: T) -> Self {
-        Self::Sub(value.to_fixed())
+    pub fn sub<T: Num + AsPrimitive<M> + Copy>(value: T) -> Self {
+        Self::Sub(value.as_())
     }
 
-    pub fn increase<T: ToFixed + Copy>(value: T) -> Self {
-        Self::Increase(value.to_fixed())
+    pub fn increase<T: Num + AsPrimitive<M> + Copy>(value: T) -> Self {
+        Self::Increase(value.as_())
     }
 
-    pub fn more<T: ToFixed + Copy>(value: T) -> Self {
-        Self::More(value.to_fixed())
+    pub fn more<T: Num + AsPrimitive<M> + Copy>(value: T) -> Self {
+        Self::More(value.as_())
     }
 }
 
 impl<M> Default for Mod<M>
 where
-    M: Fixed + Copy + Clone,
+    M: Num + Copy + Clone,
 {
     fn default() -> Self {
-        Self::Add(M::from_num(0))
+        Self::Add(M::zero())
     }
 }
 
 impl<M> Mul<M> for Mod<M>
 where
-    M: Fixed + Copy + Clone,
+    M: Num + Copy + Clone,
 {
     type Output = Mod<M>;
 
@@ -98,7 +97,7 @@ where
 
 impl<M> Display for Mod<M>
 where
-    M: Fixed + Display + Debug + Copy + Clone,
+    M: Num + FromPrimitive + Display + Debug + Copy + Clone,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -109,8 +108,8 @@ where
             Mod::Sub(value) => {
                 write!(f, "-{:.1}", value)
             }
-            Mod::Increase(value) => write!(f, "{:.1}%", value.mul(M::from_num(100))),
-            Mod::More(value) => write!(f, "{:.1}%", value.mul(M::from_num(100))),
+            Mod::Increase(value) => write!(f, "{:.1}%", value.mul(M::from_u32(100).unwrap())),
+            Mod::More(value) => write!(f, "{:.1}%", value.mul(M::from_u32(100).unwrap())),
             //Mod::Less(value) => write!(f, "{:.1}%", value * 100.0),
         }
     }
@@ -146,56 +145,22 @@ impl<T: Attribute> AttributeCalculator<T> {
         }
 
         // Step 1 - Additions
-        let addition_result = match base_value.checked_add(self.additive) {
-            Some(value) => value,
-            None => {
-                error!(
-                    "Overflow from additive step in AttributeCalculator::eval for {}",
-                    pretty_type_name::<T>()
-                );
-                base_value.saturating_add(self.additive)
-            }
-        };
+        let addition_result = base_value + self.additive;
 
         // Step 2 - Substraction
-        let subtraction_result = match addition_result.checked_sub(self.subtractive) {
-            Some(value) => value,
-            None => {
-                error!(
-                    "Overflow from subtraction step in AttributeCalculator::eval for {}",
-                    pretty_type_name::<T>()
-                );
-                addition_result.saturating_sub(self.subtractive)
-            }
-        };
+        let subtraction_result = addition_result - self.subtractive;
 
         // Step 3 - Additive Multiplication
         // Clamp self.increase to prevent negative increase to attributes
-        let clamped_increase = self.increase.max(T::Property::from_num(0.0));
-        let add_multi_result = match subtraction_result
-            .checked_mul(T::Property::from_num(1.0) + clamped_increase)
-        {
-            Some(value) => value,
-            None => {
-                error!(
-                    "Overflow from additive multiplication step in AttributeCalculator::eval for {}",
-                    pretty_type_name::<T>()
-                );
-                subtraction_result.saturating_mul(T::Property::from_num(1.0) + self.increase)
-            }
+        let clamped_increase = if self.increase < T::Property::zero() {
+            T::Property::zero()
+        } else {
+            self.increase
         };
+        let add_multi_result = subtraction_result * (T::Property::one() + clamped_increase);
 
         // Step 4 - More multipliers
-        let result = match add_multi_result.checked_mul(self.more) {
-            Some(value) => value,
-            None => {
-                error!(
-                    "Overflow from more multiplicative step in AttributeCalculator::eval for {}",
-                    pretty_type_name::<T>()
-                );
-                add_multi_result.saturating_mul(self.more)
-            }
-        };
+        let result = add_multi_result * self.more;
 
         result
     }
@@ -241,10 +206,10 @@ impl<T: Attribute> Default for AttributeCalculator<T> {
     fn default() -> Self {
         Self {
             set: None,
-            additive: T::Property::from_num(0),
-            subtractive: T::Property::from_num(0),
-            increase: T::Property::from_num(0),
-            more: T::Property::from_num(1),
+            additive: T::Property::from_u8(0).unwrap(),
+            subtractive: T::Property::from_u8(0).unwrap(),
+            increase: T::Property::from_u8(0).unwrap(),
+            more: T::Property::from_u8(1).unwrap(),
         }
     }
 }
@@ -323,8 +288,8 @@ impl<T: Attribute> From<&Vec<Mod<T::Property>>> for AttributeCalculator<T> {
                 Mod::More(value) => Some(*value),
                 _ => None,
             })
-            .fold(T::Property::from_num(1), |acc, x| {
-                acc * (T::Property::from_num(1) + x)
+            .fold(T::Property::one(), |acc, x| {
+                acc * (T::Property::one() + x)
             });
 
         Self {

@@ -8,7 +8,6 @@ use crate::modifier::Who;
 use bevy::asset::AssetId;
 use bevy::log::error;
 use bevy::prelude::{BevyError, Component, Deref, TypePath};
-use fixed::prelude::ToFixed;
 use serde::Serialize;
 use std::fmt::Formatter;
 use std::marker::PhantomData;
@@ -23,12 +22,11 @@ pub struct AttributeCondition<T: Attribute> {
 }
 
 impl<T: Attribute> AttributeCondition<T> {
-    pub fn new<'a, R>(range: impl RangeBounds<R>, who: Who) -> Self
-    where
-        R: ToFixed + Copy,
-    {
-        let bounds = convert_bounds::<T, R>(range);
-        Self { who, bounds }
+    pub fn new(range: impl RangeBounds<T::Property>, who: Who) -> Self {
+        Self {
+            who,
+            bounds: (range.start_bound().cloned(), range.end_bound().cloned()),
+        }
     }
 
     pub fn target(range: impl RangeBounds<T::Property> + Send + Sync + 'static) -> Self {
@@ -285,4 +283,3 @@ where
         }
     }
 }
-

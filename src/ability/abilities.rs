@@ -10,7 +10,7 @@ use bevy::asset::{Assets, Handle};
 use bevy::ecs::world::CommandQueue;
 use bevy::log::warn;
 use bevy::prelude::*;
-use fixed::prelude::ToFixed;
+use num_traits::{AsPrimitive, Num, One};
 
 pub struct GrantAbilityCommand {
     pub handle: Handle<AbilityDef>,
@@ -76,12 +76,11 @@ impl AbilityBuilder {
         }
     }
 
-    pub fn with_cost<C: Attribute>(mut self, cost: impl ToFixed + Copy) -> Self {
-        let fixed_cost = cost.to_fixed();
-        let mutator = AttributeModifier::<C>::new(Mod::Sub(fixed_cost), Who::Source, 1.0);
+    pub fn with_cost<C: Attribute>(mut self, cost: C::Property) -> Self {
+        let mutator = AttributeModifier::<C>::new(Mod::Sub(cost), Who::Source, C::Property::one());
         self.cost_mods.push(Box::new(mutator));
 
-        let condition = AttributeCondition::<C>::source(fixed_cost..);
+        let condition = AttributeCondition::<C>::source(cost..);
         self.cost_condition.push(BoxCondition::new(condition));
         /*self.cost_condition.push(Box::new(
             (move |attribute: &C| attribute.current_value() >= fixed_cost).into_condition(),

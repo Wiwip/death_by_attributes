@@ -6,7 +6,7 @@ use crate::effect::{EffectExecution, EffectStackingPolicy};
 use crate::modifier::{Modifier, ModifierFn, Who};
 use crate::prelude::{AttributeModifier, DerivedModifier, Mod};
 use bevy::prelude::{Bundle, Entity, EntityCommands, Name};
-use fixed::prelude::{LossyFrom, LossyInto};
+use num_traits::{AsPrimitive, One};
 use std::ops::RangeBounds;
 
 pub struct EffectBuilder {
@@ -57,8 +57,11 @@ impl EffectBuilder {
     }
 
     pub fn modify<T: Attribute>(mut self, modifier: Mod<T::Property>, who: Who) -> Self {
-        self.modifiers
-            .push(Box::new(AttributeModifier::<T>::new(modifier, who, 1.0)));
+        self.modifiers.push(Box::new(AttributeModifier::<T>::new(
+            modifier,
+            who,
+            T::Property::one(),
+        )));
         self
     }
 
@@ -68,13 +71,13 @@ impl EffectBuilder {
     pub fn modify_from<S, T>(mut self, modifier: Mod<T::Property>, mod_target: Who) -> Self
     where
         S: Attribute,
+        S::Property: AsPrimitive<T::Property>,
         T: Attribute,
-        T::Property: LossyFrom<S::Property>,
     {
         self.modifiers.push(Box::new(DerivedModifier::<S, T>::new(
             modifier,
             mod_target,
-            modifier.value().lossy_into(),
+            modifier.value(),
         )));
         self
     }

@@ -4,9 +4,9 @@ use crate::modifier::Modifier;
 use crate::prelude::{AppliedEffects, Effect};
 use crate::{AttributesMut, AttributesRef};
 use bevy::prelude::*;
-use fixed::prelude::LossyInto;
 use std::any::TypeId;
 use std::collections::HashMap;
+use num_traits::AsPrimitive;
 
 #[derive(Component)]
 pub struct CalculationContext<'a> {
@@ -34,7 +34,7 @@ impl<'a> CalculationContext<'a> {
     ) -> Result<(), BevyError> {
         let value = entity_ref.get::<T>().ok_or("Could not get attribute")?;
         self.source_map
-            .insert(TypeId::of::<T>(), value.current_value().lossy_into());
+            .insert(TypeId::of::<T>(), value.current_value().as_());
         Ok(())
     }
 
@@ -44,7 +44,7 @@ impl<'a> CalculationContext<'a> {
     ) -> Result<(), BevyError> {
         let value = entity_ref.get::<T>().ok_or("Could not get attribute")?;
         self.target_map
-            .insert(TypeId::of::<T>(), value.current_value().lossy_into());
+            .insert(TypeId::of::<T>(), value.current_value().as_());
         Ok(())
     }
 
@@ -75,7 +75,7 @@ impl<'a> CaptureContext<'a> {
             .get::<T>()
             .ok_or("Could not get attribute")?;
         self.source_map
-            .insert(TypeId::of::<T>(), value.current_value().lossy_into());
+            .insert(TypeId::of::<T>(), value.current_value().as_());
         Ok(())
     }
 
@@ -85,7 +85,7 @@ impl<'a> CaptureContext<'a> {
             .get::<T>()
             .ok_or("Could not get attribute")?;
         self.target_map
-            .insert(TypeId::of::<T>(), value.current_value().lossy_into());
+            .insert(TypeId::of::<T>(), value.current_value().as_());
         Ok(())
     }
 
