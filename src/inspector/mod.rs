@@ -11,7 +11,7 @@ impl Plugin for ActorInspectorPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup_debug_overlay);
         app.add_systems(
-            Update,
+            PostUpdate,
             explore_actors_system.run_if(on_timer(Duration::from_millis(32))),
         );
     }

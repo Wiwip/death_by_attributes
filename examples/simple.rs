@@ -9,7 +9,7 @@ use petgraph::visit::{DfsEvent, depth_first_search};
 use root_attribute::ability::{AbilityBuilder, TargetData, TryActivateAbility};
 use root_attribute::actors::ActorBuilder;
 use root_attribute::assets::{AbilityDef, ActorDef, EffectDef};
-use root_attribute::attributes::Attribute;
+use root_attribute::attributes::{Attribute, Value};
 use root_attribute::attributes::ReflectAccessAttribute;
 use root_attribute::condition::AttributeCondition;
 use root_attribute::context::EffectContext;
@@ -21,7 +21,6 @@ use root_attribute::prelude::*;
 use root_attribute::{AttributesMut, AttributesPlugin, attribute, init_attribute};
 use std::fmt::Debug;
 use std::time::Duration;
-
 
 attribute!(Strength, u32);
 attribute!(Agility, u32);
@@ -129,20 +128,18 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
     let ap_buff = effects.add(
         Effect::permanent()
             .name("AttackPower Buff".into())
-            .modify_from::<Health, AttackPower>(Mod::add(0.1), Who::Target)
-            .modify_from::<Health, Intelligence>(Mod::add(0.25), Who::Target)
+            .modify::<AttackPower>(Health::value(), ModOp::More, Who::Target, 0.01)
+            .modify::<Intelligence>(Health::value(), ModOp::Add, Who::Target, 0.25)
             .build(),
     );
-
-    let cond = AttributeCondition::<Health>::new(..=100, Who::Source);
 
     // Magic Power effect
     let mp_buff = effects.add(
         Effect::permanent()
             .name("MagicPower Buff".into())
-            .modify::<MagicPower>(Mod::add(10.0), Who::Target)
-            //.if_condition(|hp: &Health| hp.current_value() > 120)
-            .while_condition(cond)
+            .modify::<MagicPower>(Intelligence::value(), ModOp::Add, Who::Target, 1.0)
+            .modify::<MagicPower>(Value::lit(5), ModOp::Add, Who::Target, 1.0)
+            .while_condition(AttributeCondition::<Health>::new(..=100, Who::Source))
             .with_stacking_policy(EffectStackingPolicy::Add {
                 count: 1,
                 max_stack: 10,
@@ -154,8 +151,8 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
     let hp_buff = effects.add(
         Effect::permanent()
             .name("MaxHealth Increase".into())
-            .modify::<MaxHealth>(Mod::increase(0.10), Who::Target)
-            .modify_from::<Health, ManaPool>(Mod::add(0.1), Who::Target)
+            .modify::<MaxHealth>(Value::lit(1), ModOp::Increase, Who::Target, 0.10)
+            .modify::<ManaPool>(Health::value(), ModOp::Add, Who::Target, 0.1)
             .with_stacking_policy(EffectStackingPolicy::RefreshDuration)
             .build(),
     );
@@ -164,9 +161,9 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
     let regen = effects.add(
         Effect::permanent_ticking(1.0)
             .name("Health Regen".into())
-            .modify::<Health>(Mod::add(3.0), Who::Target)
-            .modify_from::<HealthRegen, Health>(Mod::add(1.0), Who::Target)
-            .modify_from::<ManaRegen, Mana>(Mod::add(1.0), Who::Target)
+            .modify::<Health>(Value::lit(3), ModOp::Add, Who::Target, 1.0)
+            .modify::<Health>(HealthRegen::value(), ModOp::Add, Who::Target, 1.0)
+            .modify::<Mana>(ManaRegen::value(), ModOp::Add, Who::Target, 1.0)
             .build(),
     );
 
@@ -235,7 +232,7 @@ fn setup_actor(
             .with::<ManaPool>(100.0)
             .with::<ManaRegen>(1.0)
             .with::<MagicPower>(1.0)
-            .with::<AttackPower>(0.0)
+            .with::<AttackPower>(10.0)
             .with::<Armour>(0.10)
             .with_component((Player, DebugOverlayMarker))
             .grant_ability(&abilities.fireball)

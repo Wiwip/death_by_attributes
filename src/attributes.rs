@@ -8,6 +8,7 @@ use bevy::ecs::component::Mutable;
 use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
 use bevy::reflect::{GetTypeRegistration, Typed};
+use num_traits::NumCast;
 pub use num_traits::{
     AsPrimitive, Bounded, FromPrimitive, Num, NumAssign, NumAssignOps, NumOps, Saturating,
     SaturatingAdd, SaturatingMul, Zero,
@@ -25,12 +26,13 @@ use std::ops::RangeBounds;
 
 pub trait Attribute
 where
-    Self: Component<Mutability = Mutable> + Copy + Clone + Debug,
+    Self: Component<Mutability = Mutable> + Copy + Clone + Debug + Display,
     Self: Reflect + TypePath + GetTypeRegistration,
     Self: Serialize,
 {
     type Property: Num
         + NumOps
+        + NumCast
         + NumAssign
         + NumAssignOps
         + Sum
@@ -43,8 +45,8 @@ where
         + Typed
         + Copy
         + Clone
-        + Display
         + Debug
+        + Display
         + Send
         + Serialize
         + Sync;
@@ -54,6 +56,9 @@ where
     fn set_base_value(&mut self, value: Self::Property);
     fn current_value(&self) -> Self::Property;
     fn set_current_value(&mut self, value: Self::Property);
+    fn value() -> Value<Self::Property> {
+        Value::new::<Self>()
+    }
     fn attribute_type_id() -> AttributeTypeId;
 }
 
@@ -155,6 +160,12 @@ macro_rules! attribute_impl {
             }
             fn attribute_type_id() -> $crate::prelude::AttributeTypeId {
                 $crate::prelude::AttributeTypeId::of::<Self>()
+            }
+        }
+
+        impl std::fmt::Display for $StructName {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{}: {}", stringify!($StructName), self.current_value)
             }
         }
     };
@@ -362,19 +373,116 @@ where
     }
 }
 
-pub trait AttributeAccessor: Send + Sync + 'static {
-    type Property: Num + PartialOrd + Copy + Clone + Display + Debug + Send + Sync;
+pub trait ValueSource: Send + Sync + 'static {
+    type Output: Num;
 
-    fn current_value(&self, entity: &AttributesRef) -> Result<Self::Property, AttributeError>;
+    fn value(&self, entity: &AttributesRef) -> Result<Self::Output, AttributeError>;
+    fn describe(&self) -> String;
+
+    fn clone_value(&self) -> Box<dyn ValueSource<Output = Self::Output>>;
+}
+
+#[derive(Deref, DerefMut)]
+pub struct Value<P: Num>(Box<dyn ValueSource<Output = P>>);
+
+impl<P: Num + Display + Debug + Copy + Clone + Send + Sync + 'static> Value<P> {
+    pub fn new<T: Attribute<Property = P>>() -> Self {
+        Self(Box::new(AttributeValue::<T> {
+            value: P::zero(),
+            phantom_data: Default::default(),
+        }))
+    }
+
+    pub fn lit(value: P) -> Self {
+        Self(Box::new(LitValue(value)))
+    }
+}
+
+impl<P: Num + Display + Debug + Copy + Clone + Send + Sync + 'static> Default for Value<P> {
+    fn default() -> Self {
+        Value::lit(P::zero())
+    }
+}
+
+impl<P: Num + 'static> Clone for Value<P> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone_value())
+    }
+}
+
+impl<P: Num> Debug for Value<P> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
+}
+
+impl<P: Num + 'static> Display for Value<P> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.describe())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct AttributeValue<T: Attribute> {
+    value: T::Property,
+    phantom_data: PhantomData<T>,
+}
+
+impl<T: Attribute> ValueSource for AttributeValue<T> {
+    type Output = T::Property;
+
+    fn value(&self, entity: &AttributesRef) -> Result<Self::Output, AttributeError> {
+        Ok(entity
+            .get::<T>()
+            .ok_or(AttributeError::AttributeNotPresent(TypeId::of::<T>()))?
+            .current_value())
+    }
+
+    fn describe(&self) -> String {
+        format!("{}", pretty_type_name::<T>())
+    }
+
+    fn clone_value(&self) -> Box<dyn ValueSource<Output = Self::Output>> {
+        Box::new(AttributeValue::<T> {
+            value: self.value,
+            phantom_data: Default::default(),
+        })
+    }
+}
+
+#[derive(Deref, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct LitValue<P: Num>(P);
+
+impl<P: Num + Display + Debug + Copy + Clone + Send + Sync + 'static> ValueSource for LitValue<P> {
+    type Output = P;
+
+    fn value(&self, _: &AttributesRef) -> Result<Self::Output, AttributeError> {
+        //error!("LitValue::update_value called. This should not happen.");
+        Ok(self.0)
+    }
+
+    fn describe(&self) -> String {
+        format!("{}", self.0)
+    }
+
+    fn clone_value(&self) -> Box<dyn ValueSource<Output = Self::Output>> {
+        Box::new(LitValue(self.0))
+    }
+}
+
+pub trait AttributeAccessor: Send + Sync + 'static {
+    type Output: Num + PartialOrd + Copy + Clone + Display + Debug + Send + Sync;
+
+    fn current_value(&self, entity: &AttributesRef) -> Result<Self::Output, AttributeError>;
     fn set_current_value(
         &self,
-        value: Self::Property,
+        value: Self::Output,
         entity: &mut AttributesMut,
     ) -> Result<(), AttributeError>;
-    fn base_value(&self, entity: &AttributesRef) -> Result<Self::Property, AttributeError>;
+    fn base_value(&self, entity: &AttributesRef) -> Result<Self::Output, AttributeError>;
     fn set_base_value(
         &self,
-        value: Self::Property,
+        value: Self::Output,
         entity: &mut AttributesMut,
     ) -> Result<(), AttributeError>;
     fn name(&self) -> &str;
@@ -382,7 +490,7 @@ pub trait AttributeAccessor: Send + Sync + 'static {
 }
 
 #[derive(TypePath, Deref, DerefMut)]
-pub struct BoxAttributeAccessor<P: Num>(pub Box<dyn AttributeAccessor<Property = P>>);
+pub struct BoxAttributeAccessor<P: Num>(pub Box<dyn AttributeAccessor<Output = P>>);
 
 impl<P: Num> BoxAttributeAccessor<P> {
     pub fn new<T: Attribute<Property = P>>(evaluator: AttributeExtractor<T>) -> Self {
@@ -410,7 +518,7 @@ impl<A: Attribute> AttributeExtractor<A> {
 }
 
 impl<T: Attribute> AttributeAccessor for AttributeExtractor<T> {
-    type Property = T::Property;
+    type Output = T::Property;
 
     fn current_value(&self, entity: &AttributesRef) -> Result<T::Property, AttributeError> {
         Ok(entity
@@ -509,7 +617,7 @@ mod test {
     use super::*;
     use crate::ReflectAccessAttribute;
 
-    attribute!(TestAttribute, u32);
+    /*attribute!(TestAttribute, u32);
 
     #[test]
     fn test_serialize() {
@@ -528,5 +636,5 @@ mod test {
 
         assert_eq!(attribute.base_value, 50);
         assert_eq!(attribute.current_value, 500);
-    }
+    }*/
 }

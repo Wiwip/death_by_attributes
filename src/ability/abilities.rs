@@ -1,11 +1,11 @@
 use crate::AttributesMut;
 use crate::ability::{Ability, AbilityActivationFn, AbilityCooldown};
 use crate::assets::AbilityDef;
-use crate::attributes::Attribute;
+use crate::attributes::{Attribute, Value};
 use crate::condition::{AttributeCondition, BoxCondition};
 use crate::modifier::{Modifier, Who};
 use crate::mutator::EntityActions;
-use crate::prelude::{AttributeModifier, Mod};
+use crate::prelude::{AttributeModifier, ModOp};
 use bevy::asset::{Assets, Handle};
 use bevy::ecs::world::CommandQueue;
 use bevy::log::warn;
@@ -77,7 +77,7 @@ impl AbilityBuilder {
     }
 
     pub fn with_cost<C: Attribute>(mut self, cost: C::Property) -> Self {
-        let mutator = AttributeModifier::<C>::new(Mod::Sub(cost), Who::Source, C::Property::one());
+        let mutator = AttributeModifier::<C>::new(Value::lit(cost),  ModOp::Sub, Who::Source, 1.0);
         self.cost_mods.push(Box::new(mutator));
 
         let condition = AttributeCondition::<C>::source(cost..);

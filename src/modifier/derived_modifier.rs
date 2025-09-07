@@ -11,15 +11,15 @@ use std::any::type_name;
 use std::marker::PhantomData;
 use num_traits::AsPrimitive;
 
-#[derive(Copy, Clone, Debug, Reflect)]
+/*#[derive(Copy, Clone, Debug, Reflect)]
 pub struct DerivedModifier<S: Attribute, T: Attribute> {
     #[reflect(ignore)]
     _target: PhantomData<T>,
     #[reflect(ignore)]
     _source: PhantomData<S>,
     pub who: Who,
-    pub modifier: Mod<T::Property>,
-    pub scaling: T::Property,
+    pub modifier: ModOp,
+    pub scaling: f64,
 }
 
 impl<S, T> DerivedModifier<S, T>
@@ -27,7 +27,7 @@ where
     S: Attribute,
     T: Attribute,
 {
-    pub fn new(modifier: Mod<T::Property>, who: Who, scaling: T::Property) -> Self {
+    pub fn new(modifier: ModOp, who: Who, scaling: f64) -> Self {
         Self {
             _target: Default::default(),
             _source: Default::default(),
@@ -88,16 +88,16 @@ where
         }
     }
 
-    fn who(&self) -> Who {
-        self.who
-    }
-
     fn write_event(&self, target: Entity, commands: &mut Commands) {
         commands.send_event(ApplyAttributeModifierEvent::<T> {
             target,
             modifier: self.modifier,
             attribute: BoxAttributeAccessor::new(AttributeExtractor::<T>::new()),
         });
+    }
+
+    fn who(&self) -> Who {
+        self.who
     }
 
     /*fn modifier(&self) -> Mod<T::Property> {
@@ -112,3 +112,4 @@ where
         T::attribute_type_id()
     }
 }
+*/

@@ -1,49 +1,77 @@
+use crate::AttributesRef;
+use crate::condition::ConditionContext;
+use crate::context::EffectContext;
 use crate::inspector::pretty_type_name;
-use crate::prelude::Attribute;
+use crate::modifier::Who;
+use crate::prelude::{Attribute, AttributeModifier};
 use bevy::prelude::*;
+use num_traits::{AsPrimitive, FromPrimitive, Num, NumCast, One, SaturatingMul, Zero};
 use serde::Serialize;
 use std::fmt::{Debug, Display, Formatter};
+use std::iter::Sum;
 use std::ops::{Add, Mul, Sub};
-use num_traits::{AsPrimitive, FromPrimitive, Num, One, SaturatingMul, Zero};
 
 #[derive(Debug, Clone, Copy, Reflect, Serialize)]
-pub enum Mod<M> {
-    Set(M),
-    Add(M),
-    Sub(M),
-    Increase(M),
-    More(M),
+pub enum ModOp {
+    Set,
+    Add,
+    Sub,
+    Increase,
+    More,
     //Less(f64),
 }
 
+impl Display for ModOp {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ModOp::Set => write!(f, "="),
+            ModOp::Add => write!(f, "+"),
+            ModOp::Sub => write!(f, "-"),
+            ModOp::Increase => write!(f, "*(+)"),
+            ModOp::More => write!(f, "*"),
+        }
+    }
+}
+/*
 impl<M> Mod<M>
 where
-    M: Num + Copy + Clone,
+    M: Num + NumCast + Copy + Clone + AsPrimitive<f64>,
 {
-    pub fn value_mut(&mut self) -> &mut M {
+    pub fn set_value(&mut self, value: f64) {
+        let cast_value = M::from(value).unwrap();
+
         match self {
-            Mod::Set(value) => value,
-            Mod::Add(value) => value,
-            Mod::Sub(value) => value,
-            Mod::Increase(value) => value,
-            Mod::More(value) => value,
-            //Mod::Less(value) => value,
+            Mod::Set(_) => {
+                *self = Mod::Set(cast_value);
+            }
+            Mod::Add(_) => {
+                *self = Mod::Add(cast_value);
+            }
+            Mod::Sub(_) => {
+                *self = Mod::Sub(cast_value);
+            }
+            Mod::Increase(_) => {
+                *self = Mod::Increase(value);
+            }
+            Mod::More(_) => {
+                *self = Mod::More(value);
+            }
         }
     }
 
-    pub fn value(&self) -> M {
+    pub fn value(&self) -> f64 {
         match self {
-            Mod::Set(value) => *value,
-            Mod::Add(value) => *value,
-            Mod::Sub(value) => *value,
+            Mod::Set(value) => value.as_(),
+            Mod::Add(value) => value.as_(),
+            Mod::Sub(value) => value.as_(),
             Mod::Increase(value) => *value,
             Mod::More(value) => *value,
             //Mod::Less(value) => value,
         }
     }
-}
+}*/
 
-impl<M> Mod<M>
+/*impl<M> Mod<M>
 where
     M: Num + Copy + Clone + 'static,
 {
@@ -59,16 +87,16 @@ where
         Self::Sub(value.as_())
     }
 
-    pub fn increase<T: Num + AsPrimitive<M> + Copy>(value: T) -> Self {
+    pub fn increase<T: Num + AsPrimitive<f64> + Copy>(value: T) -> Self {
         Self::Increase(value.as_())
     }
 
-    pub fn more<T: Num + AsPrimitive<M> + Copy>(value: T) -> Self {
+    pub fn more<T: Num + AsPrimitive<f64> + Copy>(value: T) -> Self {
         Self::More(value.as_())
     }
-}
+}*/
 
-impl<M> Default for Mod<M>
+/*impl<M> Default for ModOp<M>
 where
     M: Num + Copy + Clone,
 {
@@ -77,43 +105,43 @@ where
     }
 }
 
-impl<M> Mul<M> for Mod<M>
+impl<M> Mul<M> for ModOp<M>
 where
-    M: Num + Copy + Clone,
+    M: Num + Copy + Clone + AsPrimitive<f64>,
 {
-    type Output = Mod<M>;
+    type Output = ModOp<M>;
 
     fn mul(self, rhs: M) -> Self::Output {
         match self {
-            Mod::Set(value) => Mod::Set(value * rhs),
-            Mod::Add(value) => Mod::Add(value * rhs),
-            Mod::Sub(value) => Mod::Add(value * rhs),
-            Mod::Increase(value) => Mod::Increase(value * rhs),
-            Mod::More(value) => Mod::More(value * rhs),
+            ModOp::Set(value) => ModOp::Set(value * rhs),
+            ModOp::Add(value) => ModOp::Add(value * rhs),
+            ModOp::Sub(value) => ModOp::Add(value * rhs),
+            ModOp::Increase(value) => ModOp::Increase(value * rhs.as_()),
+            ModOp::More(value) => ModOp::More(value * rhs.as_()),
             //Mod::Less(value) => Mod::Less(value * rhs),
         }
     }
 }
 
-impl<M> Display for Mod<M>
+impl<M> Display for ModOp<M>
 where
     M: Num + FromPrimitive + Display + Debug + Copy + Clone,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Mod::Set(value) => write!(f, "{:.1}", value),
-            Mod::Add(value) => {
+            ModOp::Set(value) => write!(f, "{:.1}", value),
+            ModOp::Add(value) => {
                 write!(f, "+{:.1}", value)
             }
-            Mod::Sub(value) => {
+            ModOp::Sub(value) => {
                 write!(f, "-{:.1}", value)
             }
-            Mod::Increase(value) => write!(f, "{:.1}%", value.mul(M::from_u32(100).unwrap())),
-            Mod::More(value) => write!(f, "{:.1}%", value.mul(M::from_u32(100).unwrap())),
+            ModOp::Increase(value) => write!(f, "{:.1}%", value * 100.0),
+            ModOp::More(value) => write!(f, "{:.1}%", value * 100.0),
             //Mod::Less(value) => write!(f, "{:.1}%", value * 100.0),
         }
     }
-}
+}*/
 
 #[derive(Component, Clone, Copy, Reflect, Debug)]
 pub struct AttributeCalculatorCached<T: Attribute> {
@@ -134,8 +162,8 @@ pub struct AttributeCalculator<T: Attribute> {
     pub(crate) set: Option<T::Property>,
     pub(crate) additive: T::Property,
     pub(crate) subtractive: T::Property,
-    pub(crate) increase: T::Property,
-    pub(crate) more: T::Property,
+    pub(crate) increase: f64,
+    pub(crate) more: f64,
 }
 
 impl<T: Attribute> AttributeCalculator<T> {
@@ -148,21 +176,21 @@ impl<T: Attribute> AttributeCalculator<T> {
         let addition_result = base_value + self.additive;
 
         // Step 2 - Substraction
-        let subtraction_result = addition_result - self.subtractive;
+        let subtraction_result: f64 = (addition_result - self.subtractive).as_();
 
         // Step 3 - Additive Multiplication
         // Clamp self.increase to prevent negative increase to attributes
-        let clamped_increase = if self.increase < T::Property::zero() {
-            T::Property::zero()
+        let clamped_increase = if self.increase < 0.0 {
+            0.0
         } else {
             self.increase
         };
-        let add_multi_result = subtraction_result * (T::Property::one() + clamped_increase);
+        let add_multi_result = subtraction_result * (1.0 + clamped_increase);
 
         // Step 4 - More multipliers
         let result = add_multi_result * self.more;
 
-        result
+        T::Property::from_f64(result).unwrap()
     }
 
     pub fn combine(self, other: AttributeCalculator<T>) -> AttributeCalculator<T> {
@@ -200,104 +228,41 @@ impl<T: Attribute> AttributeCalculator<T> {
         self.increase += other.increase;
         self.more *= other.more;
     }
+
+    pub fn convert(modifier: &AttributeModifier<T>, attributes_ref: &AttributesRef) -> Self {
+        match modifier.operation {
+            ModOp::Set => Self {
+                set: Some(modifier.value_source.value(attributes_ref).unwrap()),
+                ..default()
+            },
+            ModOp::Add => Self {
+                additive: modifier.value_source.value(attributes_ref).unwrap(),
+                ..default()
+            },
+            ModOp::Sub => Self {
+                subtractive: modifier.value_source.value(attributes_ref).unwrap(),
+                ..default()
+            },
+            ModOp::Increase => Self {
+                increase: modifier.value_source.value(attributes_ref).unwrap().as_(),
+                ..default()
+            },
+            ModOp::More => Self {
+                more: modifier.value_source.value(attributes_ref).unwrap().as_(),
+                ..default()
+            },
+        }
+    }
 }
 
 impl<T: Attribute> Default for AttributeCalculator<T> {
     fn default() -> Self {
         Self {
             set: None,
-            additive: T::Property::from_u8(0).unwrap(),
-            subtractive: T::Property::from_u8(0).unwrap(),
-            increase: T::Property::from_u8(0).unwrap(),
-            more: T::Property::from_u8(1).unwrap(),
-        }
-    }
-}
-
-impl<T: Attribute> From<Mod<T::Property>> for AttributeCalculator<T> {
-    fn from(modifier: Mod<T::Property>) -> Self {
-        match modifier {
-            Mod::Set(value) => Self {
-                set: Some(value),
-                ..default()
-            },
-            Mod::Add(value) => Self {
-                additive: value,
-                ..default()
-            },
-            Mod::Sub(value) => Self {
-                subtractive: value,
-                ..default()
-            },
-            Mod::Increase(value) => Self {
-                increase: value,
-                ..default()
-            },
-            Mod::More(value) => Self {
-                more: value,
-                ..default()
-            },
-        }
-    }
-}
-
-impl<T: Attribute> From<&Vec<Mod<T::Property>>> for AttributeCalculator<T> {
-    fn from(modifiers: &Vec<Mod<T::Property>>) -> Self {
-        let set: Vec<&T::Property> = modifiers
-            .iter()
-            .filter_map(|m| match m {
-                Mod::Set(value) => Some(value),
-                _ => None,
-            })
-            .collect();
-
-        if set.len() > 0 {
-            return Self {
-                set: Some(*set[0]),
-                ..default()
-            };
-        }
-
-        let additive: T::Property = modifiers
-            .iter()
-            .filter_map(|m| match m {
-                Mod::Add(value) => Some(*value),
-                _ => None,
-            })
-            .sum();
-
-        let subtractive: T::Property = modifiers
-            .iter()
-            .filter_map(|m| match m {
-                Mod::Sub(value) => Some(*value),
-                _ => None,
-            })
-            .sum();
-
-        let increased: T::Property = modifiers
-            .iter()
-            .filter_map(|m| match m {
-                Mod::Increase(value) => Some(*value),
-                _ => None,
-            })
-            .sum();
-
-        let more: T::Property = modifiers
-            .iter()
-            .filter_map(|m| match m {
-                Mod::More(value) => Some(*value),
-                _ => None,
-            })
-            .fold(T::Property::one(), |acc, x| {
-                acc * (T::Property::one() + x)
-            });
-
-        Self {
-            set: None,
-            additive,
-            subtractive,
-            increase: increased,
-            more,
+            additive: T::Property::zero(),
+            subtractive: T::Property::zero(),
+            increase: 0.0,
+            more: 1.0,
         }
     }
 }

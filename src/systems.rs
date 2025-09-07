@@ -1,10 +1,10 @@
 use crate::actors::Actor;
-use crate::attributes::{Attribute, AttributeQueryData};
+use crate::attributes::{Attribute, AttributeQueryData, AttributeQueryDataReadOnly};
 use crate::effect::Stacks;
 use crate::graph::{NodeType, QueryGraphAdapter};
 use crate::modifier::Who;
 use crate::prelude::*;
-use crate::{Dirty, OnAttributeValueChanged};
+use crate::{AttributesRef, Dirty, OnAttributeValueChanged};
 use bevy::prelude::*;
 use num_traits::AsPrimitive;
 use petgraph::visit::IntoNeighbors;
@@ -58,11 +58,11 @@ pub fn on_change_attribute_observer<S: Attribute, T: Attribute>(
         .unwrap();
 
     let scaling = modifier.scaling;
-    let mod_value = modifier.modifier.value_mut();
 
     let converted_source_attribute = trigger.current_value.as_();
-    let scaled_converted_source_attribute = converted_source_attribute * scaling;
-    *mod_value = scaled_converted_source_attribute; // * scaling;
+    let scaled_converted_source_attribute = converted_source_attribute.as_() * scaling;
+
+    modifier.scaling = scaled_converted_source_attribute;
 
     commands
         .entity(mod_entity)
@@ -85,7 +85,8 @@ pub fn update_effect_system<T: Attribute>(
     nodes: Query<&NodeType>,
     dirty_nodes: Query<&Dirty<T>>,
     statuses: Query<EffectStatusParam>,
-    mut attributes: Query<AttributeQueryData<T>>,
+    attributes: Query<AttributeQueryDataReadOnly<T>>,
+    attribute_refs: Query<AttributesRef>,
     modifiers: Query<&AttributeModifier<T>>,
     mut commands: Commands,
 ) {
@@ -96,13 +97,19 @@ pub fn update_effect_system<T: Attribute>(
             continue;
         }
 
+        let Ok(attribute_ref) = attribute_refs.get(actor_entity) else {
+            error!("{}: Error getting attribute ref.", actor_entity);
+            continue;
+        };
+
         update_effect_tree_attributes::<T>(
             &graph,
             &nodes,
             actor_entity,
             &dirty_nodes,
             &statuses,
-            &mut attributes,
+            &attributes,
+            &attribute_ref,
             &modifiers,
             &mut commands,
         );
@@ -115,7 +122,8 @@ fn update_effect_tree_attributes<T: Attribute>(
     current_entity: Entity,
     dirty_nodes: &Query<&Dirty<T>>,
     statuses: &Query<EffectStatusParam>,
-    attributes: &mut Query<AttributeQueryData<T>>,
+    attributes: &Query<AttributeQueryDataReadOnly<T>>,
+    actor_ref: &AttributesRef,
     modifiers: &Query<&AttributeModifier<T>>,
     commands: &mut Commands,
 ) -> AttributeCalculator<T> {
@@ -141,7 +149,7 @@ fn update_effect_tree_attributes<T: Attribute>(
 
     let node_calculator = match node_type {
         NodeType::Actor | NodeType::Effect => {
-            // Traverse children with the new intensity
+            // Traverse children
             let calculator = graph
                 .neighbors(current_entity)
                 .map(|entity| {
@@ -152,6 +160,7 @@ fn update_effect_tree_attributes<T: Attribute>(
                         dirty_nodes,
                         statuses,
                         attributes,
+                        actor_ref,
                         modifiers,
                         commands,
                     )
@@ -163,7 +172,7 @@ fn update_effect_tree_attributes<T: Attribute>(
         }
         NodeType::Modifier => {
             if let Ok(modifier) = modifiers.get(current_entity) {
-                AttributeCalculator::from(modifier.modifier)
+                AttributeCalculator::convert(modifier, &actor_ref)
             } else {
                 // This happens when we are looking for component A, but the modifier applies to component B
                 AttributeCalculator::default()
@@ -171,19 +180,36 @@ fn update_effect_tree_attributes<T: Attribute>(
         }
     };
 
-    // Update the attribute
-    if let Ok(mut attribute) = attributes.get_mut(current_entity) {
-        attribute.calculator_cache.calculator = node_calculator;
-        let should_notify_observers = attribute.update_attribute(&node_calculator);
-        if should_notify_observers {
-            commands.trigger_targets(OnAttributeValueChanged::<T>::default(), current_entity);
-        }
-    };
+    // Signal to update the attribute
+    commands
+        .entity(current_entity)
+        .trigger(UpdateAttributeSignal {
+            calculator: node_calculator,
+        });
 
     // Cleans the node
     commands.entity(current_entity).try_remove::<Dirty<T>>();
 
     node_calculator
+}
+
+#[derive(Event)]
+pub struct UpdateAttributeSignal<T: Attribute> {
+    calculator: AttributeCalculator<T>,
+}
+
+pub fn update_attribute<T: Attribute>(
+    trigger: Trigger<UpdateAttributeSignal<T>>,
+    mut attributes: Query<AttributeQueryData<T>>,
+    mut commands: Commands,
+) {
+    if let Ok(mut attribute) = attributes.get_mut(trigger.target()) {
+        attribute.calculator_cache.calculator = trigger.event().calculator;
+        let should_notify_observers = attribute.update_attribute(&trigger.event().calculator);
+        if should_notify_observers {
+            commands.trigger_targets(OnAttributeValueChanged::<T>::default(), trigger.target());
+        }
+    };
 }
 
 pub fn apply_periodic_effect<T: Attribute>(
@@ -210,7 +236,7 @@ pub fn apply_periodic_effect<T: Attribute>(
 
             // Apply the stack count to the modifier
             let stack_count = stacks.current_value();
-            let scaled_modifier = attribute_modifier.modifier.clone(); // TODO * stack_count;
+            let scaled_modifier = attribute_modifier.clone(); // TODO * stack_count;
 
             match attribute_modifier.who {
                 Who::Target => {

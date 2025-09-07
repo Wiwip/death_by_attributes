@@ -6,17 +6,16 @@ mod events;
 use crate::attributes::Attribute;
 use crate::condition::ConditionContext;
 use crate::inspector::pretty_type_name;
-use crate::prelude::{AttributeModifier, AttributeTypeId};
+use crate::prelude::{AttributeModifier, AttributeTypeId, ModOp};
 use crate::{AttributesMut, AttributesRef};
 use bevy::prelude::{Commands, Component, Entity, EntityCommands, Reflect, reflect_trait};
 use serde::{Deserialize, Serialize};
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 
 pub mod prelude {
     pub use super::attribute_modifier::AttributeModifier;
-    pub use super::calculator::Mod;
+    pub use super::calculator::ModOp;
     pub use super::calculator::{AttributeCalculator, AttributeCalculatorCached};
-    pub use super::derived_modifier::DerivedModifier;
     pub use super::events::{ApplyAttributeModifierEvent, apply_modifier_events};
 }
 
@@ -44,11 +43,16 @@ where
     T: Attribute,
 {
     fn describe(&self) -> String {
-        format!("{}", self.modifier)
+        format!("{}", self)
     }
     fn name(&self) -> String {
         pretty_type_name::<T>()
     }
+}
+
+pub enum ModSource {
+    Constant(f64),
+    Attribute,
 }
 
 #[derive(Copy, Clone, Reflect, Serialize, Deserialize)]
@@ -70,6 +74,16 @@ impl Who {
 }
 
 impl Debug for Who {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Who::Target => write!(f, "Target"),
+            Who::Source => write!(f, "Source"),
+            Who::Effect => write!(f, "Owner"),
+        }
+    }
+}
+
+impl Display for Who {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Who::Target => write!(f, "Target"),

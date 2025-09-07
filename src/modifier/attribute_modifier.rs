@@ -1,36 +1,39 @@
-use crate::attributes::AccessAttribute;
+use crate::attributes::{AccessAttribute, Value};
 use crate::attributes::{Attribute, AttributeExtractor, BoxAttributeAccessor};
+use crate::condition::ConditionContext;
 use crate::graph::NodeType;
 use crate::inspector::pretty_type_name;
-use crate::modifier::calculator::{AttributeCalculator, Mod};
+use crate::modifier::calculator::{AttributeCalculator, ModOp};
 use crate::modifier::{Modifier, ModifierMarker};
 use crate::modifier::{ReflectAccessModifier, Who};
 use crate::prelude::{ApplyAttributeModifierEvent, AttributeTypeId, EffectSource, EffectTarget};
 use crate::{AttributesMut, AttributesRef};
 use bevy::prelude::*;
-use serde::Serialize;
+use num_traits::One;
 use std::any::type_name;
 use std::fmt::Debug;
 use std::fmt::Display;
 
-#[derive(Component, Copy, Clone, Debug, Reflect, Serialize)]
+#[derive(Component, Clone, Debug, Reflect)]
 #[reflect(AccessModifier)]
 #[require(ModifierMarker)]
 pub struct AttributeModifier<T: Attribute> {
-    pub who: Who,
     #[reflect(ignore)]
-    pub modifier: Mod<T::Property>,
-    pub scaling: T::Property,
+    pub value_source: Value<T::Property>,
+    pub who: Who,
+    pub operation: ModOp,
+    pub scaling: f64,
 }
 
 impl<T> AttributeModifier<T>
 where
     T: Attribute + 'static,
 {
-    pub fn new(modifier: Mod<T::Property>, who: Who, scaling: T::Property) -> Self {
+    pub fn new(value: Value<T::Property>, modifier: ModOp, who: Who, scaling: f64) -> Self {
         Self {
+            value_source: value,
             who,
-            modifier,
+            operation: modifier,
             scaling,
         }
     }
@@ -45,7 +48,15 @@ where
     T: Attribute,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Mod<{}>({:.1})", pretty_type_name::<T>(), self.modifier)
+        write!(
+            f,
+            "Mod<{}>({}{}, {}, *{:.2})",
+            pretty_type_name::<T>(),
+            self.operation,
+            self.value_source,
+            self.who,
+            self.scaling
+        )
     }
 }
 
@@ -60,8 +71,9 @@ where
                 EffectSource(actor_entity.id()),
                 EffectTarget(actor_entity.id()),
                 AttributeModifier::<T> {
+                    value_source: self.value_source.clone(),
                     who: self.who,
-                    modifier: self.modifier,
+                    operation: self.operation,
                     scaling: self.scaling,
                 },
                 Name::new(format!("Mod<{}> ({:?})", pretty_type_name::<T>(), self.who)),
@@ -70,20 +82,26 @@ where
     }
 
     fn apply(&self, actor_entity: &mut AttributesMut) -> bool {
+        // Measure the modifier
+        let new_val = match actor_entity.get::<T>() {
+            None => panic!("Could not find attribute {}", type_name::<T>()),
+            Some(attribute) => {
+                let entity = actor_entity.as_readonly();
+
+                let calculator = AttributeCalculator::<T>::convert(self, &entity);
+                let new_val = calculator.eval(attribute.base_value());
+                new_val
+            }
+        };
+
+        // Apply the modifier
         if let Some(mut attribute) = actor_entity.get_mut::<T>() {
-            println!(
-                "Directly applying modifier {} to {}",
-                self.modifier,
-                attribute.name()
-            );
-            let calculator = AttributeCalculator::<T>::from(self.modifier);
-            let new_val = calculator.eval(attribute.base_value());
             // Ensure that the modifier meaningfully changed the value before we trigger the event.
 
             //let has_changed = new_val.abs_diff(attribute.base_value()) > 0;
             //if has_changed {
-                attribute.set_base_value(new_val);
-                true
+            attribute.set_base_value(new_val);
+            true
             //} else {
             //    false
             //}
@@ -95,7 +113,7 @@ where
     fn write_event(&self, target: Entity, commands: &mut Commands) {
         commands.send_event(ApplyAttributeModifierEvent::<T> {
             target,
-            modifier: self.modifier,
+            modifier: self.clone(),
             attribute: BoxAttributeAccessor::new(AttributeExtractor::<T>::new()),
         });
     }

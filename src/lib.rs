@@ -1,6 +1,4 @@
-use crate::systems::{
-    apply_periodic_effect, observe_dirty_node_notifications, update_effect_system,
-};
+use crate::systems::{apply_periodic_effect, observe_dirty_node_notifications, update_attribute, update_effect_system};
 use bevy::prelude::*;
 use std::any::TypeId;
 use std::error::Error;
@@ -49,6 +47,7 @@ pub mod prelude {
 }
 
 pub use {num_traits};
+use crate::graph::NodeType;
 
 pub struct AttributesPlugin;
 
@@ -62,7 +61,8 @@ impl Plugin for AttributesPlugin {
             .init_asset::<EffectDef>()
             .init_asset::<AbilityDef>()
             .register_type::<AppliedEffects>()
-            .register_type::<EffectTarget>();
+            .register_type::<EffectTarget>()
+            .register_type::<NodeType>();
 
         app.configure_sets(
             Update,
@@ -125,6 +125,7 @@ pub fn init_attribute<T: Attribute>(app: &mut App) {
     app.add_observer(clamp_attributes_observer::<T>);
     app.add_observer(observe_dirty_node_notifications::<T>);
     app.add_observer(on_add_attribute::<T>);
+    app.add_observer(update_attribute::<T>);
 
     //EventRegistry::register_event::<OnBaseValueChange<T>>(world);
     //EventRegistry::register_event::<OnCurrentValueChanged<T>>(world);

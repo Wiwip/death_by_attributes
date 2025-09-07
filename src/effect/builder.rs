@@ -1,10 +1,10 @@
 use crate::assets::EffectDef;
-use crate::attributes::Attribute;
+use crate::attributes::{Attribute, Value};
 use crate::condition::{AttributeCondition, BoxCondition};
 use crate::effect::application::EffectApplicationPolicy;
 use crate::effect::{EffectExecution, EffectStackingPolicy};
 use crate::modifier::{Modifier, ModifierFn, Who};
-use crate::prelude::{AttributeModifier, DerivedModifier, Mod};
+use crate::prelude::{AttributeModifier, ModOp};
 use bevy::prelude::{Bundle, Entity, EntityCommands, Name};
 use num_traits::{AsPrimitive, One};
 use std::ops::RangeBounds;
@@ -56,31 +56,31 @@ impl EffectBuilder {
         ))
     }
 
-    pub fn modify<T: Attribute>(mut self, modifier: Mod<T::Property>, who: Who) -> Self {
-        self.modifiers.push(Box::new(AttributeModifier::<T>::new(
-            modifier,
-            who,
-            T::Property::one(),
-        )));
+    pub fn modify<T: Attribute>(mut self, value: Value<T::Property>, modifier: ModOp, who: Who, scaling: f64) -> Self {
+        self.modifiers
+            .push(Box::new(AttributeModifier::<T>::new(value, modifier, who, scaling)));
         self
     }
 
     /// Spawns an observer watching the actor's attributes on the modifier entity.
     /// When OnValueChanged is triggered, it takes the current value of the attribute,
     /// it applies the scaling factor and updates the modifier's value to the new value.
-    pub fn modify_from<S, T>(mut self, modifier: Mod<T::Property>, mod_target: Who) -> Self
+    /*pub fn modify_from<S, T>(
+        mut self,
+        modifier: ModOp,
+        mod_target: Who,
+        scaling: f64,
+    ) -> Self
     where
         S: Attribute,
         S::Property: AsPrimitive<T::Property>,
         T: Attribute,
     {
         self.modifiers.push(Box::new(DerivedModifier::<S, T>::new(
-            modifier,
-            mod_target,
-            modifier.value(),
+            modifier, mod_target, scaling,
         )));
         self
-    }
+    }*/
 
     pub fn intensity(mut self, intensity: f32) -> Self {
         self.intensity = Some(intensity);

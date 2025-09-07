@@ -15,48 +15,7 @@ pub enum EffectStackingPolicy {
                      //RefreshDurationWithOverflow, // The effect overrides previous applications
 }
 
-//attribute!(EffectIntensity, U16F16);
-
-#[derive(bevy::prelude::Component, Clone, Copy, bevy::prelude::Reflect, Debug, Serialize, Deserialize)]
-#[reflect(AccessAttribute)]
-pub struct EffectIntensity {
-    base_value: f32,
-    current_value: f32,
-}
-impl Attribute for EffectIntensity {
-    type Property = f32;
-
-    fn new<T>(value: T) -> Self
-    where
-        T: Num + AsPrimitive<Self::Property> + Copy
-    {
-        Self {
-            base_value: value.as_(),
-            current_value: value.as_(),
-        }
-    }
-    fn base_value(&self) -> Self::Property {
-        self.base_value
-    }
-    fn set_base_value(&mut self, value: Self::Property) {
-        self.base_value = value;
-    }
-    fn current_value(&self) -> Self::Property {
-        self.current_value
-    }
-    fn set_current_value(&mut self, value: Self::Property) {
-        self.current_value = value;
-    }
-    fn attribute_type_id() -> AttributeTypeId {
-        AttributeTypeId::of::<Self>()
-    }
-}
-
-impl Default for EffectIntensity {
-    fn default() -> Self {
-        EffectIntensity::new(1.0)
-    }
-}
+attribute!(EffectIntensity, f32);
 
 attribute!(Stacks, u32);
 

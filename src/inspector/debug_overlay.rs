@@ -235,10 +235,9 @@ fn list_modifiers_for_effect(
 
         builder
             .begin_child(format!(
-                "[{}] Mod: {} [{}]",
+                "[{}] {}",
                 modifier_ref.id(),
-                modifier.name(),
-                modifier.describe()
+                modifier.describe(),
             ))
             .end_child();
     }
