@@ -4,6 +4,7 @@ use crate::inspector::debug_overlay::{explore_actors_system, setup_debug_overlay
 use bevy::prelude::*;
 use bevy::time::common_conditions::on_timer;
 use std::time::Duration;
+use crate::attributes::Lit;
 
 pub struct ActorInspectorPlugin;
 
@@ -24,3 +25,4 @@ pub fn pretty_type_name<T>() -> String {
 pub fn pretty_type_name_str(val: &str) -> String {
     format!("{}", disqualified::ShortName(val))
 }
+

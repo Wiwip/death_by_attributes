@@ -1,12 +1,11 @@
-
-use crate::assets::EffectDef;
-use crate::{attribute, attribute_impl};
-use crate::effect::timing::EffectDuration;
-use crate::prelude::{Attribute, AttributeTypeId, Effect};
+use crate::math::AbsDiff;
 use crate::ReflectAccessAttribute;
+use crate::assets::EffectDef;
+use crate::attribute;
+use crate::effect::timing::EffectDuration;
+use crate::prelude::{Attribute, Effect};
 use bevy::prelude::*;
-use num_traits::{AsPrimitive, Num};
-use serde::{Deserialize, Serialize};
+use num_traits::AsPrimitive;
 
 pub enum EffectStackingPolicy {
     None, // Each effect is independently added to the entity
@@ -39,10 +38,8 @@ impl Stacks {
                 if let Ok(mut stack_count) = stacks.get_mut(effect_entity) {
                     let mut base_stacks = stack_count.base_value();
                     base_stacks += count;
-                    stack_count
-                        .set_base_value(base_stacks.clamp(1, max_stack.as_()));
-                    stack_count
-                        .set_current_value(base_stacks.clamp(1.as_(), max_stack.as_()));
+                    stack_count.set_base_value(base_stacks.clamp(1, max_stack.as_()));
+                    stack_count.set_current_value(base_stacks.clamp(1.as_(), max_stack.as_()));
                 } else {
                     error!(
                         "Failed to find component Stacks for entity: {:?}",

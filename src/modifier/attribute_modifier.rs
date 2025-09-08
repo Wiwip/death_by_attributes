@@ -1,15 +1,15 @@
-use crate::attributes::{AccessAttribute, Value};
+use crate::attributes::Value;
 use crate::attributes::{Attribute, AttributeExtractor, BoxAttributeAccessor};
-use crate::condition::ConditionContext;
 use crate::graph::NodeType;
 use crate::inspector::pretty_type_name;
+use crate::math::AbsDiff;
 use crate::modifier::calculator::{AttributeCalculator, ModOp};
 use crate::modifier::{Modifier, ModifierMarker};
 use crate::modifier::{ReflectAccessModifier, Who};
 use crate::prelude::{ApplyAttributeModifierEvent, AttributeTypeId, EffectSource, EffectTarget};
 use crate::{AttributesMut, AttributesRef};
 use bevy::prelude::*;
-use num_traits::One;
+use petgraph::algo::has_path_connecting;
 use std::any::type_name;
 use std::fmt::Debug;
 use std::fmt::Display;
@@ -48,14 +48,20 @@ where
     T: Attribute,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let scaling = if self.scaling.fract() == 0.0 {
+            format!("{}", "")
+        } else {
+            format!("[*{:.2}]", self.scaling)
+        };
+
         write!(
             f,
-            "Mod<{}>({}{}, {}, *{:.2})",
+            "Mod<{}>({}{}{}, {})",
             pretty_type_name::<T>(),
             self.operation,
             self.value_source,
+            scaling,
             self.who,
-            self.scaling
         )
     }
 }
@@ -97,14 +103,11 @@ where
         // Apply the modifier
         if let Some(mut attribute) = actor_entity.get_mut::<T>() {
             // Ensure that the modifier meaningfully changed the value before we trigger the event.
-
-            //let has_changed = new_val.abs_diff(attribute.base_value()) > 0;
-            //if has_changed {
-            attribute.set_base_value(new_val);
-            true
-            //} else {
-            //    false
-            //}
+            let has_changed = new_val.are_different(attribute.current_value());
+            if has_changed {
+                attribute.set_base_value(new_val);
+            }
+            has_changed
         } else {
             panic!("Could not find attribute {}", type_name::<T>());
         }

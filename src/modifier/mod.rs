@@ -1,12 +1,11 @@
 mod attribute_modifier;
 mod calculator;
-mod derived_modifier;
 mod events;
 
 use crate::attributes::Attribute;
 use crate::condition::ConditionContext;
 use crate::inspector::pretty_type_name;
-use crate::prelude::{AttributeModifier, AttributeTypeId, ModOp};
+use crate::prelude::{AttributeModifier, AttributeTypeId};
 use crate::{AttributesMut, AttributesRef};
 use bevy::prelude::{Commands, Component, Entity, EntityCommands, Reflect, reflect_trait};
 use serde::{Deserialize, Serialize};
@@ -48,11 +47,6 @@ where
     fn name(&self) -> String {
         pretty_type_name::<T>()
     }
-}
-
-pub enum ModSource {
-    Constant(f64),
-    Attribute,
 }
 
 #[derive(Copy, Clone, Reflect, Serialize, Deserialize)]

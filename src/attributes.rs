@@ -1,6 +1,7 @@
 use crate::condition::{convert_bounds, multiply_bounds};
 use crate::effect::AttributeDependencies;
 use crate::inspector::pretty_type_name;
+use crate::math::AbsDiff;
 use crate::prelude::*;
 use crate::systems::{NotifyAttributeDependencyChanged, NotifyDirtyNode};
 use crate::{AttributeError, AttributesMut, AttributesRef, OnAttributeValueChanged};
@@ -37,6 +38,7 @@ where
         + NumAssignOps
         + Sum
         + Bounded
+        + AbsDiff
         + PartialOrd
         + FromPrimitive
         + AsPrimitive<f64>
@@ -61,59 +63,6 @@ where
     }
     fn attribute_type_id() -> AttributeTypeId;
 }
-
-/*#[macro_export]
-macro_rules! attribute {
-    ( $StructName:ident ) => {
-        $crate::attribute!($StructName, f32);
-    };
-    ( $StructName:ident, $ValueType:ident ) => {
-        #[derive(
-            bevy::prelude::Component,
-            Clone,
-            Copy,
-            bevy::prelude::Reflect,
-            Debug,
-            serde::Serialize,
-            serde::Deserialize,
-        )]
-        #[reflect(AccessAttribute)]
-        pub struct $StructName {
-            base_value: $ValueType,
-            current_value: $ValueType,
-        }
-
-        impl $crate::attributes::Attribute for $StructName {
-            type Property = $ValueType;
-
-            fn new<
-                T: $crate::num_traits::Num + $crate::num_traits::AsPrimitive<Self::Property> + Copy,
-            >(
-                value: T,
-            ) -> Self {
-                Self {
-                    base_value: value.as_(),
-                    current_value: value.as_(),
-                }
-            }
-            fn base_value(&self) -> $ValueType {
-                self.base_value
-            }
-            fn set_base_value(&mut self, value: $ValueType) {
-                self.base_value = value;
-            }
-            fn current_value(&self) -> $ValueType {
-                self.current_value
-            }
-            fn set_current_value(&mut self, value: $ValueType) {
-                self.current_value = value;
-            }
-            fn attribute_type_id() -> $crate::prelude::AttributeTypeId {
-                $crate::prelude::AttributeTypeId::of::<Self>()
-            }
-        }
-    };
-}*/
 
 #[macro_export]
 macro_rules! attribute_impl {
@@ -210,12 +159,11 @@ impl<T: Attribute> AttributeQueryDataItem<'_, T> {
     pub fn update_attribute(&mut self, calculator: &AttributeCalculator<T>) -> bool {
         let new_val = calculator.eval(self.attribute.base_value());
 
-        //let has_changed = new_val.abs_sub(self.attribute.current_value()) > 0.as_();
-        //if has_changed {
-        self.attribute.set_current_value(new_val);
-        //}
-        //has_changed
-        true
+        let has_changed = new_val.are_different(self.attribute.current_value());
+        if has_changed {
+            self.attribute.set_current_value(new_val);
+        }
+        has_changed
     }
 
     pub fn update_attribute_from_cache(&mut self) -> bool {
@@ -224,12 +172,11 @@ impl<T: Attribute> AttributeQueryDataItem<'_, T> {
             .calculator
             .eval(self.attribute.base_value());
 
-        //let has_changed = new_val.abs_sub(self.attribute.current_value()) > 0;
-        //if has_changed {
-        //    self.attribute.set_current_value(new_val);
-        //}
-        //has_changed
-        true
+        let has_changed = new_val.are_different(self.attribute.current_value());
+        if has_changed {
+            self.attribute.set_current_value(new_val);
+        }
+        has_changed
     }
 }
 
@@ -394,7 +341,7 @@ impl<P: Num + Display + Debug + Copy + Clone + Send + Sync + 'static> Value<P> {
     }
 
     pub fn lit(value: P) -> Self {
-        Self(Box::new(LitValue(value)))
+        Self(Box::new(Lit(value)))
     }
 }
 
@@ -451,13 +398,12 @@ impl<T: Attribute> ValueSource for AttributeValue<T> {
 }
 
 #[derive(Deref, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct LitValue<P: Num>(P);
+pub struct Lit<P: Num>(P);
 
-impl<P: Num + Display + Debug + Copy + Clone + Send + Sync + 'static> ValueSource for LitValue<P> {
+impl<P: Num + Display + Debug + Copy + Clone + Send + Sync + 'static> ValueSource for Lit<P> {
     type Output = P;
 
     fn value(&self, _: &AttributesRef) -> Result<Self::Output, AttributeError> {
-        //error!("LitValue::update_value called. This should not happen.");
         Ok(self.0)
     }
 
@@ -466,7 +412,7 @@ impl<P: Num + Display + Debug + Copy + Clone + Send + Sync + 'static> ValueSourc
     }
 
     fn clone_value(&self) -> Box<dyn ValueSource<Output = Self::Output>> {
-        Box::new(LitValue(self.0))
+        Box::new(Lit(self.0))
     }
 }
 

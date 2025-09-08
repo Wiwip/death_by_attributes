@@ -128,7 +128,7 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
     let ap_buff = effects.add(
         Effect::permanent()
             .name("AttackPower Buff".into())
-            .modify::<AttackPower>(Health::value(), ModOp::More, Who::Target, 0.01)
+            .modify::<AttackPower>(Health::value(), ModOp::Add, Who::Target, 0.01)
             .modify::<Intelligence>(Health::value(), ModOp::Add, Who::Target, 0.25)
             .build(),
     );

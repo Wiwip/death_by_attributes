@@ -19,6 +19,7 @@ pub mod mutator;
 mod schedule;
 mod systems;
 mod trigger;
+pub mod math;
 
 use crate::ability::{Abilities, Ability, AbilityCooldown, AbilityOf, AbilityPlugin};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
