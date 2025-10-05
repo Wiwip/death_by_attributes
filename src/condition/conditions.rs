@@ -1,7 +1,7 @@
 use crate::ability::Ability;
 use crate::assets::AbilityDef;
 use crate::attributes::{Attribute, AttributeAccessor, AttributeExtractor};
-use crate::condition::{Condition, ConditionContext, convert_bounds};
+use crate::condition::{Condition, GameplayContext};
 use crate::effect::Stacks;
 use crate::inspector::pretty_type_name;
 use crate::modifier::Who;
@@ -39,7 +39,7 @@ impl<T: Attribute> AttributeCondition<T> {
 }
 
 impl<T: Attribute> Condition for AttributeCondition<T> {
-    fn eval(&self, context: &ConditionContext) -> Result<bool, BevyError> {
+    fn eval(&self, context: &GameplayContext) -> Result<bool, BevyError> {
         let entity = self.who.resolve_entity(context);
 
         let extractor = AttributeExtractor::<T>::new();
@@ -90,7 +90,7 @@ where
     C1: Condition,
     C2: Condition,
 {
-    fn eval(&self, value: &ConditionContext) -> Result<bool, BevyError> {
+    fn eval(&self, value: &GameplayContext) -> Result<bool, BevyError> {
         Ok(self.c1.eval(value)? && self.c2.eval(value)?)
     }
 }
@@ -105,7 +105,7 @@ where
     C1: Condition,
     C2: Condition,
 {
-    fn eval(&self, context: &ConditionContext) -> Result<bool, BevyError> {
+    fn eval(&self, context: &GameplayContext) -> Result<bool, BevyError> {
         Ok(self.c1.eval(context)? || self.c2.eval(context)?)
     }
 }
@@ -113,7 +113,7 @@ where
 pub struct Not<C>(C);
 
 impl<C: Condition> Condition for Not<C> {
-    fn eval(&self, context: &ConditionContext) -> Result<bool, BevyError> {
+    fn eval(&self, context: &GameplayContext) -> Result<bool, BevyError> {
         Ok(!self.0.eval(context)?)
     }
 }
@@ -145,7 +145,7 @@ impl<C: Component> TagCondition<C> {
 }
 
 impl<C: Component> Condition for TagCondition<C> {
-    fn eval(&self, context: &ConditionContext) -> Result<bool, BevyError> {
+    fn eval(&self, context: &GameplayContext) -> Result<bool, BevyError> {
         Ok(self.target.resolve_entity(context).contains::<C>())
     }
 }
@@ -161,7 +161,7 @@ impl AbilityCondition {
 }
 
 impl Condition for AbilityCondition {
-    fn eval(&self, context: &ConditionContext) -> Result<bool, BevyError> {
+    fn eval(&self, context: &GameplayContext) -> Result<bool, BevyError> {
         Ok(context
             .owner
             .get::<Ability>()
@@ -192,12 +192,18 @@ pub trait ConditionExt: Condition + Sized {
 
 impl<T: Condition> ConditionExt for T {}
 
+pub trait CustomExecution: Send + Sync {
+    fn run(&self, context: &GameplayContext) -> Result<bool, BevyError>;
+}
+
+pub type StoredExecution = Box<dyn CustomExecution>;
+
 /// A condition that wraps a closure or function pointer.
 ///
 /// This allows for creating custom, inline condition logic without needing
 /// to define a new struct for every case.
 #[derive(Debug, Serialize)]
-pub struct FunctionCondition<Input, F> {
+pub struct FunctionActivation<Input, F> {
     f: F,
     marker: PhantomData<fn() -> Input>,
 }
@@ -205,18 +211,18 @@ pub struct FunctionCondition<Input, F> {
 pub trait EffectParam: Send + Sync {
     type Item<'new>;
 
-    fn retrieve<'r>(context: &'r ConditionContext) -> Self::Item<'r>;
+    fn retrieve<'r>(context: &'r GameplayContext) -> Self::Item<'r>;
 }
 
 #[derive(Deref)]
-struct Dst<'a, T: 'static> {
+pub struct Dst<'a, T: 'static> {
     value: &'a T,
 }
 
 impl<'res, T: 'static + Component> EffectParam for Dst<'res, T> {
     type Item<'new> = Dst<'new, T>;
 
-    fn retrieve<'r>(context: &'r ConditionContext) -> Self::Item<'r> {
+    fn retrieve<'r>(context: &'r GameplayContext) -> Self::Item<'r> {
         Dst {
             value: context
                 .target_actor
@@ -227,14 +233,14 @@ impl<'res, T: 'static + Component> EffectParam for Dst<'res, T> {
 }
 
 #[derive(Deref)]
-struct Src<'a, T: 'static> {
+pub struct Src<'a, T: 'static> {
     value: &'a T,
 }
 
 impl<'res, T: 'static + Component> EffectParam for Src<'res, T> {
     type Item<'new> = Src<'new, T>;
 
-    fn retrieve<'r>(context: &'r ConditionContext) -> Self::Item<'r> {
+    fn retrieve<'r>(context: &'r GameplayContext) -> Self::Item<'r> {
         Src {
             value: context
                 .source_actor
@@ -244,40 +250,76 @@ impl<'res, T: 'static + Component> EffectParam for Src<'res, T> {
     }
 }
 
-impl<F: Send + Sync, T1: EffectParam> Condition for FunctionCondition<(T1,), F>
-where
-    for<'a, 'b> &'a F: Fn(T1) -> Result<bool, BevyError>
-        + Fn(<T1 as EffectParam>::Item<'b>) -> Result<bool, BevyError>,
-{
-    fn eval(&self, context: &ConditionContext) -> Result<bool, BevyError> {
-        fn call_inner<T1>(
-            f: impl Fn(T1) -> Result<bool, BevyError>,
-            _0: T1,
-        ) -> Result<bool, BevyError> {
-            f(_0)
-        }
+macro_rules! impl_custom_execution {
+    ($($params:ident),*) => {
+        #[allow(unused_variables)]
+        #[allow(non_snake_case)]
+        impl<F: Send + Sync, $($params : EffectParam),*> CustomExecution for FunctionActivation<($($params ,)*), F>
+            where
+                for<'a, 'b> &'a F:
+                    Fn($($params),*) -> Result<bool, BevyError> +
+                    Fn($(<$params as EffectParam>::Item<'b>),*) -> Result<bool, BevyError>,
+        {
+            fn run(&self, context: &GameplayContext) -> Result<bool, BevyError> {
+                fn call_inner<$($params),*>(
+                    f: impl Fn($($params),*) -> Result<bool, BevyError>,
+                    $($params: $params),*
+                ) -> Result<bool, BevyError> {
+                    f($($params),*)
+                }
 
-        let _0 = T1::retrieve(context);
-        call_inner(&self.f, _0)
-    }
+                $(
+                    let $params = $params::retrieve(context);
+                )*
+
+                call_inner(&self.f, $($params),*)
+            }
+        }
+    };
 }
 
-pub trait IntoGameplayCondition<Input> {
-    type ExecFunction: Condition;
+impl_custom_execution!();
+impl_custom_execution!(T1);
+impl_custom_execution!(T1, T2);
+impl_custom_execution!(T1, T2, T3);
+impl_custom_execution!(T1, T2, T3, T4);
+impl_custom_execution!(T1, T2, T3, T4, T5);
+impl_custom_execution!(T1, T2, T3, T4, T5, T6);
+impl_custom_execution!(T1, T2, T3, T4, T5, T6, T7);
+impl_custom_execution!(T1, T2, T3, T4, T5, T6, T7, T8);
+
+pub trait IntoCustomExecution<'a, Input> {
+    type ExecFunction: CustomExecution;
 
     fn into_condition(self) -> Self::ExecFunction;
 }
 
 impl<F: Fn(T1) -> Result<bool, BevyError> + Send + Sync, T1: EffectParam>
-    IntoGameplayCondition<(T1,)> for F
+    IntoCustomExecution<'_, (T1,)> for F
 where
     for<'a, 'b> &'a F: Fn(T1) -> Result<bool, BevyError>
         + Fn(<T1 as EffectParam>::Item<'b>) -> Result<bool, BevyError>,
 {
-    type ExecFunction = FunctionCondition<(T1,), Self>;
+    type ExecFunction = FunctionActivation<(T1,), Self>;
 
     fn into_condition(self) -> Self::ExecFunction {
-        FunctionCondition {
+        FunctionActivation {
+            f: self,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<F: Fn(T1, T2) -> Result<bool, BevyError> + Send + Sync, T1: EffectParam, T2: EffectParam>
+    IntoCustomExecution<'_, (T1, T2)> for F
+where
+    for<'a, 'b> &'a F: Fn(T1, T2) -> Result<bool, BevyError>
+        + Fn(<T1 as EffectParam>::Item<'b>, <T2 as EffectParam>::Item<'b>) -> Result<bool, BevyError>,
+{
+    type ExecFunction = FunctionActivation<(T1, T2), Self>;
+
+    fn into_condition(self) -> Self::ExecFunction {
+        FunctionActivation {
             f: self,
             marker: PhantomData,
         }

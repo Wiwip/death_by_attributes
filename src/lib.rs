@@ -93,7 +93,7 @@ pub fn init_attribute<T: Attribute>(app: &mut App) {
     app.register_type::<AttributeModifier<T>>();
     app.register_type::<AttributeCalculatorCached<T>>();
     app.register_type_data::<T, ReflectAccessAttribute>();
-    app.add_event::<ApplyAttributeModifierEvent<T>>();
+    app.add_message::<ApplyAttributeModifierEvent<T>>();
 
     app.add_systems(
         Update,

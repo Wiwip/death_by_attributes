@@ -11,7 +11,7 @@ use root_attribute::actors::ActorBuilder;
 use root_attribute::assets::{AbilityDef, ActorDef, EffectDef};
 use root_attribute::attributes::ReflectAccessAttribute;
 use root_attribute::attributes::{Attribute, Value};
-use root_attribute::condition::AttributeCondition;
+use root_attribute::condition::{AttributeCondition, Dst, IntoCustomExecution, Src};
 use root_attribute::context::EffectContext;
 use root_attribute::effect::{EffectStackingPolicy, Stacks};
 use root_attribute::graph::QueryGraphAdapter;
@@ -203,6 +203,10 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
             .with_cooldown(1.0)
             .with_cost::<Mana>(12)
             .with_tag::<Frost>()
+            .add_execution(|h: Src<Health>| {
+                println!("Health: {}", h.current_value());
+                Ok(true)
+            })
             .build(),
     );
     commands.insert_resource(AbilityDatabase {
@@ -234,7 +238,7 @@ fn setup_actor(
             .with::<MagicPower>(1.0)
             .with::<AttackPower>(10.0)
             .with::<Armour>(0.10)
-            .with_component((Player, DebugOverlayMarker))
+            .insert((Player, DebugOverlayMarker))
             .grant_ability(&abilities.fireball)
             .grant_ability(&abilities.frostball)
             .build(),
@@ -284,7 +288,10 @@ fn inputs(
             ));
         }
         if keys.just_pressed(KeyCode::Backspace) {
-            commands.trigger(DamageEvent { entity: player_entity, damage: 10.0 });
+            commands.trigger(DamageEvent {
+                entity: player_entity,
+                damage: 10.0,
+            });
         }
         if keys.just_pressed(KeyCode::KeyR) {
             analyze_dependencies_with_petgraph(graph, actors);
@@ -341,11 +348,8 @@ struct DamageEvent {
     damage: f32,
 }
 
-fn damage_event_calculations(
-    trigger: On<DamageEvent>,
-    mut actors: Query<(&mut Health, &Armour)>,
-) {
-    let Ok((mut health, armour)) = actors.get_mut(trigger.target()) else {
+fn damage_event_calculations(trigger: On<DamageEvent>, mut actors: Query<(&mut Health, &Armour)>) {
+    let Ok((mut health, armour)) = actors.get_mut(trigger.entity) else {
         return;
     };
 
@@ -354,5 +358,5 @@ fn damage_event_calculations(
 
     let new_health = health.current_value() - damage_taken as u32;
     health.set_base_value(new_health);
-    debug!("{} took {} damage", trigger.target(), damage_taken);
+    debug!("{} took {} damage", trigger.entity, damage_taken);
 }

@@ -13,6 +13,7 @@ use bevy::asset::{Assets, Handle};
 use bevy::log::debug;
 use bevy::prelude::*;
 use std::cmp::PartialEq;
+use crate::condition::GameplayContext;
 
 /// Describes how the effect is applied to entities
 #[derive(Debug, Clone, Reflect, PartialEq)]
@@ -135,7 +136,7 @@ impl ApplyEffectEvent {
     ) -> Result<(), BevyError> {
         debug!("Applying instant effect to {}", self.targeting.target());
 
-        if let Some(execution) = &effect.custom_execution {
+        if let Some(execution) = &effect.execution {
             // Captures variables and forwards the captured values to the capture context
             let mut capture_context = CaptureContext::from(&self.targeting, &mut actors);
             execution.capture_attributes(&mut capture_context)?;
@@ -143,10 +144,29 @@ impl ApplyEffectEvent {
             let mut execution_context = CalculationContext::new(capture_context);
             execution.execute_effect(&mut execution_context)?;
 
+            /*let (source_actor, target_actor) = match self.targeting {
+                EffectTargeting::SelfCast(entity) => {
+                    let (_, actor) = actors.get(entity).unwrap();
+                    (actor, actor)
+                }
+                EffectTargeting::Targeted { source, target } => {
+                    let (_, source_actor_ref) = actors.get(target).unwrap();
+                    let (_, target_actor_ref) = actors.get(source).unwrap();
+                    (source_actor_ref, target_actor_ref)
+                }
+            };*/
+
+            /*let context = GameplayContext {
+                target_actor: &target_actor,
+                source_actor: &source_actor,
+                owner: &source_actor,
+            };*/
+            //execution.run(&context).expect("Failed to run custom effect");
+
             // Apply the collected modifiers
             let modifiers = execution_context.into_modifiers();
             self.apply_modifiers(&mut actors, &mut modifiers.iter(), commands);
-        };
+        }
 
         self.apply_modifiers(&mut actors, &mut effect.modifiers.iter(), commands);
 

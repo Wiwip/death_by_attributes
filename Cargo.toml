@@ -49,6 +49,8 @@ features = [
     "default_font",
     "dynamic_linking",
     "bevy_ui_debug",
+    "experimental_bevy_feathers",
+    "experimental_bevy_ui_widgets",
 ]
 
 [[bench]]

@@ -1,6 +1,6 @@
 use crate::AttributesRef;
 use crate::assets::EffectDef;
-use crate::condition::ConditionContext;
+use crate::condition::GameplayContext;
 use crate::prelude::{Effect, EffectInactive, EffectSource, EffectTarget};
 use bevy::asset::Assets;
 use bevy::ecs::relationship::Relationship;
@@ -46,7 +46,7 @@ pub fn evaluate_effect_conditions(
             continue;
         };
 
-        let context = ConditionContext {
+        let context = GameplayContext {
             target_actor: &target_actor_ref,
             source_actor: &source_actor_ref,
             owner: &effect_entity_ref,

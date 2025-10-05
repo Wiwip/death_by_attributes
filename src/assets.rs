@@ -1,5 +1,5 @@
 use crate::ability::AbilityActivationFn;
-use crate::condition::BoxCondition;
+use crate::condition::{BoxCondition, CustomExecution, StoredExecution};
 use crate::effect::EffectExecution;
 use crate::effect::EffectStackingPolicy;
 use crate::modifier::{Modifier, ModifierFn};
@@ -20,7 +20,7 @@ pub struct ActorDef {
 pub struct EffectDef {
     pub effect_fn: Vec<Box<ModifierFn>>,
     pub effect_modifiers: Vec<Box<dyn Modifier>>,
-    pub custom_execution: Option<Box<dyn EffectExecution>>,
+    pub execution: Option<Box<dyn EffectExecution>>,
     pub modifiers: Vec<Box<dyn Modifier>>,
     pub application: EffectApplicationPolicy,
     pub conditions: Vec<BoxCondition>,
@@ -32,6 +32,7 @@ pub struct EffectDef {
 pub struct AbilityDef {
     pub name: String,
     pub description: String,
+    pub executions: Vec<StoredExecution>,
     pub mutators: Vec<EntityActions>,
     pub cost: Vec<BoxCondition>,
     pub condition: Vec<BoxCondition>,

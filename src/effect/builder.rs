@@ -113,7 +113,7 @@ impl EffectBuilder {
         self
     }
 
-    pub fn with_execution_context(mut self, context: impl EffectExecution + 'static) -> Self {
+    pub fn with_execution(mut self, context: impl EffectExecution + 'static) -> Self {
         self.custom_execution = Some(Box::new(context));
         self
     }
@@ -141,16 +141,16 @@ impl EffectBuilder {
         self
     }
 
-    pub fn with_custom_execution(mut self, execution: impl EffectExecution + 'static) -> Self {
+    /*pub fn with_custom_execution(mut self, execution: impl EffectExecution + 'static) -> Self {
         self.custom_execution = Some(Box::new(execution));
         self
-    }
+    }*/
 
     pub fn build(self) -> EffectDef {
         EffectDef {
             effect_fn: self.effect_entity_commands,
             effect_modifiers: self.effects,
-            custom_execution: self.custom_execution,
+            execution: self.custom_execution,
             modifiers: self.modifiers,
             application: self.application,
             conditions: self.conditions,

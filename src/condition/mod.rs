@@ -2,17 +2,17 @@ use crate::condition::systems::evaluate_effect_conditions;
 use bevy::app::{App, Plugin, PreUpdate};
 use bevy::prelude::BevyError;
 use num_traits::{AsPrimitive, Num};
-use serde::Serialize;
 use std::collections::Bound;
 use std::ops::RangeBounds;
 
 mod conditions;
 mod systems;
 
-use crate::AttributesRef;
 use crate::attributes::Attribute;
+use crate::{AttributesMut, AttributesRef};
 pub use conditions::{
-    AbilityCondition, And, AttributeCondition, ConditionExt, Not, Or, StackCondition, TagCondition,
+    AbilityCondition, And, AttributeCondition, ConditionExt, IntoCustomExecution, Not, Or,
+    StackCondition, TagCondition, StoredExecution, CustomExecution, Dst, Src
 };
 
 pub struct ConditionPlugin;
@@ -26,7 +26,7 @@ impl Plugin for ConditionPlugin {
 }
 
 pub trait Condition: Send + Sync {
-    fn eval(&self, context: &ConditionContext) -> Result<bool, BevyError>;
+    fn eval(&self, context: &GameplayContext) -> Result<bool, BevyError>;
 }
 
 pub struct BoxCondition(pub Box<dyn Condition>);
@@ -37,7 +37,13 @@ impl BoxCondition {
     }
 }
 
-pub struct ConditionContext<'a> {
+pub struct GameplayContextMut<'a> {
+    pub target_actor: &'a AttributesMut<'a>,
+    pub source_actor: &'a AttributesMut<'a>,
+    pub owner: &'a AttributesMut<'a>,
+}
+
+pub struct GameplayContext<'a> {
     pub target_actor: &'a AttributesRef<'a>,
     pub source_actor: &'a AttributesRef<'a>,
     pub owner: &'a AttributesRef<'a>,
@@ -49,11 +55,7 @@ where
     T: Attribute,
 {
     let start_bound: Bound<T::Property> = match bounds.start_bound() {
-        Bound::Included(&bound) => {
-            let a = bound.as_();
-            
-            Bound::Included(bound.as_())
-        },
+        Bound::Included(&bound) => Bound::Included(bound.as_()),
         Bound::Excluded(&bound) => Bound::Excluded(bound.as_()),
         Bound::Unbounded => Bound::Unbounded,
     };

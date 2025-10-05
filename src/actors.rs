@@ -155,7 +155,7 @@ impl ActorBuilder {
         self
     }
 
-    pub fn with_component<T: Bundle + Clone + 'static>(mut self, bundle: T) -> ActorBuilder {
+    pub fn insert<T: Bundle + Clone + 'static>(mut self, bundle: T) -> ActorBuilder {
         self.builder_actions.push(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
                 entity_commands.insert(bundle.clone());

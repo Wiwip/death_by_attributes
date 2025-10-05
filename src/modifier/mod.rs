@@ -3,7 +3,7 @@ mod calculator;
 mod events;
 
 use crate::attributes::Attribute;
-use crate::condition::ConditionContext;
+use crate::condition::{GameplayContext};
 use crate::inspector::pretty_type_name;
 use crate::prelude::{AttributeModifier, AttributeTypeId};
 use crate::{AttributesMut, AttributesRef};
@@ -58,7 +58,7 @@ pub enum Who {
 
 impl Who {
     /// Resolves the `Who` variant to a specific entity from the context.
-    pub fn resolve_entity<'a>(&self, context: &'a ConditionContext<'a>) -> &'a AttributesRef<'a> {
+    pub fn resolve_entity<'a>(&self, context: &'a GameplayContext<'a>) -> &'a AttributesRef<'a> {
         match self {
             Who::Target => context.target_actor,
             Who::Source => context.source_actor,

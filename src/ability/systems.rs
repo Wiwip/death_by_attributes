@@ -1,6 +1,6 @@
 use crate::ability::{Abilities, Ability, AbilityCooldown, TargetData, TryActivateAbility};
 use crate::assets::AbilityDef;
-use crate::condition::{BoxCondition, ConditionContext};
+use crate::condition::{BoxCondition, GameplayContext};
 use crate::{AttributesMut, AttributesRef};
 use bevy::asset::Assets;
 use bevy::prelude::*;
@@ -18,12 +18,12 @@ pub fn try_activate_ability_observer(
     ability_assets: Res<Assets<AbilityDef>>,
     mut commands: Commands,
 ) -> Result<(), BevyError> {
-    let (source_actor_ref, actor_abilities) = actors.get(trigger.target())?;
+    let (source_entity_ref, actor_abilities) = actors.get(trigger.target())?;
 
     for &ability_entity in actor_abilities.0.iter() {
         let (ability_ref, ability, cooldown) = abilities.get(ability_entity)?;
         let target_entity_ref = match trigger.target_data {
-            TargetData::SelfCast => source_actor_ref,
+            TargetData::SelfCast => source_entity_ref,
             TargetData::Target(target) => actors.get(target)?.0,
         };
 
@@ -38,7 +38,7 @@ pub fn try_activate_ability_observer(
 
         let can_activate = can_activate_ability(
             &ability_ref,
-            &source_actor_ref,
+            &source_entity_ref,
             &target_entity_ref,
             &ability_spec,
             &trigger.condition,
@@ -50,8 +50,17 @@ pub fn try_activate_ability_observer(
             commands.trigger(ResetCooldown(ability_entity));
             commands.trigger(ActivateAbility {
                 entity: ability_entity,
-                caller: source_actor_ref.id(),
+                caller: source_entity_ref.id(),
             });
+
+            let context = GameplayContext {
+                target_actor: &target_entity_ref,
+                source_actor: &source_entity_ref,
+                owner: &ability_ref,
+            };
+            ability_spec.executions.iter().for_each(|execution| {
+                execution.run(&context).expect("Ability execution failed!");
+            })
         }
     }
 
@@ -65,7 +74,7 @@ fn can_activate_ability(
     ability_def: &AbilityDef,
     conditions: &BoxCondition,
 ) -> Result<bool, BevyError> {
-    let context = ConditionContext {
+    let context = GameplayContext {
         target_actor: &target_entity_ref,
         source_actor: &source_entity_ref,
         owner: &ability_entity,
@@ -115,12 +124,14 @@ pub(crate) fn activate_ability(
     mut commands: Commands,
 ) -> Result<(), BevyError> {
     let mut actor_mut = actors.get_mut(trigger.caller)?;
-    let ability = abilities.get(trigger.target())?;
+    let ability = abilities.get(trigger.entity)?;
 
     let ability_spec = ability_assets
         .get(&ability.0.clone())
         .ok_or("No ability asset.")?;
 
+    
+    
     debug!("Commit ability cost!");
     for effect in &ability_spec.cost_effects {
         effect.apply(&mut actor_mut);

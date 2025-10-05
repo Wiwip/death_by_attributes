@@ -27,12 +27,12 @@ pub fn observe_dirty_node_notifications<T: Attribute>(
     dirty_nodes: Query<&Dirty<T>>,
     mut commands: Commands,
 ) {
-    if dirty_nodes.contains(trigger.target()) {
+    if dirty_nodes.contains(trigger.entity) {
         trigger.propagate(false);
         return;
     }
     commands
-        .entity(trigger.target())
+        .entity(trigger.entity)
         .try_insert(Dirty::<T>::default());
 }
 
