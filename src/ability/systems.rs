@@ -12,7 +12,7 @@ pub fn tick_ability_cooldown(mut query: Query<&mut AbilityCooldown>, time: Res<T
 }
 
 pub fn try_activate_ability_observer(
-    trigger: Trigger<TryActivateAbility>,
+    trigger: On<TryActivateAbility>,
     actors: Query<(AttributesRef, &Abilities), Without<AbilityCooldown>>,
     abilities: Query<(AttributesRef, &Ability, &AbilityCooldown)>,
     ability_assets: Res<Assets<AbilityDef>>,
@@ -27,7 +27,7 @@ pub fn try_activate_ability_observer(
             TargetData::Target(target) => actors.get(target)?.0,
         };
 
-        if !cooldown.0.finished() {
+        if !cooldown.0.is_finished() {
             debug!("Ability on cooldown!");
             continue;
         }
@@ -47,8 +47,9 @@ pub fn try_activate_ability_observer(
         .unwrap_or(false);
 
         if can_activate {
-            commands.entity(ability_entity).trigger(ResetCooldown);
-            commands.entity(ability_entity).trigger(ActivateAbility {
+            commands.trigger(ResetCooldown(ability_entity));
+            commands.trigger(ActivateAbility {
+                entity: ability_entity,
                 caller: source_actor_ref.id(),
             });
         }
@@ -87,11 +88,11 @@ fn can_activate_ability(
     Ok(true)
 }
 
-#[derive(Event)]
-pub(crate) struct ResetCooldown;
+#[derive(EntityEvent)]
+pub(crate) struct ResetCooldown(pub Entity);
 
 pub(crate) fn reset_ability_cooldown(
-    trigger: Trigger<ActivateAbility>,
+    trigger: On<ActivateAbility>,
     mut cooldowns: Query<&mut AbilityCooldown>,
 ) -> Result<(), BevyError> {
     let mut cooldown = cooldowns.get_mut(trigger.target())?;
@@ -99,13 +100,15 @@ pub(crate) fn reset_ability_cooldown(
     Ok(())
 }
 
-#[derive(Event)]
+#[derive(EntityEvent)]
 pub(crate) struct ActivateAbility {
+    #[entity_event]
+    entity: Entity,
     caller: Entity,
 }
 
 pub(crate) fn activate_ability(
-    trigger: Trigger<ActivateAbility>,
+    trigger: On<ActivateAbility>,
     mut actors: Query<AttributesMut>,
     abilities: Query<&Ability>,
     ability_assets: Res<Assets<AbilityDef>>,

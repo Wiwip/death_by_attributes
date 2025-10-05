@@ -39,21 +39,24 @@ pub struct Abilities(Vec<Entity>);
 #[derive(Component)]
 pub struct Ability(pub(crate) Handle<AbilityDef>);
 
-#[derive(Event)]
+#[derive(EntityEvent)]
 pub struct TryActivateAbility {
+    entity: Entity,
     condition: BoxCondition,
     target_data: TargetData,
 }
 
 impl TryActivateAbility {
-    pub fn by_tag<T: Component>(target_data: TargetData) -> Self {
+    pub fn by_tag<T: Component>(target: Entity, target_data: TargetData) -> Self {
         Self {
+            entity: target,
             condition: BoxCondition::new(TagCondition::<T>::owner()),
             target_data,
         }
     }
-    pub fn by_def(handle: AssetId<AbilityDef>, target_data: TargetData) -> Self {
+    pub fn by_def(target: Entity, handle: AssetId<AbilityDef>, target_data: TargetData) -> Self {
         Self {
+            entity: target,
             condition: BoxCondition::new(AbilityCondition::new(handle)),
             target_data,
         }

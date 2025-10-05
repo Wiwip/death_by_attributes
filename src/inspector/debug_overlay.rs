@@ -186,11 +186,12 @@ fn get_components_sorted(
     let archetype = modifier_ref.archetype();
     let mut modifier_components: Vec<_> = archetype
         .components()
+        .into_iter()
         .map(|component_id| {
-            let info = world_components.get_info(component_id).unwrap();
-            let name = pretty_type_name_str(info.name());
+            let info = world_components.get_info(*component_id).unwrap();
+            let name = info.name().to_string();
 
-            (name, component_id, info.type_id(), info.layout().size())
+            (name, *component_id, info.type_id(), info.layout().size())
         })
         .collect();
     modifier_components.sort_by(|(name_a, ..), (name_b, ..)| name_a.cmp(name_b));
@@ -234,11 +235,7 @@ fn list_modifiers_for_effect(
         };
 
         builder
-            .begin_child(format!(
-                "[{}] {}",
-                modifier_ref.id(),
-                modifier.describe(),
-            ))
+            .begin_child(format!("[{}] {}", modifier_ref.id(), modifier.describe(),))
             .end_child();
     }
 }

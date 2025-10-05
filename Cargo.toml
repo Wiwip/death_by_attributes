@@ -19,8 +19,8 @@ debug = true
 [dependencies]
 rand = "0.9"
 ptree = "0.5"
-bevy_egui = "0.36"
-bevy-inspector-egui = "0.33"
+bevy_egui = "0.37"
+bevy-inspector-egui = "0.34"
 disqualified = "1.0"
 petgraph = "0.8"
 serde = "1.0"
@@ -28,7 +28,7 @@ serde_json = "1.0"
 num-traits = "0.2"
 
 [dependencies.bevy]
-version = "0.16"
+version = "0.17"
 default-features = false
 features = [
     "bevy_log",
@@ -36,10 +36,10 @@ features = [
 
 [dev-dependencies]
 criterion = { version = "0.7", features = ["html_reports"] }
-bevy_dev_tools = "0.16"
+bevy_dev_tools = "0.17"
 
 [dev-dependencies.bevy]
-version = "0.16"
+version = "0.17"
 default-features = true
 features = [
     "bevy_core_pipeline",

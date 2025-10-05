@@ -1,4 +1,6 @@
-use crate::systems::{apply_periodic_effect, observe_dirty_node_notifications, update_attribute, update_effect_system};
+use crate::systems::{
+    apply_periodic_effect, observe_dirty_node_notifications, update_attribute, update_effect_system,
+};
 use bevy::prelude::*;
 use std::any::TypeId;
 use std::error::Error;
@@ -14,12 +16,12 @@ pub mod context;
 pub mod effect;
 pub mod graph;
 pub mod inspector;
+pub mod math;
 mod modifier;
 pub mod mutator;
 mod schedule;
 mod systems;
 mod trigger;
-pub mod math;
 
 use crate::ability::{Abilities, Ability, AbilityCooldown, AbilityOf, AbilityPlugin};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
@@ -47,8 +49,8 @@ pub mod prelude {
     pub use crate::modifier::*;
 }
 
-pub use {num_traits};
 use crate::graph::NodeType;
+pub use num_traits;
 
 pub struct AttributesPlugin;
 
@@ -140,6 +142,7 @@ pub fn init_attribute<T: Attribute>(app: &mut App) {
 
 pub type AttributesMut<'w> = EntityMutExcept<
     'w,
+    'w,
     (
         // We exclude anything related to effects
         ChildOf,
@@ -158,6 +161,7 @@ pub type AttributesMut<'w> = EntityMutExcept<
 >;
 
 pub type AttributesRef<'w> = EntityRefExcept<
+    'w,
     'w,
     (
         // We exclude anything related to effects
@@ -190,18 +194,11 @@ impl<T> Default for Dirty<T> {
     }
 }
 
-#[derive(Event, Clone)]
-#[event(traversal = &'static EffectTarget, auto_propagate)]
+#[derive(EntityEvent, Clone)]
+#[entity_event(propagate = &'static EffectTarget, auto_propagate)]
 pub struct OnAttributeValueChanged<T> {
+    entity: Entity,
     _marker: PhantomData<T>,
-}
-
-impl<T> Default for OnAttributeValueChanged<T> {
-    fn default() -> Self {
-        Self {
-            _marker: PhantomData,
-        }
-    }
 }
 
 #[derive(Event, Debug)]

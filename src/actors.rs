@@ -58,10 +58,15 @@ impl EntityCommand for SpawnActorCommand {
 
                 // Sends the event that will apply the effects to the entity
                 for effect in actor_def.effects.iter() {
-                    world.send_event(ApplyEffectEvent {
+                    world.trigger(ApplyEffectEvent {
+                        entity: actor_entity,
                         targeting: EffectTargeting::SelfCast(actor_entity),
                         handle: effect.clone(),
                     });
+                    /*world.write_message(ApplyEffectEvent {
+                        targeting: EffectTargeting::SelfCast(actor_entity),
+                        handle: effect.clone(),
+                    });*/
                 }
 
                 // Queue the commands for deferred application

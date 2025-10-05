@@ -68,14 +68,14 @@ impl Stacks {
     }
 }
 
-#[derive(Event)]
+#[derive(Message)]
 pub struct NotifyAddStackEvent {
     pub effect_entity: Entity,
     pub handle: Handle<EffectDef>,
 }
 
 pub(crate) fn read_add_stack_event(
-    mut event_reader: EventReader<NotifyAddStackEvent>,
+    mut event_reader: MessageReader<NotifyAddStackEvent>,
     mut stacks: Query<&mut Stacks, With<Effect>>,
     mut applications: Query<&mut EffectDuration, With<Effect>>,
     effect_assets: Res<Assets<EffectDef>>,

@@ -4,9 +4,9 @@ use crate::modifier::Modifier;
 use crate::prelude::{AppliedEffects, Effect};
 use crate::{AttributesMut, AttributesRef};
 use bevy::prelude::*;
+use num_traits::AsPrimitive;
 use std::any::TypeId;
 use std::collections::HashMap;
-use num_traits::AsPrimitive;
 
 #[derive(Component)]
 pub struct CalculationContext<'a> {

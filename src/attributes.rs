@@ -3,7 +3,7 @@ use crate::effect::AttributeDependencies;
 use crate::inspector::pretty_type_name;
 use crate::math::AbsDiff;
 use crate::prelude::*;
-use crate::systems::{NotifyAttributeDependencyChanged, NotifyDirtyNode};
+use crate::systems::{MarkNodeDirty, NotifyAttributeDependencyChanged};
 use crate::{AttributeError, AttributesMut, AttributesRef, OnAttributeValueChanged};
 use bevy::ecs::component::Mutable;
 use bevy::ecs::query::QueryData;
@@ -155,7 +155,7 @@ pub struct AttributeQueryData<T: Attribute + 'static> {
     pub calculator_cache: &'static mut AttributeCalculatorCached<T>,
 }
 
-impl<T: Attribute> AttributeQueryDataItem<'_, T> {
+impl<T: Attribute> AttributeQueryDataItem<'_, '_, T> {
     pub fn update_attribute(&mut self, calculator: &AttributeCalculator<T>) -> bool {
         let new_val = calculator.eval(self.attribute.base_value());
 
@@ -513,10 +513,11 @@ impl<T: Attribute> AttributeAccessor for AttributeExtractor<T> {
     }
 }
 
-pub fn on_add_attribute<T: Attribute>(trigger: Trigger<OnInsert, T>, mut commands: Commands) {
-    commands
-        .entity(trigger.target())
-        .trigger(NotifyDirtyNode::<T>::default());
+pub fn on_add_attribute<T: Attribute>(trigger: On<Insert, T>, mut commands: Commands) {
+    commands.trigger(MarkNodeDirty::<T> {
+        entity: trigger.target(),
+        phantom_data: Default::default(),
+    });
 }
 
 pub fn on_change_notify_attribute_dependencies<T: Attribute>(
@@ -532,14 +533,15 @@ pub fn on_change_notify_attribute_dependencies<T: Attribute>(
             pretty_type_name::<T>(),
             notify_targets
         );
-        commands.trigger_targets(
-            NotifyAttributeDependencyChanged::<T> {
+
+        notify_targets.iter().for_each(|target| {
+            commands.trigger(NotifyAttributeDependencyChanged::<T> {
+                entity: *target,
                 base_value: attribute.base_value(),
                 current_value: attribute.current_value(),
                 phantom_data: Default::default(),
-            },
-            notify_targets,
-        );
+            });
+        });
     }
 }
 
@@ -552,9 +554,7 @@ pub fn on_change_notify_attribute_parents<T: Attribute>(
             "Attribute<{}> changed. Notify parent chain.",
             pretty_type_name::<T>(),
         );
-        commands
-            .entity(entity)
-            .trigger(NotifyDirtyNode::<T>::default());
+        commands.trigger(MarkNodeDirty::<T> { entity, phantom_data: Default::default() });
     }
 }
 

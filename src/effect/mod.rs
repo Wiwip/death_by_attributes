@@ -32,7 +32,7 @@ impl Plugin for EffectsPlugin {
             .add_systems(PreUpdate, tick_effect_durations)
             .add_systems(Update, read_add_stack_event.in_set(EffectsSet::Prepare))
             .add_observer(apply_effect_event_observer)
-            .add_event::<NotifyAddStackEvent>();
+            .add_message::<NotifyAddStackEvent>();
     }
 }
 
@@ -136,11 +136,10 @@ pub struct EffectStatusParam {
     periodic: Option<&'static EffectTicker>,
 }
 
-impl EffectStatusParamItem<'_> {
+impl EffectStatusParamItem<'_, '_> {
     pub fn is_inactive(&self) -> bool {
         self.inactive.is_some()
     }
-
     pub fn is_periodic(&self) -> bool {
         self.periodic.is_some()
     }

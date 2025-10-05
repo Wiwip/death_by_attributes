@@ -18,12 +18,12 @@ impl<'s, 'w> EffectContext<'w, 's> {
         source: Entity,
         handle: &Handle<EffectDef>,
     ) {
-        self.commands.trigger_targets(
+        self.commands.trigger(
             ApplyEffectEvent {
+                entity: target,
                 targeting: EffectTargeting::new(source, target),
                 handle: handle.clone(),
             },
-            target,
         );
     }
 
@@ -39,12 +39,12 @@ impl<'s, 'w> EffectContext<'w, 's> {
     ) -> Handle<EffectDef> {
         let handle = self.effects.add(effect);
 
-        self.commands.trigger_targets(
+        self.commands.trigger(
             ApplyEffectEvent {
+                entity: target,
                 targeting: EffectTargeting::new(source, target),
                 handle: handle.clone(),
             },
-            target,
         );
         handle
     }

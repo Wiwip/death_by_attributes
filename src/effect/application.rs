@@ -119,8 +119,9 @@ impl EffectApplicationPolicy {
     }
 }
 
-#[derive(Event)]
+#[derive(EntityEvent)]
 pub struct ApplyEffectEvent {
+    pub entity: Entity,
     pub targeting: EffectTargeting,
     pub handle: Handle<EffectDef>,
 }
@@ -154,7 +155,7 @@ impl ApplyEffectEvent {
 
     fn apply_modifiers<'a, I>(
         &self,
-        actors: &mut Query<(Option<&AppliedEffects>, AttributesMut), Without<Effect>>,
+        actors: &'a mut Query<(Option<&AppliedEffects>, AttributesMut), Without<Effect>>,
         modifiers: &mut I,
         commands: &mut Commands,
     ) where
@@ -285,11 +286,11 @@ impl ApplyEffectEvent {
 }
 
 pub(crate) fn apply_effect_event_observer(
-    trigger: Trigger<ApplyEffectEvent>,
+    trigger: On<ApplyEffectEvent>,
     mut actors: Query<(Option<&AppliedEffects>, AttributesMut), Without<Effect>>,
     mut effects: Query<&Effect>,
     effect_assets: Res<Assets<EffectDef>>,
-    mut event_writer: EventWriter<NotifyAddStackEvent>,
+    mut writer: MessageWriter<NotifyAddStackEvent>,
     mut commands: Commands,
 ) -> Result<(), BevyError> {
     let effect = effect_assets
@@ -306,7 +307,7 @@ pub(crate) fn apply_effect_event_observer(
             effect,
             &mut actors,
             &mut effects,
-            &mut event_writer,
+            &mut writer,
         )?;
     }
 

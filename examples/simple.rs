@@ -9,8 +9,8 @@ use petgraph::visit::{DfsEvent, depth_first_search};
 use root_attribute::ability::{AbilityBuilder, TargetData, TryActivateAbility};
 use root_attribute::actors::ActorBuilder;
 use root_attribute::assets::{AbilityDef, ActorDef, EffectDef};
-use root_attribute::attributes::{Attribute, Value};
 use root_attribute::attributes::ReflectAccessAttribute;
+use root_attribute::attributes::{Attribute, Value};
 use root_attribute::condition::AttributeCondition;
 use root_attribute::context::EffectContext;
 use root_attribute::effect::{EffectStackingPolicy, Stacks};
@@ -272,17 +272,19 @@ fn inputs(
 ) {
     if let Ok((player_entity, _)) = players.single_mut() {
         if keys.just_pressed(KeyCode::KeyQ) {
-            commands
-                .entity(player_entity)
-                .trigger(TryActivateAbility::by_tag::<Fire>(TargetData::SelfCast));
+            commands.trigger(TryActivateAbility::by_tag::<Fire>(
+                player_entity,
+                TargetData::SelfCast,
+            ));
         }
         if keys.just_pressed(KeyCode::KeyE) {
-            commands
-                .entity(player_entity)
-                .trigger(TryActivateAbility::by_tag::<Frost>(TargetData::SelfCast));
+            commands.trigger(TryActivateAbility::by_tag::<Frost>(
+                player_entity,
+                TargetData::SelfCast,
+            ));
         }
         if keys.just_pressed(KeyCode::Backspace) {
-            commands.trigger_targets(DamageEvent { damage: 10.0 }, player_entity);
+            commands.trigger(DamageEvent { entity: player_entity, damage: 10.0 });
         }
         if keys.just_pressed(KeyCode::KeyR) {
             analyze_dependencies_with_petgraph(graph, actors);
@@ -333,13 +335,14 @@ fn do_gameplay_stuff() {
     std::thread::sleep(Duration::from_millis(12));
 }
 
-#[derive(Event)]
+#[derive(EntityEvent)]
 struct DamageEvent {
+    entity: Entity,
     damage: f32,
 }
 
 fn damage_event_calculations(
-    trigger: Trigger<DamageEvent>,
+    trigger: On<DamageEvent>,
     mut actors: Query<(&mut Health, &Armour)>,
 ) {
     let Ok((mut health, armour)) = actors.get_mut(trigger.target()) else {

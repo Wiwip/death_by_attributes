@@ -5,7 +5,7 @@ use crate::prelude::{Attribute, AttributeCalculator, AttributeModifier};
 use bevy::prelude::*;
 use num_traits::Bounded;
 
-#[derive(Event)]
+#[derive(Message)]
 pub struct ApplyAttributeModifierEvent<T: Attribute> {
     pub target: Entity,
     pub modifier: AttributeModifier<T>,
@@ -13,7 +13,7 @@ pub struct ApplyAttributeModifierEvent<T: Attribute> {
 }
 
 pub fn apply_modifier_events<T: Attribute>(
-    mut event_reader: EventReader<ApplyAttributeModifierEvent<T>>,
+    mut event_reader: MessageReader<ApplyAttributeModifierEvent<T>>,
     mut attributes: Query<AttributesMut>,
 ) {
     for ev in event_reader.read() {

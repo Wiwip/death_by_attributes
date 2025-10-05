@@ -11,22 +11,19 @@ use petgraph::visit::IntoNeighbors;
 use std::any::type_name;
 use std::marker::PhantomData;
 
-#[derive(Event)]
-#[event(traversal = &'static EffectTarget, auto_propagate)]
-pub struct NotifyDirtyNode<T: Attribute>(PhantomData<T>);
-
-impl<T: Attribute> Default for NotifyDirtyNode<T> {
-    fn default() -> Self {
-        Self(PhantomData)
-    }
+#[derive(EntityEvent)]
+#[entity_event(propagate=&'static EffectTarget)]
+pub struct MarkNodeDirty<T: Attribute> {
+    pub entity: Entity,
+    pub phantom_data: PhantomData<T>,
 }
 
-/// Observes [`NotifyDirtyNode`] triggers for specific attributes and propagates
+/// Observes [`MarkNodeDirty`] triggers for specific attributes and propagates
 /// the event upward through using the [`EffectTarget`] chain.
 ///
 /// Stops when it encounters a dirty node indicating that all later nodes are already dirty.
 pub fn observe_dirty_node_notifications<T: Attribute>(
-    mut trigger: Trigger<NotifyDirtyNode<T>>,
+    mut trigger: On<MarkNodeDirty<T>>,
     dirty_nodes: Query<&Dirty<T>>,
     mut commands: Commands,
 ) {
@@ -39,15 +36,16 @@ pub fn observe_dirty_node_notifications<T: Attribute>(
         .try_insert(Dirty::<T>::default());
 }
 
-#[derive(Event)]
+#[derive(EntityEvent)]
 pub struct NotifyAttributeDependencyChanged<T: Attribute> {
+    pub entity: Entity,
     pub base_value: T::Property,
     pub current_value: T::Property,
     pub phantom_data: PhantomData<T>,
 }
 
 pub fn on_change_attribute_observer<S: Attribute, T: Attribute>(
-    trigger: Trigger<NotifyAttributeDependencyChanged<S>>,
+    trigger: On<NotifyAttributeDependencyChanged<S>>,
     mut attribute_modifiers_query: Query<(Entity, &mut AttributeModifier<T>)>,
     mut commands: Commands,
 ) where
@@ -64,9 +62,10 @@ pub fn on_change_attribute_observer<S: Attribute, T: Attribute>(
 
     modifier.scaling = scaled_converted_source_attribute;
 
-    commands
-        .entity(mod_entity)
-        .trigger(NotifyDirtyNode::<T>::default());
+    commands.trigger(MarkNodeDirty::<T> {
+        entity: mod_entity,
+        phantom_data: Default::default(),
+    });
 
     /*debug!(
         "{} <{},{}>: Attribute changed. New value: {} ",
@@ -182,8 +181,8 @@ fn update_effect_tree_attributes<T: Attribute>(
 
     // Signal to update the attribute
     commands
-        .entity(current_entity)
         .trigger(UpdateAttributeSignal {
+            entity: current_entity,
             calculator: node_calculator,
         });
 
@@ -193,13 +192,14 @@ fn update_effect_tree_attributes<T: Attribute>(
     node_calculator
 }
 
-#[derive(Event)]
+#[derive(EntityEvent)]
 pub struct UpdateAttributeSignal<T: Attribute> {
+    entity: Entity,
     calculator: AttributeCalculator<T>,
 }
 
 pub fn update_attribute<T: Attribute>(
-    trigger: Trigger<UpdateAttributeSignal<T>>,
+    trigger: On<UpdateAttributeSignal<T>>,
     mut attributes: Query<AttributeQueryData<T>>,
     mut commands: Commands,
 ) {
@@ -207,7 +207,10 @@ pub fn update_attribute<T: Attribute>(
         attribute.calculator_cache.calculator = trigger.event().calculator;
         let should_notify_observers = attribute.update_attribute(&trigger.event().calculator);
         if should_notify_observers {
-            commands.trigger_targets(OnAttributeValueChanged::<T>::default(), trigger.target());
+            commands.trigger(OnAttributeValueChanged::<T> {
+                entity: trigger.target(),
+                _marker: Default::default(),
+            });
         }
     };
 }
@@ -221,7 +224,7 @@ pub fn apply_periodic_effect<T: Attribute>(
         &EffectSource,
     )>,
     modifiers: Query<&AttributeModifier<T>>,
-    mut event_writer: EventWriter<ApplyAttributeModifierEvent<T>>,
+    mut event_writer: MessageWriter<ApplyAttributeModifierEvent<T>>,
 ) {
     for (timer, effect_modifiers, stacks, target, source) in effects.iter() {
         if !timer.just_finished() {
