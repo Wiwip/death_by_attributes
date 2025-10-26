@@ -1,5 +1,6 @@
 use crate::AttributesMut;
 use crate::assets::EffectDef;
+use crate::condition::GameplayContext;
 use crate::effect::stacks::NotifyAddStackEvent;
 use crate::effect::timing::{EffectDuration, EffectTicker};
 use crate::effect::{AppliedEffects, Effect, EffectStackingPolicy, EffectTargeting};
@@ -10,7 +11,6 @@ use bevy::asset::{Assets, Handle};
 use bevy::log::debug;
 use bevy::prelude::*;
 use std::cmp::PartialEq;
-use crate::condition::GameplayContext;
 
 /// Describes how the effect is applied to entities
 #[derive(Debug, Clone, Reflect, PartialEq)]
@@ -146,14 +146,10 @@ impl ApplyEffectEvent {
         };
 
         let context = GameplayContext {
-                   target_actor: &target_actor,
-                   source_actor: &source_actor,
-                   owner: &source_actor,
-               };
-
-        let result = effect.execution.iter().filter_map(|execution| {
-            execution.run(&context).ok()
-        });
+            target_actor: &target_actor,
+            source_actor: &source_actor,
+            owner: &source_actor,
+        };
 
         // Apply the collected modifiers
         //let modifiers = execution_context.into_modifiers();

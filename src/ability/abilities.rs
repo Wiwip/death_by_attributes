@@ -1,13 +1,13 @@
-use crate::AttributesMut;
+
 use crate::ability::{Ability, AbilityActivationFn, AbilityCooldown};
 use crate::assets::AbilityDef;
 use crate::attributes::{Attribute, Value};
 use crate::condition::{AttributeCondition, BoxCondition};
-use crate::effect::{EffectExecution, StoredExecution};
 use crate::modifier::{Modifier, Who};
 use crate::mutator::EntityActions;
-use crate::prelude::{AttributeModifier, IntoEffectExecution, ModOp};
+use crate::prelude::{AttributeModifier, ModOp};
 use bevy::asset::{Assets, Handle};
+use bevy::ecs::system::IntoObserverSystem;
 use bevy::ecs::world::CommandQueue;
 use bevy::log::warn;
 use bevy::prelude::*;
@@ -51,17 +51,9 @@ impl EntityCommand for GrantAbilityCommand {
 pub struct AbilityBuilder {
     name: String,
     mutators: Vec<EntityActions>,
-    executions: Vec<StoredExecution>,
     cost_condition: Vec<BoxCondition>,
     cost_mods: Vec<Box<dyn Modifier>>,
     activation_fn: AbilityActivationFn,
-}
-
-impl AbilityBuilder {
-    pub fn with_name(mut self, name: String) -> Self {
-        self.name = name;
-        self
-    }
 }
 
 impl AbilityBuilder {
@@ -69,7 +61,6 @@ impl AbilityBuilder {
         Self {
             name: "Ability".to_string(),
             mutators: Default::default(),
-            executions: vec![],
             cost_condition: vec![],
             cost_mods: vec![],
             activation_fn: Box::new(|_, _| {
@@ -99,19 +90,13 @@ impl AbilityBuilder {
         self
     }
 
-    pub fn with_activation(
-        mut self,
-        function: impl Fn(&mut AttributesMut, &mut Commands) + Send + Sync + 'static,
-    ) -> Self {
-        self.activation_fn = Box::new(function);
-        self
-    }
-
-    pub fn add_execution<I, S: for<'a> EffectExecution + 'static>(
-        mut self,
-        system: impl for<'a> IntoEffectExecution<'a, I, ExecFunction = S>,
-    ) -> Self {
-        self.executions.push(Box::new(system.into_condition()));
+    pub fn add_observer<E: EntityEvent, B: Bundle, M>(mut self, observer: impl IntoObserverSystem<E, B, M> + Clone + Send + Sync + 'static) -> Self {
+        self.mutators.push(EntityActions::new(
+            move |entity_commands: &mut EntityCommands| {
+                println!("Adding observer: {:?}", entity_commands.id());
+                entity_commands.observe(observer.clone());
+            },
+        ));
         self
     }
 
@@ -124,16 +109,19 @@ impl AbilityBuilder {
         self
     }
 
+    pub fn with_name(mut self, name: String) -> Self {
+        self.name = name;
+        self
+    }
+
     pub fn build(self) -> AbilityDef {
         AbilityDef {
             name: self.name,
             description: "".to_string(),
-            executions: self.executions,
             mutators: self.mutators,
             cost: self.cost_condition,
             condition: vec![],
             cost_effects: self.cost_mods,
-            activation_fn: self.activation_fn,
         }
     }
 }

@@ -1,6 +1,7 @@
 mod abilities;
 mod systems;
 
+
 use crate::AttributesMut;
 use crate::ability::systems::{
     activate_ability, reset_ability_cooldown, tick_ability_cooldown, try_activate_ability_observer,
@@ -41,7 +42,8 @@ pub struct Ability(pub(crate) Handle<AbilityDef>);
 
 #[derive(EntityEvent)]
 pub struct TryActivateAbility {
-    entity: Entity,
+    #[event_target]
+    ability: Entity,
     condition: BoxCondition,
     target_data: TargetData,
 }
@@ -49,14 +51,14 @@ pub struct TryActivateAbility {
 impl TryActivateAbility {
     pub fn by_tag<T: Component>(target: Entity, target_data: TargetData) -> Self {
         Self {
-            entity: target,
+            ability: target,
             condition: BoxCondition::new(TagCondition::<T>::owner()),
             target_data,
         }
     }
     pub fn by_def(target: Entity, handle: AssetId<AbilityDef>, target_data: TargetData) -> Self {
         Self {
-            entity: target,
+            ability: target,
             condition: BoxCondition::new(AbilityCondition::new(handle)),
             target_data,
         }
@@ -69,4 +71,12 @@ pub struct AbilityCooldown(pub Timer);
 pub enum TargetData {
     SelfCast,
     Target(Entity),
+}
+
+#[derive(EntityEvent)]
+pub struct AbilityExecute {
+    pub target: Entity,
+    pub source: Entity,
+    #[event_target]
+    pub ability: Entity,
 }

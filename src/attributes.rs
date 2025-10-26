@@ -536,11 +536,11 @@ pub fn on_change_notify_attribute_dependencies<T: Attribute>(
         let unique_entities: HashSet<Entity> = dependencies.iter().collect();
         let notify_targets: Vec<Entity> = unique_entities.into_iter().collect();
 
-        debug!(
+        /*debug!(
             "Attribute<{}> changed. Notify: {:?} ",
             pretty_type_name::<T>(),
             notify_targets
-        );
+        );*/
 
         notify_targets.iter().for_each(|target| {
             commands.trigger(NotifyAttributeDependencyChanged::<T> {
@@ -558,10 +558,10 @@ pub fn on_change_notify_attribute_parents<T: Attribute>(
     mut commands: Commands,
 ) {
     for entity in query.iter() {
-        debug!(
+        /*debug!(
             "Attribute<{}> changed. Notify parent chain.",
             pretty_type_name::<T>(),
-        );
+        );*/
         commands.trigger(MarkNodeDirty::<T> {
             entity,
             phantom_data: Default::default(),

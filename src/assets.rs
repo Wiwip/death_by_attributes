@@ -1,9 +1,8 @@
-use crate::ability::AbilityActivationFn;
 use crate::condition::BoxCondition;
 use crate::effect::EffectStackingPolicy;
 use crate::modifier::{Modifier, ModifierFn};
 use crate::mutator::EntityActions;
-use crate::prelude::{EffectApplicationPolicy, StoredExecution};
+use crate::prelude::EffectApplicationPolicy;
 use bevy::prelude::*;
 
 #[derive(Asset, TypePath)] //, Serialize)]
@@ -19,7 +18,6 @@ pub struct ActorDef {
 pub struct EffectDef {
     pub effect_fn: Vec<Box<ModifierFn>>,
     pub effect_modifiers: Vec<Box<dyn Modifier>>,
-    pub execution: Vec<StoredExecution>,
     pub modifiers: Vec<Box<dyn Modifier>>,
     pub application: EffectApplicationPolicy,
     pub conditions: Vec<BoxCondition>,
@@ -31,10 +29,8 @@ pub struct EffectDef {
 pub struct AbilityDef {
     pub name: String,
     pub description: String,
-    pub executions: Vec<StoredExecution>,
     pub mutators: Vec<EntityActions>,
     pub cost: Vec<BoxCondition>,
     pub condition: Vec<BoxCondition>,
     pub cost_effects: Vec<Box<dyn Modifier>>,
-    pub activation_fn: AbilityActivationFn,
 }

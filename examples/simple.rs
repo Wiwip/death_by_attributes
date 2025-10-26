@@ -6,7 +6,7 @@ use bevy_egui::EguiPlugin;
 use bevy_inspector_egui::DefaultInspectorConfigPlugin;
 use petgraph::prelude::Dfs;
 use petgraph::visit::{DfsEvent, depth_first_search};
-use root_attribute::ability::{AbilityBuilder, TargetData, TryActivateAbility};
+use root_attribute::ability::{AbilityBuilder, AbilityExecute, TargetData, TryActivateAbility};
 use root_attribute::actors::ActorBuilder;
 use root_attribute::assets::{AbilityDef, ActorDef, EffectDef};
 use root_attribute::attributes::ReflectAccessAttribute;
@@ -18,7 +18,7 @@ use root_attribute::graph::QueryGraphAdapter;
 use root_attribute::inspector::ActorInspectorPlugin;
 use root_attribute::inspector::debug_overlay::DebugOverlayMarker;
 use root_attribute::prelude::*;
-use root_attribute::{AttributesMut, AttributesPlugin, attribute, init_attribute};
+use root_attribute::{AttributesPlugin, attribute, init_attribute};
 use std::fmt::Debug;
 use std::time::Duration;
 
@@ -44,7 +44,7 @@ attribute!(TestU8Attribute, u8);
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(LogPlugin {
-            filter: "error,root_attribute=info".into(),
+            filter: "error,root_attribute=debug".into(),
             level: bevy::log::Level::DEBUG,
             ..default()
         }))
@@ -185,9 +185,9 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
     let fireball = effects.add(
         AbilityBuilder::new()
             .with_name("Fireball".into())
-            .with_activation(|entity: &mut AttributesMut, _: &mut Commands| {
+            /*.with_activation(|entity: &mut AttributesMut, _: &mut Commands| {
                 println!("Fireball! {}", entity.id());
-            })
+            })*/
             .with_cooldown(1.0)
             .with_cost::<Mana>(12)
             .with_tag::<Fire>()
@@ -197,16 +197,23 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
     let frostball = effects.add(
         AbilityBuilder::new()
             .with_name("Frostball".into())
-            .with_activation(|entity: &mut AttributesMut, _: &mut Commands| {
-                println!("Frostball! {}", entity.id());
-            })
             .with_cooldown(1.0)
             .with_cost::<Mana>(12)
             .with_tag::<Frost>()
-            .add_execution(|h: Src<Health>| {
-                println!("Health: {}", h.current_value());
-                Ok(true)
-            })
+            .add_observer(
+                |trigger: On<AbilityExecute>,
+                 source: Query<(&Health, &MaxHealth)>,
+                 _ctx: EffectContext| {
+                    if let Ok((health, _)) = source.get(trigger.source) {
+                        println!(
+                            "Frostball! {}: {}: H: {}",
+                            trigger.ability,
+                            trigger.source,
+                            health.current_value()
+                        );
+                    }
+                },
+            )
             .build(),
     );
     commands.insert_resource(AbilityDatabase {

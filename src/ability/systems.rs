@@ -1,9 +1,12 @@
-use crate::ability::{Abilities, Ability, AbilityCooldown, TargetData, TryActivateAbility};
+use crate::ability::{
+    Abilities, Ability, AbilityCooldown, AbilityExecute, TargetData, TryActivateAbility,
+};
 use crate::assets::AbilityDef;
 use crate::condition::{BoxCondition, GameplayContext};
 use crate::{AttributesMut, AttributesRef};
 use bevy::asset::Assets;
 use bevy::prelude::*;
+use bevy_egui::egui::debug_text::print;
 
 pub fn tick_ability_cooldown(mut query: Query<&mut AbilityCooldown>, time: Res<Time>) {
     query.par_iter_mut().for_each(|mut cooldown| {
@@ -11,6 +14,11 @@ pub fn tick_ability_cooldown(mut query: Query<&mut AbilityCooldown>, time: Res<T
     });
 }
 
+/// Tries to activate an ability.
+///
+/// Base conditions are:
+/// - Cooldown
+/// - Cost
 pub fn try_activate_ability_observer(
     trigger: On<TryActivateAbility>,
     actors: Query<(AttributesRef, &Abilities), Without<AbilityCooldown>>,
@@ -18,10 +26,12 @@ pub fn try_activate_ability_observer(
     ability_assets: Res<Assets<AbilityDef>>,
     mut commands: Commands,
 ) -> Result<(), BevyError> {
-    let (source_entity_ref, actor_abilities) = actors.get(trigger.target())?;
+    let (source_entity_ref, actor_abilities) = actors.get(trigger.ability)?;
 
     for &ability_entity in actor_abilities.0.iter() {
-        let (ability_ref, ability, cooldown) = abilities.get(ability_entity)?;
+        let (ability_ref, ability, cooldown) = abilities
+            .get(ability_entity)
+            .expect("Ability not found in: try_activate_ability_observer.");
         let target_entity_ref = match trigger.target_data {
             TargetData::SelfCast => source_entity_ref,
             TargetData::Target(target) => actors.get(target)?.0,
@@ -47,23 +57,14 @@ pub fn try_activate_ability_observer(
         .unwrap_or(false);
 
         if can_activate {
-            commands.trigger(ResetCooldown(ability_entity));
+            commands.trigger(AbilityCooldownReset(ability_entity));
             commands.trigger(ActivateAbility {
-                entity: ability_entity,
-                caller: source_entity_ref.id(),
+                target: target_entity_ref.id(),
+                source: source_entity_ref.id(),
+                ability: ability_entity,
             });
-
-            let context = GameplayContext {
-                target_actor: &target_entity_ref,
-                source_actor: &source_entity_ref,
-                owner: &ability_ref,
-            };
-            ability_spec.executions.iter().for_each(|execution| {
-                execution.run(&context).expect("Ability execution failed!");
-            })
         }
     }
-
     Ok(())
 }
 
@@ -98,24 +99,26 @@ fn can_activate_ability(
 }
 
 #[derive(EntityEvent)]
-pub(crate) struct ResetCooldown(pub Entity);
+pub(crate) struct AbilityCooldownReset(pub Entity);
 
 pub(crate) fn reset_ability_cooldown(
-    trigger: On<ActivateAbility>,
+    trigger: On<AbilityCooldownReset>,
     mut cooldowns: Query<&mut AbilityCooldown>,
 ) -> Result<(), BevyError> {
-    let mut cooldown = cooldowns.get_mut(trigger.target())?;
+    let mut cooldown = cooldowns.get_mut(trigger.0)?;
     cooldown.0.reset();
     Ok(())
 }
 
 #[derive(EntityEvent)]
 pub(crate) struct ActivateAbility {
-    #[entity_event]
-    entity: Entity,
-    caller: Entity,
+    #[event_target]
+    pub target: Entity,
+    pub source: Entity,
+    pub ability: Entity,
 }
 
+/// Bypass [TryActivateAbility]'s checks. Usually triggered after a successful [TryActivateAbility].
 pub(crate) fn activate_ability(
     trigger: On<ActivateAbility>,
     mut actors: Query<AttributesMut>,
@@ -123,21 +126,24 @@ pub(crate) fn activate_ability(
     ability_assets: Res<Assets<AbilityDef>>,
     mut commands: Commands,
 ) -> Result<(), BevyError> {
-    let mut actor_mut = actors.get_mut(trigger.caller)?;
-    let ability = abilities.get(trigger.entity)?;
+    let mut actor_mut = actors.get_mut(trigger.target)?;
+    let ability = abilities.get(trigger.ability)?;
 
     let ability_spec = ability_assets
         .get(&ability.0.clone())
         .ok_or("No ability asset.")?;
 
-    
-    
-    debug!("Commit ability cost!");
+    debug!("Commit ability cost");
     for effect in &ability_spec.cost_effects {
         effect.apply(&mut actor_mut);
     }
 
     // Activate the ability
-    (ability_spec.activation_fn)(&mut actor_mut, &mut commands);
+    debug!("{}: Execute ability", trigger.ability);
+    commands.trigger(AbilityExecute {
+        source: trigger.source,
+        target: trigger.target,
+        ability: trigger.ability,
+    });
     Ok(())
 }
