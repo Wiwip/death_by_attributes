@@ -11,6 +11,7 @@ use bevy::prelude::*;
 use num_traits::{AsPrimitive, Num};
 use std::ops::RangeBounds;
 
+#[allow(dead_code)]
 #[derive(Component, Clone, Debug)]
 pub struct Actor(Handle<ActorDef>);
 
@@ -63,10 +64,6 @@ impl EntityCommand for SpawnActorCommand {
                         targeting: EffectTargeting::SelfCast(actor_entity),
                         handle: effect.clone(),
                     });
-                    /*world.write_message(ApplyEffectEvent {
-                        targeting: EffectTargeting::SelfCast(actor_entity),
-                        handle: effect.clone(),
-                    });*/
                 }
 
                 // Queue the commands for deferred application

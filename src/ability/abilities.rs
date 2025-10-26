@@ -2,12 +2,11 @@ use crate::AttributesMut;
 use crate::ability::{Ability, AbilityActivationFn, AbilityCooldown};
 use crate::assets::AbilityDef;
 use crate::attributes::{Attribute, Value};
-use crate::condition::{
-    AttributeCondition, BoxCondition, CustomExecution, IntoCustomExecution, StoredExecution,
-};
+use crate::condition::{AttributeCondition, BoxCondition};
+use crate::effect::{EffectExecution, StoredExecution};
 use crate::modifier::{Modifier, Who};
 use crate::mutator::EntityActions;
-use crate::prelude::{AttributeModifier, ModOp};
+use crate::prelude::{AttributeModifier, IntoEffectExecution, ModOp};
 use bevy::asset::{Assets, Handle};
 use bevy::ecs::world::CommandQueue;
 use bevy::log::warn;
@@ -108,9 +107,9 @@ impl AbilityBuilder {
         self
     }
 
-    pub fn add_execution<I, S: for<'a> CustomExecution + 'static>(
+    pub fn add_execution<I, S: for<'a> EffectExecution + 'static>(
         mut self,
-        system: impl for<'a> IntoCustomExecution<'a, I, ExecFunction = S>,
+        system: impl for<'a> IntoEffectExecution<'a, I, ExecFunction = S>,
     ) -> Self {
         self.executions.push(Box::new(system.into_condition()));
         self

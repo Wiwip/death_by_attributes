@@ -2,7 +2,7 @@ mod builder;
 
 use bevy::prelude::*;
 use std::marker::PhantomData;
-
+/*
 /// Triggers are essentially automated abilities.
 /// An ability or effect is automatically applied whenever the conditions of the trigger are met.
 /// So far my trigger ideas are:
@@ -16,3 +16,4 @@ impl Plugin for TriggerPlugin {
         //app.add_systems();
     }
 }
+*/

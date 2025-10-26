@@ -1,126 +1,142 @@
-use crate::attributes::Attribute;
-use crate::effect::EffectTargeting;
-use crate::modifier::Modifier;
-use crate::prelude::{AppliedEffects, Effect};
-use crate::{AttributesMut, AttributesRef};
+use crate::condition::GameplayContext;
 use bevy::prelude::*;
-use num_traits::AsPrimitive;
-use std::any::TypeId;
-use std::collections::HashMap;
-
-#[derive(Component)]
-pub struct CalculationContext<'a> {
-    source_map: HashMap<TypeId, f64>,
-    target_map: HashMap<TypeId, f64>,
-    source_actor: AttributesRef<'a>,
-    target_actor: AttributesRef<'a>,
-    pub modifiers: Vec<Box<dyn Modifier>>,
-}
-
-impl<'a> CalculationContext<'a> {
-    pub fn new(capture_context: CaptureContext<'a>) -> Self {
-        Self {
-            source_map: capture_context.source_map,
-            target_map: capture_context.target_map,
-            source_actor: capture_context.source_actor,
-            target_actor: capture_context.target_actor,
-            modifiers: vec![],
-        }
-    }
-
-    pub fn capture_source<T: Attribute>(
-        &mut self,
-        entity_ref: &EntityRef,
-    ) -> Result<(), BevyError> {
-        let value = entity_ref.get::<T>().ok_or("Could not get attribute")?;
-        self.source_map
-            .insert(TypeId::of::<T>(), value.current_value().as_());
-        Ok(())
-    }
-
-    pub fn capture_target<T: Attribute>(
-        &mut self,
-        entity_ref: &EntityRef,
-    ) -> Result<(), BevyError> {
-        let value = entity_ref.get::<T>().ok_or("Could not get attribute")?;
-        self.target_map
-            .insert(TypeId::of::<T>(), value.current_value().as_());
-        Ok(())
-    }
-
-    pub fn source<T: Attribute>(&self) -> Option<&f64> {
-        self.source_map.get(&TypeId::of::<T>())
-    }
-
-    pub fn target<T: Attribute>(&self) -> Option<&f64> {
-        self.target_map.get(&TypeId::of::<T>())
-    }
-
-    pub fn into_modifiers(self) -> Vec<Box<dyn Modifier>> {
-        self.modifiers
-    }
-}
-
-pub struct CaptureContext<'a> {
-    pub target_map: HashMap<TypeId, f64>,
-    pub source_map: HashMap<TypeId, f64>,
-    pub source_actor: AttributesRef<'a>,
-    pub target_actor: AttributesRef<'a>,
-}
-
-impl<'a> CaptureContext<'a> {
-    pub fn capture_source<T: Attribute>(&mut self) -> Result<(), BevyError> {
-        let value = self
-            .source_actor
-            .get::<T>()
-            .ok_or("Could not get attribute")?;
-        self.source_map
-            .insert(TypeId::of::<T>(), value.current_value().as_());
-        Ok(())
-    }
-
-    pub fn capture_target<T: Attribute>(&mut self) -> Result<(), BevyError> {
-        let value = self
-            .target_actor
-            .get::<T>()
-            .ok_or("Could not get attribute")?;
-        self.target_map
-            .insert(TypeId::of::<T>(), value.current_value().as_());
-        Ok(())
-    }
-
-    pub fn from(
-        targeting: &EffectTargeting,
-        actors: &'a mut Query<(Option<&AppliedEffects>, AttributesMut), Without<Effect>>,
-    ) -> Self {
-        let (source_actor, target_actor) = match targeting {
-            EffectTargeting::SelfCast(entity) => {
-                let (_, actor) = actors.get(*entity).unwrap();
-                (actor, actor)
-            }
-            EffectTargeting::Targeted { source, target } => {
-                let (_, source_actor_ref) = actors.get(*target).unwrap();
-                let (_, target_actor_ref) = actors.get(*source).unwrap();
-                (source_actor_ref, target_actor_ref)
-            }
-        };
-
-        Self {
-            target_map: Default::default(),
-            source_map: Default::default(),
-            source_actor,
-            target_actor,
-        }
-    }
-}
+use serde::Serialize;
+use std::marker::PhantomData;
 
 pub trait EffectExecution: Send + Sync {
-    /// The method is executed when the effect is created.
-    /// Provides an opportunity to snapshot attributes if necessary.
-    fn capture_attributes(&self, context: &mut CaptureContext) -> Result<(), BevyError>;
+    fn run(&self, context: &GameplayContext) -> std::result::Result<bool, BevyError>;
+}
 
-    /// The method is executed when the effect is applied to a target entity.
-    fn execute_effect(&self, context: &mut CalculationContext) -> Result<(), BevyError>;
+pub type StoredExecution = Box<dyn EffectExecution>;
+
+/// A condition that wraps a closure or function pointer.
+///
+/// This allows for creating custom, inline condition logic without needing
+/// to define a new struct for every case.
+#[derive(Debug, Serialize)]
+pub struct FunctionActivation<Input, F> {
+    f: F,
+    marker: PhantomData<fn() -> Input>,
+}
+
+pub trait EffectParam: Send + Sync {
+    type Item<'new>;
+
+    fn retrieve<'r>(context: &'r GameplayContext) -> Self::Item<'r>;
+}
+
+#[derive(Deref)]
+pub struct Dst<'a, T: 'static> {
+    value: &'a T,
+}
+
+impl<'res, T: 'static + Component> EffectParam for Dst<'res, T> {
+    type Item<'new> = Dst<'new, T>;
+
+    fn retrieve<'r>(context: &'r GameplayContext) -> Self::Item<'r> {
+        Dst {
+            value: context
+                .target_actor
+                .get::<T>()
+                .expect("Missing target attribute"),
+        }
+    }
+}
+
+
+
+#[derive(Deref)]
+pub struct Src<'a, T: 'static> {
+    value: &'a T,
+}
+
+impl<'res, T: 'static + Component> EffectParam for Src<'res, T> {
+    type Item<'new> = Src<'new, T>;
+
+    fn retrieve<'r>(context: &'r GameplayContext) -> Self::Item<'r> {
+        Src {
+            value: context
+                .source_actor
+                .get::<T>()
+                .expect("Missing source attribute"),
+        }
+    }
+}
+
+macro_rules! impl_custom_execution {
+    ($($params:ident),*) => {
+        #[allow(unused_variables)]
+        #[allow(non_snake_case)]
+        impl<F: Send + Sync, $($params : EffectParam),*> EffectExecution for FunctionActivation<($($params ,)*), F>
+            where
+                for<'a, 'b> &'a F:
+                    Fn($($params),*) -> Result<bool, BevyError> +
+                    Fn($(<$params as EffectParam>::Item<'b>),*) -> Result<bool, BevyError>,
+        {
+            fn run(&self, context: &GameplayContext) -> Result<bool, BevyError> {
+                fn call_inner<$($params),*>(
+                    f: impl Fn($($params),*) -> Result<bool, BevyError>,
+                    $($params: $params),*
+                ) -> Result<bool, BevyError> {
+                    f($($params),*)
+                }
+
+                $(
+                    let $params = $params::retrieve(context);
+                )*
+
+                call_inner(&self.f, $($params),*)
+            }
+        }
+    };
+}
+
+impl_custom_execution!();
+impl_custom_execution!(T1);
+impl_custom_execution!(T1, T2);
+impl_custom_execution!(T1, T2, T3);
+impl_custom_execution!(T1, T2, T3, T4);
+impl_custom_execution!(T1, T2, T3, T4, T5);
+impl_custom_execution!(T1, T2, T3, T4, T5, T6);
+impl_custom_execution!(T1, T2, T3, T4, T5, T6, T7);
+impl_custom_execution!(T1, T2, T3, T4, T5, T6, T7, T8);
+
+pub trait IntoEffectExecution<'a, Input> {
+    type ExecFunction: EffectExecution;
+
+    fn into_condition(self) -> Self::ExecFunction;
+}
+
+impl<F: Fn(T1) -> Result<bool, BevyError> + Send + Sync, T1: EffectParam>
+    IntoEffectExecution<'_, (T1,)> for F
+where
+    for<'a, 'b> &'a F: Fn(T1) -> Result<bool, BevyError>
+        + Fn(<T1 as EffectParam>::Item<'b>) -> Result<bool, BevyError>,
+{
+    type ExecFunction = FunctionActivation<(T1,), Self>;
+
+    fn into_condition(self) -> Self::ExecFunction {
+        FunctionActivation {
+            f: self,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<F: Fn(T1, T2) -> Result<bool, BevyError> + Send + Sync, T1: EffectParam, T2: EffectParam>
+    IntoEffectExecution<'_, (T1, T2)> for F
+where
+    for<'a, 'b> &'a F: Fn(T1, T2) -> Result<bool, BevyError>
+        + Fn(<T1 as EffectParam>::Item<'b>, <T2 as EffectParam>::Item<'b>) -> Result<bool, BevyError>,
+{
+    type ExecFunction = FunctionActivation<(T1, T2), Self>;
+
+    fn into_condition(self) -> Self::ExecFunction {
+        FunctionActivation {
+            f: self,
+            marker: PhantomData,
+        }
+    }
 }
 
 #[cfg(test)]

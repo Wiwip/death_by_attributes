@@ -2,17 +2,16 @@ use crate::assets::EffectDef;
 use crate::attributes::{Attribute, Value};
 use crate::condition::{AttributeCondition, BoxCondition};
 use crate::effect::application::EffectApplicationPolicy;
-use crate::effect::{EffectExecution, EffectStackingPolicy};
+use crate::effect::{EffectExecution, EffectStackingPolicy, IntoEffectExecution};
 use crate::modifier::{Modifier, ModifierFn, Who};
-use crate::prelude::{AttributeModifier, ModOp};
+use crate::prelude::{AttributeModifier, ModOp, StoredExecution};
 use bevy::prelude::{Bundle, Entity, EntityCommands, Name};
-use num_traits::{AsPrimitive, One};
 use std::ops::RangeBounds;
 
 pub struct EffectBuilder {
     effect_entity_commands: Vec<Box<ModifierFn>>,
     effects: Vec<Box<dyn Modifier>>,
-    custom_execution: Option<Box<dyn EffectExecution>>,
+    executions: Vec<StoredExecution>,
     modifiers: Vec<Box<dyn Modifier>>,
     application: EffectApplicationPolicy,
     conditions: Vec<BoxCondition>,
@@ -25,7 +24,7 @@ impl EffectBuilder {
         Self {
             effect_entity_commands: vec![],
             effects: vec![],
-            custom_execution: None,
+            executions: vec![],
             modifiers: vec![],
             application,
             conditions: vec![],
@@ -56,31 +55,19 @@ impl EffectBuilder {
         ))
     }
 
-    pub fn modify<T: Attribute>(mut self, value: Value<T::Property>, modifier: ModOp, who: Who, scaling: f64) -> Self {
-        self.modifiers
-            .push(Box::new(AttributeModifier::<T>::new(value, modifier, who, scaling)));
-        self
-    }
-
-    /// Spawns an observer watching the actor's attributes on the modifier entity.
-    /// When OnValueChanged is triggered, it takes the current value of the attribute,
-    /// it applies the scaling factor and updates the modifier's value to the new value.
-    /*pub fn modify_from<S, T>(
+    /// Modifies an [Attribute]
+    pub fn modify<T: Attribute>(
         mut self,
+        value: Value<T::Property>,
         modifier: ModOp,
-        mod_target: Who,
+        who: Who,
         scaling: f64,
-    ) -> Self
-    where
-        S: Attribute,
-        S::Property: AsPrimitive<T::Property>,
-        T: Attribute,
-    {
-        self.modifiers.push(Box::new(DerivedModifier::<S, T>::new(
-            modifier, mod_target, scaling,
+    ) -> Self {
+        self.modifiers.push(Box::new(AttributeModifier::<T>::new(
+            value, modifier, who, scaling,
         )));
         self
-    }*/
+    }
 
     pub fn intensity(mut self, intensity: f32) -> Self {
         self.intensity = Some(intensity);
@@ -113,8 +100,11 @@ impl EffectBuilder {
         self
     }
 
-    pub fn with_execution(mut self, context: impl EffectExecution + 'static) -> Self {
-        self.custom_execution = Some(Box::new(context));
+    pub fn add_execution<I, S: for<'a> EffectExecution + 'static>(
+        mut self,
+        system: impl for<'a> IntoEffectExecution<'a, I, ExecFunction = S>,
+    ) -> Self {
+        self.executions.push(Box::new(system.into_condition()));
         self
     }
 
@@ -141,16 +131,11 @@ impl EffectBuilder {
         self
     }
 
-    /*pub fn with_custom_execution(mut self, execution: impl EffectExecution + 'static) -> Self {
-        self.custom_execution = Some(Box::new(execution));
-        self
-    }*/
-
     pub fn build(self) -> EffectDef {
         EffectDef {
             effect_fn: self.effect_entity_commands,
             effect_modifiers: self.effects,
-            execution: self.custom_execution,
+            execution: self.executions,
             modifiers: self.modifiers,
             application: self.application,
             conditions: self.conditions,

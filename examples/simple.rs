@@ -11,7 +11,7 @@ use root_attribute::actors::ActorBuilder;
 use root_attribute::assets::{AbilityDef, ActorDef, EffectDef};
 use root_attribute::attributes::ReflectAccessAttribute;
 use root_attribute::attributes::{Attribute, Value};
-use root_attribute::condition::{AttributeCondition, Dst, IntoCustomExecution, Src};
+use root_attribute::condition::AttributeCondition;
 use root_attribute::context::EffectContext;
 use root_attribute::effect::{EffectStackingPolicy, Stacks};
 use root_attribute::graph::QueryGraphAdapter;

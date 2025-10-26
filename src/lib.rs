@@ -47,6 +47,7 @@ pub mod prelude {
     pub use crate::effect::*;
     pub use crate::modifier::prelude::*;
     pub use crate::modifier::*;
+    pub use crate::{AttributesPlugin, attribute};
 }
 
 use crate::graph::NodeType;
@@ -129,10 +130,6 @@ pub fn init_attribute<T: Attribute>(app: &mut App) {
     app.add_observer(observe_dirty_node_notifications::<T>);
     app.add_observer(on_add_attribute::<T>);
     app.add_observer(update_attribute::<T>);
-
-    //EventRegistry::register_event::<OnBaseValueChange<T>>(world);
-    //EventRegistry::register_event::<OnCurrentValueChanged<T>>(world);
-    //EventRegistry::register_event::<OnAttributeValueChanged<T>>(world);
 
     debug!(
         "Registered Systems for attribute: {}.",
@@ -226,7 +223,11 @@ impl std::fmt::Display for AttributeError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             AttributeError::AttributeNotPresent(type_id) => {
-                write!(f, "Attribute with TypeId {:?} not present", type_id)
+                write!(
+                    f,
+                    "Attribute with TypeId {:?} not present on entity.",
+                    type_id
+                )
             }
         }
     }

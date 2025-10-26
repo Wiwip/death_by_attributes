@@ -14,7 +14,11 @@ use std::any::TypeId;
 #[derive(Component, Copy, Clone)]
 pub struct DebugOverlayMarker;
 
-pub fn setup_debug_overlay(mut commands: Commands, asset_server: Res<AssetServer>) {
+pub fn setup_debug_overlay(mut commands: Commands, asset_server_opt: Option<Res<AssetServer>>) {
+    let Some(asset_server) = asset_server_opt else {
+        return;
+    };
+
     commands
         .spawn(Node {
             flex_direction: FlexDirection::Column,

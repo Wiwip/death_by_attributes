@@ -76,6 +76,7 @@ macro_rules! attribute_impl {
             serde::Serialize,
             serde::Deserialize,
         )]
+        
         #[reflect(AccessAttribute)]
         pub struct $StructName {
             base_value: $ValueType,
@@ -85,11 +86,10 @@ macro_rules! attribute_impl {
         impl $crate::attributes::Attribute for $StructName {
             type Property = $ValueType;
 
-            fn new<
+            fn new<T>(value: T) -> Self 
+            where
                 T: $crate::num_traits::Num + $crate::num_traits::AsPrimitive<Self::Property> + Copy,
-            >(
-                value: T,
-            ) -> Self {
+            {
                 Self {
                     base_value: value.as_(),
                     current_value: value.as_(),
@@ -329,6 +329,8 @@ pub trait ValueSource: Send + Sync + 'static {
     fn clone_value(&self) -> Box<dyn ValueSource<Output = Self::Output>>;
 }
 
+/// A ['Value'] refers to an Attribute value.
+/// It can be a literal value, or a reference to an Attribute.
 #[derive(Deref, DerefMut)]
 pub struct Value<P: Num>(Box<dyn ValueSource<Output = P>>);
 
@@ -357,9 +359,9 @@ impl<P: Num + 'static> Clone for Value<P> {
     }
 }
 
-impl<P: Num> Debug for Value<P> {
+impl<P: Num + 'static> Debug for Value<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        todo!()
+        write!(f, "{}", self.0.describe())
     }
 }
 
@@ -369,6 +371,7 @@ impl<P: Num + 'static> Display for Value<P> {
     }
 }
 
+/// An ['AttributeValue'] is a dynamic reference to an Attribute.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct AttributeValue<T: Attribute> {
     value: T::Property,
@@ -444,10 +447,15 @@ impl<P: Num> BoxAttributeAccessor<P> {
     }
 }
 
-impl<P: Num> Debug for BoxAttributeAccessor<P> {
-    fn fmt(&self, _f: &mut Formatter<'_>) -> std::fmt::Result {
-        todo!();
-        //f.debug_tuple("BoxExtractor").field(&self.0.name()).finish()
+impl<P> Debug for BoxAttributeAccessor<P>
+where
+    P: Num + PartialOrd + Copy + Clone + Display + Debug + Send + Sync + 'static,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BoxAttributeAccessor")
+            .field("name", &self.0.name())
+            .field("attribute_type_id", &self.0.attribute_type_id())
+            .finish()
     }
 }
 
@@ -554,7 +562,10 @@ pub fn on_change_notify_attribute_parents<T: Attribute>(
             "Attribute<{}> changed. Notify parent chain.",
             pretty_type_name::<T>(),
         );
-        commands.trigger(MarkNodeDirty::<T> { entity, phantom_data: Default::default() });
+        commands.trigger(MarkNodeDirty::<T> {
+            entity,
+            phantom_data: Default::default(),
+        });
     }
 }
 
@@ -563,8 +574,9 @@ mod test {
     use super::*;
     use crate::ReflectAccessAttribute;
 
-    /*attribute!(TestAttribute, u32);
-
+    attribute!(TestAttr, u32);
+    
+    /*
     #[test]
     fn test_serialize() {
         let attribute = TestAttribute::new(10);
@@ -583,4 +595,22 @@ mod test {
         assert_eq!(attribute.base_value, 50);
         assert_eq!(attribute.current_value, 500);
     }*/
+
+    #[test]
+    fn test_attribute_new_and_setters() {
+        // new() sets both base and current to the same value
+        let mut a = TestAttr::new(7u32);
+        assert_eq!(a.base_value(), 7);
+        assert_eq!(a.current_value(), 7);
+
+        // set_base_value should only change the base
+        a.set_base_value(10);
+        assert_eq!(a.base_value(), 10);
+        assert_eq!(a.current_value(), 7);
+
+        // set_current_value should only change the current
+        a.set_current_value(12);
+        assert_eq!(a.base_value(), 10);
+        assert_eq!(a.current_value(), 12);
+    }
 }

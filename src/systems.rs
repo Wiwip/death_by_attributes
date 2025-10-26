@@ -39,41 +39,11 @@ pub fn observe_dirty_node_notifications<T: Attribute>(
 #[derive(EntityEvent)]
 pub struct NotifyAttributeDependencyChanged<T: Attribute> {
     pub entity: Entity,
+    #[allow(dead_code)]
     pub base_value: T::Property,
+    #[allow(dead_code)]
     pub current_value: T::Property,
     pub phantom_data: PhantomData<T>,
-}
-
-pub fn on_change_attribute_observer<S: Attribute, T: Attribute>(
-    trigger: On<NotifyAttributeDependencyChanged<S>>,
-    mut attribute_modifiers_query: Query<(Entity, &mut AttributeModifier<T>)>,
-    mut commands: Commands,
-) where
-    S::Property: AsPrimitive<T::Property>,
-{
-    let (mod_entity, mut modifier) = attribute_modifiers_query
-        .get_mut(trigger.observer())
-        .unwrap();
-
-    let scaling = modifier.scaling;
-
-    let converted_source_attribute = trigger.current_value.as_();
-    let scaled_converted_source_attribute = converted_source_attribute.as_() * scaling;
-
-    modifier.scaling = scaled_converted_source_attribute;
-
-    commands.trigger(MarkNodeDirty::<T> {
-        entity: mod_entity,
-        phantom_data: Default::default(),
-    });
-
-    /*debug!(
-        "{} <{},{}>: Attribute changed. New value: {} ",
-        trigger.observer(),
-        pretty_type_name::<S>(),
-        pretty_type_name::<T>(),
-        trigger.current_value,
-    );*/
 }
 
 /// Navigates the tree descendants to update the tree attribute values
@@ -239,20 +209,23 @@ pub fn apply_periodic_effect<T: Attribute>(
 
             // Apply the stack count to the modifier
             let stack_count = stacks.current_value();
-            let scaled_modifier = attribute_modifier.clone(); // TODO * stack_count;
+
+            // Clone the modifier so we can apply the stack count to it.
+            let mut applied_modifier = attribute_modifier.clone();
+            applied_modifier.scaling *= stack_count as f64;
 
             match attribute_modifier.who {
                 Who::Target => {
                     event_writer.write(ApplyAttributeModifierEvent {
                         target: target.0,
-                        modifier: scaled_modifier,
+                        modifier: applied_modifier,
                         attribute: attribute_modifier.as_accessor(),
                     });
                 }
                 Who::Source => {
                     event_writer.write(ApplyAttributeModifierEvent {
                         target: source.0,
-                        modifier: scaled_modifier,
+                        modifier: applied_modifier,
                         attribute: attribute_modifier.as_accessor(),
                     });
                 }

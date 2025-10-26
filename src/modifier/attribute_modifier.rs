@@ -114,7 +114,7 @@ where
     }
 
     fn write_event(&self, target: Entity, commands: &mut Commands) {
-        commands.send_event(ApplyAttributeModifierEvent::<T> {
+        commands.write_message(ApplyAttributeModifierEvent::<T> {
             target,
             modifier: self.clone(),
             attribute: BoxAttributeAccessor::new(AttributeExtractor::<T>::new()),
