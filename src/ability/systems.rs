@@ -6,7 +6,6 @@ use crate::condition::{BoxCondition, GameplayContext};
 use crate::{AttributesMut, AttributesRef};
 use bevy::asset::Assets;
 use bevy::prelude::*;
-use bevy_egui::egui::debug_text::print;
 
 pub fn tick_ability_cooldown(mut query: Query<&mut AbilityCooldown>, time: Res<Time>) {
     query.par_iter_mut().for_each(|mut cooldown| {

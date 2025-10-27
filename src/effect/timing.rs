@@ -36,7 +36,7 @@ pub fn tick_effect_durations(
             effect_duration.0.tick(time.delta());
 
             // Remove expired effects
-            if effect_duration.finished() {
+            if effect_duration.is_finished() {
                 debug!("Effect expired on {}.", entity);
                 par_commands.command_scope(|mut commands| {
                     commands.entity(entity).despawn();

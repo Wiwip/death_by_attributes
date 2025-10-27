@@ -9,7 +9,6 @@ use crate::modifier::{ReflectAccessModifier, Who};
 use crate::prelude::{ApplyAttributeModifierEvent, AttributeTypeId, EffectSource, EffectTarget};
 use crate::{AttributesMut, AttributesRef};
 use bevy::prelude::*;
-use petgraph::algo::has_path_connecting;
 use std::any::type_name;
 use std::fmt::Debug;
 use std::fmt::Display;

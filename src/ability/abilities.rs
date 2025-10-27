@@ -1,5 +1,4 @@
-
-use crate::ability::{Ability, AbilityActivationFn, AbilityCooldown};
+use crate::ability::{Ability, AbilityCooldown};
 use crate::assets::AbilityDef;
 use crate::attributes::{Attribute, Value};
 use crate::condition::{AttributeCondition, BoxCondition};
@@ -9,7 +8,6 @@ use crate::prelude::{AttributeModifier, ModOp};
 use bevy::asset::{Assets, Handle};
 use bevy::ecs::system::IntoObserverSystem;
 use bevy::ecs::world::CommandQueue;
-use bevy::log::warn;
 use bevy::prelude::*;
 
 pub struct GrantAbilityCommand {
@@ -53,7 +51,6 @@ pub struct AbilityBuilder {
     mutators: Vec<EntityActions>,
     cost_condition: Vec<BoxCondition>,
     cost_mods: Vec<Box<dyn Modifier>>,
-    activation_fn: AbilityActivationFn,
 }
 
 impl AbilityBuilder {
@@ -63,9 +60,6 @@ impl AbilityBuilder {
             mutators: Default::default(),
             cost_condition: vec![],
             cost_mods: vec![],
-            activation_fn: Box::new(|_, _| {
-                warn!("Ability activation not implemented!");
-            }),
         }
     }
 

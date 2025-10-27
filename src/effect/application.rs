@@ -1,6 +1,5 @@
 use crate::AttributesMut;
 use crate::assets::EffectDef;
-use crate::condition::GameplayContext;
 use crate::effect::stacks::NotifyAddStackEvent;
 use crate::effect::timing::{EffectDuration, EffectTicker};
 use crate::effect::{AppliedEffects, Effect, EffectStackingPolicy, EffectTargeting};
@@ -65,8 +64,8 @@ impl EffectApplicationPolicy {
         match self {
             Self::Instant => true,
             Self::Permanent | Self::Periodic { .. } => false,
-            Self::Temporary { duration } => duration.finished(),
-            Self::PeriodicTemporary { duration, .. } => duration.finished(),
+            Self::Temporary { duration } => duration.is_finished(),
+            Self::PeriodicTemporary { duration, .. } => duration.is_finished(),
         }
     }
 
@@ -132,32 +131,7 @@ impl ApplyEffectEvent {
         effect: &EffectDef,
     ) -> Result<(), BevyError> {
         debug!("Applying instant effect to {}", self.targeting.target());
-
-        let (source_actor, target_actor) = match self.targeting {
-            EffectTargeting::SelfCast(entity) => {
-                let (_, actor) = actors.get(entity)?;
-                (actor, actor)
-            }
-            EffectTargeting::Targeted { source, target } => {
-                let (_, source_actor_ref) = actors.get(target)?;
-                let (_, target_actor_ref) = actors.get(source)?;
-                (source_actor_ref, target_actor_ref)
-            }
-        };
-
-        let context = GameplayContext {
-            target_actor: &target_actor,
-            source_actor: &source_actor,
-            owner: &source_actor,
-        };
-
-        // Apply the collected modifiers
-        //let modifiers = execution_context.into_modifiers();
-        //self.apply_modifiers(&mut actors, &mut modifiers.iter(), commands);
-        //}
-
         self.apply_modifiers(&mut actors, &mut effect.modifiers.iter(), commands);
-
         Ok(())
     }
 
@@ -192,7 +166,7 @@ impl ApplyEffectEvent {
         effect: &EffectDef,
         actors: &mut Query<(Option<&AppliedEffects>, AttributesMut), Without<Effect>>,
         effects: &mut Query<&Effect>,
-        add_stack_event: &mut EventWriter<NotifyAddStackEvent>,
+        add_stack_event: &mut MessageWriter<NotifyAddStackEvent>,
     ) -> Result<(), BevyError> {
         debug!("Applying duration effect to {}", self.targeting.target());
 

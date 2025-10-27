@@ -219,14 +219,14 @@ where
 
 /// When the Source attribute changes, we update the bounds of the target attribute
 pub fn derived_clamp_attributes_observer<S, T>(
-    trigger: Trigger<OnAttributeValueChanged<S>>,
+    trigger: On<OnAttributeValueChanged<S>>,
     mut query: Query<(&mut DerivedClamp<T>, &S)>,
 ) where
     S: Attribute,
     T: Attribute,
     S::Property: AsPrimitive<T::Property>,
 {
-    let Ok((mut derived_clamp, source_attribute)) = query.get_mut(trigger.target()) else {
+    let Ok((mut derived_clamp, source_attribute)) = query.get_mut(trigger.event_target()) else {
         return;
     };
     let source_value: T::Property = source_attribute.current_value().as_();
@@ -247,10 +247,10 @@ where
 }
 
 pub(crate) fn clamp_attributes_observer<T: Attribute>(
-    trigger: Trigger<OnAttributeValueChanged<T>>,
+    trigger: On<OnAttributeValueChanged<T>>,
     mut query: Query<(&mut T, &Clamp<T>)>,
 ) {
-    let Ok((mut attribute, clamp)) = query.get_mut(trigger.target()) else {
+    let Ok((mut attribute, clamp)) = query.get_mut(trigger.event_target()) else {
         return;
     };
 
@@ -523,7 +523,7 @@ impl<T: Attribute> AttributeAccessor for AttributeExtractor<T> {
 
 pub fn on_add_attribute<T: Attribute>(trigger: On<Insert, T>, mut commands: Commands) {
     commands.trigger(MarkNodeDirty::<T> {
-        entity: trigger.target(),
+        entity: trigger.event_target(),
         phantom_data: Default::default(),
     });
 }

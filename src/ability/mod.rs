@@ -2,7 +2,6 @@ mod abilities;
 mod systems;
 
 
-use crate::AttributesMut;
 use crate::ability::systems::{
     activate_ability, reset_ability_cooldown, tick_ability_cooldown, try_activate_ability_observer,
 };
@@ -24,8 +23,6 @@ impl Plugin for AbilityPlugin {
             .register_type::<Abilities>();
     }
 }
-
-pub type AbilityActivationFn = Box<dyn Fn(&mut AttributesMut, &mut Commands) + Send + Sync>;
 
 /// The entity that this effect is targeting.
 #[derive(Component, Reflect, Debug)]
@@ -74,9 +71,36 @@ pub enum TargetData {
 }
 
 #[derive(EntityEvent)]
+pub struct AbilityBegin {
+    pub source: Entity,
+    #[event_target]
+    pub ability: Entity,
+}
+
+#[derive(EntityEvent)]
 pub struct AbilityExecute {
     pub target: Entity,
     pub source: Entity,
     #[event_target]
     pub ability: Entity,
 }
+
+#[derive(EntityEvent)]
+pub struct AbilityEnd {
+    pub source: Entity,
+    #[event_target]
+    pub ability: Entity,
+}
+
+#[derive(EntityEvent)]
+pub struct AbilityCancel {
+    pub source: Entity,
+    #[event_target]
+    pub ability: Entity,
+}
+
+
+
+
+
+

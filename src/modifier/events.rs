@@ -3,7 +3,6 @@ use crate::attributes::BoxAttributeAccessor;
 use crate::math::AbsDiff;
 use crate::prelude::{Attribute, AttributeCalculator, AttributeModifier};
 use bevy::prelude::*;
-use num_traits::Bounded;
 
 #[derive(Message)]
 pub struct ApplyAttributeModifierEvent<T: Attribute> {

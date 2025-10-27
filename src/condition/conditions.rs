@@ -7,7 +7,7 @@ use crate::inspector::pretty_type_name;
 use crate::modifier::Who;
 use bevy::asset::AssetId;
 use bevy::log::error;
-use bevy::prelude::{BevyError, Component, Deref, TypePath};
+use bevy::prelude::{BevyError, Component, TypePath};
 use serde::Serialize;
 use std::fmt::Formatter;
 use std::marker::PhantomData;

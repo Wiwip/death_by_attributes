@@ -6,7 +6,6 @@ use crate::modifier::Who;
 use crate::prelude::*;
 use crate::{AttributesRef, Dirty, OnAttributeValueChanged};
 use bevy::prelude::*;
-use num_traits::AsPrimitive;
 use petgraph::visit::IntoNeighbors;
 use std::any::type_name;
 use std::marker::PhantomData;
@@ -173,12 +172,12 @@ pub fn update_attribute<T: Attribute>(
     mut attributes: Query<AttributeQueryData<T>>,
     mut commands: Commands,
 ) {
-    if let Ok(mut attribute) = attributes.get_mut(trigger.target()) {
+    if let Ok(mut attribute) = attributes.get_mut(trigger.event_target()) {
         attribute.calculator_cache.calculator = trigger.event().calculator;
         let should_notify_observers = attribute.update_attribute(&trigger.event().calculator);
         if should_notify_observers {
             commands.trigger(OnAttributeValueChanged::<T> {
-                entity: trigger.target(),
+                entity: trigger.event_target(),
                 _marker: Default::default(),
             });
         }
