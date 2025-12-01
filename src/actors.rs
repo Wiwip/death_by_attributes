@@ -1,9 +1,11 @@
+use crate::Abilities;
 use crate::ability::{AbilityOf, GrantAbilityCommand};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::attributes::{Attribute, Clamp, DerivedClamp, derived_clamp_attributes_observer};
 use crate::condition::convert_bounds;
 use crate::effect::EffectTargeting;
 use crate::graph::NodeType;
+use crate::inspector::pretty_type_name;
 use crate::mutator::EntityActions;
 use crate::prelude::{ApplyEffectEvent, AttributeCalculatorCached};
 use bevy::ecs::world::CommandQueue;
@@ -13,6 +15,7 @@ use std::ops::RangeBounds;
 
 #[allow(dead_code)]
 #[derive(Component, Clone, Debug)]
+#[require(Abilities)]
 pub struct Actor(Handle<ActorDef>);
 
 pub struct SpawnActorCommand {
@@ -50,6 +53,7 @@ impl EntityCommand for SpawnActorCommand {
                         commands
                             .spawn(AbilityOf(actor_entity))
                             .queue(GrantAbilityCommand {
+                                parent: actor_entity,
                                 handle: ability.clone(),
                             });
                     }
@@ -145,7 +149,15 @@ impl ActorBuilder {
                 let mut observer = Observer::new(derived_clamp_attributes_observer::<S, T>);
                 observer.watch_entity(entity_commands.id());
 
-                entity_commands.insert((DerivedClamp::<T>::new(bounds), children![observer]));
+                entity_commands.commands().spawn((
+                    DerivedClamp::<T>::new(bounds),
+                    observer,
+                    Name::new(format!(
+                        "Clamp {} by {}",
+                        pretty_type_name::<T>(),
+                        pretty_type_name::<S>()
+                    )),
+                ));
             },
         ));
 

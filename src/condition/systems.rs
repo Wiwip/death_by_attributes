@@ -1,6 +1,7 @@
 use crate::AttributesRef;
 use crate::assets::EffectDef;
 use crate::condition::GameplayContext;
+use crate::effect::EffectTicker;
 use crate::prelude::{Effect, EffectInactive, EffectSource, EffectTarget};
 use bevy::asset::Assets;
 use bevy::ecs::relationship::Relationship;
@@ -8,13 +9,16 @@ use bevy::log::error;
 use bevy::prelude::*;
 
 pub fn evaluate_effect_conditions(
-    mut query: Query<(
-        AttributesRef,
-        &Effect,
-        &EffectSource,
-        &EffectTarget,
-        Option<&EffectInactive>,
-    )>,
+    mut query: Query<
+        (
+            AttributesRef,
+            &Effect,
+            &EffectSource,
+            &EffectTarget,
+            Option<&EffectInactive>,
+        ),
+        Without<EffectTicker>,
+    >,
     parents: Query<AttributesRef>,
     effects: Res<Assets<EffectDef>>,
     mut commands: Commands,

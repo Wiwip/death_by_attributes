@@ -23,6 +23,8 @@ pub struct EffectDef {
     pub conditions: Vec<BoxCondition>,
     pub stacking_policy: EffectStackingPolicy,
     pub intensity: Option<f32>,
+    pub triggers: Vec<EntityActions>,
+    pub application_conditions: Vec<BoxCondition>,
 }
 
 #[derive(Asset, TypePath)]
@@ -30,6 +32,7 @@ pub struct AbilityDef {
     pub name: String,
     pub description: String,
     pub mutators: Vec<EntityActions>,
+    pub observers: Vec<EntityActions>,
     pub cost: Vec<BoxCondition>,
     pub condition: Vec<BoxCondition>,
     pub cost_effects: Vec<Box<dyn Modifier>>,

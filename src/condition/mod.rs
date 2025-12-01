@@ -11,7 +11,8 @@ mod systems;
 use crate::attributes::Attribute;
 use crate::{AttributesMut, AttributesRef};
 pub use conditions::{
-    AbilityCondition, And, AttributeCondition, ConditionExt, Not, Or, StackCondition, TagCondition,
+    AbilityCondition, And, AttributeCondition, ChanceCondition, ConditionExt, Not, Or,
+    StackCondition, TagCondition,
 };
 
 pub struct ConditionPlugin;

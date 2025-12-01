@@ -80,6 +80,14 @@ impl<T: Attribute> std::fmt::Display for AttributeCondition<T> {
     }
 }
 
+pub struct ChanceCondition(pub f32);
+
+impl Condition for ChanceCondition {
+    fn eval(&self, _: &GameplayContext) -> Result<bool, BevyError> {
+        Ok(rand::random::<f32>() < self.0)
+    }
+}
+
 pub struct And<C1, C2> {
     c1: C1,
     c2: C2,

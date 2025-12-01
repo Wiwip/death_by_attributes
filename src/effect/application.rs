@@ -1,5 +1,6 @@
 use crate::AttributesMut;
 use crate::assets::EffectDef;
+use crate::condition::GameplayContext;
 use crate::effect::stacks::NotifyAddStackEvent;
 use crate::effect::timing::{EffectDuration, EffectTicker};
 use crate::effect::{AppliedEffects, Effect, EffectStackingPolicy, EffectTargeting};
@@ -131,6 +132,30 @@ impl ApplyEffectEvent {
         effect: &EffectDef,
     ) -> Result<(), BevyError> {
         debug!("Applying instant effect to {}", self.targeting.target());
+
+        let Ok((_, source_actor_ref)) = actors.get(self.targeting.source()) else {
+            return Ok(());
+        };
+        let Ok((_, target_actor_ref)) = actors.get(self.targeting.target()) else {
+            return Ok(());
+        };
+
+        let context = GameplayContext {
+            target_actor: &target_actor_ref,
+            source_actor: &source_actor_ref,
+            owner: &source_actor_ref, // TODO: Should this be the source actor? The effect doesn't exist for instant effects.
+        };
+
+        // Determines whether the effect should activate
+        let should_be_activated = effect
+            .conditions
+            .iter()
+            .all(|condition| condition.0.eval(&context).unwrap_or(false));
+
+        if !should_be_activated {
+            return Ok(());
+        }
+
         self.apply_modifiers(&mut actors, &mut effect.modifiers.iter(), commands);
         Ok(())
     }
@@ -209,6 +234,25 @@ impl ApplyEffectEvent {
             }
         }
 
+        let (_, source_actor_ref) = actors.get(self.targeting.source())?;
+        let (_, target_actor_ref) = actors.get(self.targeting.target())?;
+
+        let context = GameplayContext {
+            target_actor: &target_actor_ref,
+            source_actor: &source_actor_ref,
+            owner: &source_actor_ref, // TODO: Should this be the source actor? The effect doesn't exist for instant effects.
+        };
+
+        // Determines whether the effect should activate
+        let should_be_applied = effect
+            .application_conditions
+            .iter()
+            .all(|condition| condition.0.eval(&context).unwrap_or(true));
+
+        if !should_be_applied {
+            return Ok(());
+        }
+
         let mut effect_commands = commands.spawn_empty();
         let effect_entity = effect_commands.id();
         for effect_fn in &effect.effect_fn {
@@ -262,6 +306,12 @@ impl ApplyEffectEvent {
                 }
                 Who::Effect => todo!(),
             });
+
+        // Spawn effect triggers
+        for triggers in &effect.triggers {
+            let mut entity_commands = commands.entity(self.targeting.target());
+            triggers.apply(&mut entity_commands);
+        }
 
         Ok(())
     }

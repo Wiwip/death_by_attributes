@@ -34,7 +34,6 @@ impl IntoNeighbors for &QueryGraphAdapter<'_, '_> {
     type Neighbors = vec::IntoIter<Entity>;
 
     fn neighbors(self, node: Self::NodeId) -> Self::Neighbors {
-       
         match self.dependencies.get(node) {
             Ok((_, effects)) => effects.iter().collect::<Vec<Entity>>().into_iter(),
             Err(_) => vec![].into_iter(), // No child entities

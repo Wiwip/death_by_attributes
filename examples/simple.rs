@@ -9,9 +9,9 @@ use petgraph::visit::{DfsEvent, depth_first_search};
 use root_attribute::ability::{AbilityBuilder, AbilityExecute, TargetData, TryActivateAbility};
 use root_attribute::actors::ActorBuilder;
 use root_attribute::assets::{AbilityDef, ActorDef, EffectDef};
+use root_attribute::attributes::Attribute;
 use root_attribute::attributes::ReflectAccessAttribute;
-use root_attribute::attributes::{Attribute, Value};
-use root_attribute::condition::AttributeCondition;
+use root_attribute::condition::{AttributeCondition, ChanceCondition};
 use root_attribute::context::EffectContext;
 use root_attribute::effect::{EffectStackingPolicy, Stacks};
 use root_attribute::graph::QueryGraphAdapter;
@@ -91,15 +91,6 @@ fn main() {
             });
         })
         .add_observer(damage_event_calculations)
-        .register_type::<Health>()
-        .register_type::<AttackPower>()
-        .register_type::<Mana>()
-        .register_type::<ManaPool>()
-        .register_type::<EffectSources>()
-        .register_type::<AppliedEffects>()
-        .register_type::<Stacks>()
-        .register_type::<EffectSource>()
-        .register_type::<EffectTarget>()
         .run();
 }
 
@@ -138,7 +129,7 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
         Effect::permanent()
             .name("MagicPower Buff".into())
             .modify::<MagicPower>(Intelligence::value(), ModOp::Add, Who::Target, 1.0)
-            .modify::<MagicPower>(Value::lit(5), ModOp::Add, Who::Target, 1.0)
+            .modify::<MagicPower>(5u32, ModOp::Add, Who::Target, 1.0)
             .while_condition(AttributeCondition::<Health>::new(..=100, Who::Source))
             .with_stacking_policy(EffectStackingPolicy::Add {
                 count: 1,
@@ -151,7 +142,7 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
     let hp_buff = effects.add(
         Effect::permanent()
             .name("MaxHealth Increase".into())
-            .modify::<MaxHealth>(Value::lit(1), ModOp::Increase, Who::Target, 0.10)
+            .modify::<MaxHealth>(1u32, ModOp::Increase, Who::Target, 0.10)
             .modify::<ManaPool>(Health::value(), ModOp::Add, Who::Target, 0.1)
             .with_stacking_policy(EffectStackingPolicy::RefreshDuration)
             .build(),
@@ -161,9 +152,10 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
     let regen = effects.add(
         Effect::permanent_ticking(1.0)
             .name("Health Regen".into())
-            .modify::<Health>(Value::lit(3), ModOp::Add, Who::Target, 1.0)
+            .modify::<Health>(3u32, ModOp::Add, Who::Target, 1.0)
             .modify::<Health>(HealthRegen::value(), ModOp::Add, Who::Target, 1.0)
             .modify::<Mana>(ManaRegen::value(), ModOp::Add, Who::Target, 1.0)
+            .while_condition(ChanceCondition(0.10))
             .build(),
     );
 
@@ -185,9 +177,6 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
     let fireball = effects.add(
         AbilityBuilder::new()
             .with_name("Fireball".into())
-            /*.with_activation(|entity: &mut AttributesMut, _: &mut Commands| {
-                println!("Fireball! {}", entity.id());
-            })*/
             .with_cooldown(1.0)
             .with_cost::<Mana>(12)
             .with_tag::<Fire>()
@@ -200,7 +189,7 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
             .with_cooldown(1.0)
             .with_cost::<Mana>(12)
             .with_tag::<Frost>()
-            .add_observer(
+            .add_execution(
                 |trigger: On<AbilityExecute>,
                  source: Query<(&Health, &MaxHealth)>,
                  _ctx: EffectContext| {
@@ -253,13 +242,13 @@ fn setup_actor(
 
     let player_entity = ctx.spawn_actor(&actor_template).id();
 
-    ctx.apply_effect_to_self(player_entity, &efx.ap_buff);
-    ctx.apply_effect_to_self(player_entity, &efx.hp_buff);
+    //ctx.apply_effect_to_self(player_entity, &efx.ap_buff);
+    //ctx.apply_effect_to_self(player_entity, &efx.hp_buff);
     ctx.apply_effect_to_self(player_entity, &efx.hp_regen);
 
     // Should have two stacks
-    ctx.apply_effect_to_self(player_entity, &efx.mp_buff);
-    ctx.apply_effect_to_self(player_entity, &efx.mp_buff);
+    //ctx.apply_effect_to_self(player_entity, &efx.mp_buff);
+    //ctx.apply_effect_to_self(player_entity, &efx.mp_buff);
 }
 
 #[derive(Component, Copy, Clone)]

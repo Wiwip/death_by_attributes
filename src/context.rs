@@ -7,7 +7,7 @@ use bevy::prelude::*;
 
 #[derive(SystemParam)]
 pub struct EffectContext<'w, 's> {
-    pub commands: Commands<'w, 's>,
+    commands: Commands<'w, 's>,
     effects: ResMut<'w, Assets<EffectDef>>,
 }
 
@@ -18,13 +18,11 @@ impl<'s, 'w> EffectContext<'w, 's> {
         source: Entity,
         handle: &Handle<EffectDef>,
     ) {
-        self.commands.trigger(
-            ApplyEffectEvent {
-                entity: target,
-                targeting: EffectTargeting::new(source, target),
-                handle: handle.clone(),
-            },
-        );
+        self.commands.trigger(ApplyEffectEvent {
+            entity: target,
+            targeting: EffectTargeting::new(source, target),
+            handle: handle.clone(),
+        });
     }
 
     pub fn apply_effect_to_self(&mut self, source: Entity, handle: &Handle<EffectDef>) {
@@ -39,13 +37,11 @@ impl<'s, 'w> EffectContext<'w, 's> {
     ) -> Handle<EffectDef> {
         let handle = self.effects.add(effect);
 
-        self.commands.trigger(
-            ApplyEffectEvent {
-                entity: target,
-                targeting: EffectTargeting::new(source, target),
-                handle: handle.clone(),
-            },
-        );
+        self.commands.trigger(ApplyEffectEvent {
+            entity: target,
+            targeting: EffectTargeting::new(source, target),
+            handle: handle.clone(),
+        });
         handle
     }
 

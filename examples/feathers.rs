@@ -3,22 +3,23 @@
 use bevy::{
     color::palettes,
     feathers::{
+        FeathersPlugins,
         controls::{
-            button, checkbox, color_slider, color_swatch, radio, slider, toggle_switch,
             ButtonProps, ButtonVariant, ColorChannel, ColorSlider, ColorSliderProps, ColorSwatch,
-            SliderBaseColor, SliderProps,
+            SliderBaseColor, SliderProps, button, checkbox, color_slider, color_swatch, radio,
+            slider, toggle_switch,
         },
         dark_theme::create_dark_theme,
         rounded_corners::RoundedCorners,
         theme::{ThemeBackgroundColor, ThemedText, UiTheme},
-        tokens, FeathersPlugins,
+        tokens,
     },
     input_focus::tab_navigation::TabGroup,
     prelude::*,
     ui::{Checked, InteractionDisabled},
     ui_widgets::{
-        checkbox_self_update, observe, slider_self_update, Activate, RadioButton, RadioGroup,
-        SliderPrecision, SliderStep, SliderValue, ValueChange,
+        Activate, RadioButton, RadioGroup, SliderPrecision, SliderStep, SliderValue, ValueChange,
+        checkbox_self_update, observe, slider_self_update,
     },
 };
 

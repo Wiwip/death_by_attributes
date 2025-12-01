@@ -3,7 +3,7 @@ mod calculator;
 mod events;
 
 use crate::attributes::Attribute;
-use crate::condition::{GameplayContext};
+use crate::condition::GameplayContext;
 use crate::inspector::pretty_type_name;
 use crate::prelude::{AttributeModifier, AttributeTypeId};
 use crate::{AttributesMut, AttributesRef};

@@ -4,7 +4,7 @@ use crate::inspector::pretty_type_name;
 use crate::math::AbsDiff;
 use crate::prelude::*;
 use crate::systems::{MarkNodeDirty, NotifyAttributeDependencyChanged};
-use crate::{AttributeError, AttributesMut, AttributesRef, OnAttributeValueChanged};
+use crate::{AttributeError, AttributeValueChanged, AttributesMut, AttributesRef};
 use bevy::ecs::component::Mutable;
 use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
@@ -58,8 +58,11 @@ where
     fn set_base_value(&mut self, value: Self::Property);
     fn current_value(&self) -> Self::Property;
     fn set_current_value(&mut self, value: Self::Property);
-    fn value() -> Value<Self::Property> {
-        Value::new::<Self>()
+    fn value() -> AttributeValue<Self> {
+        AttributeValue {
+            value: Self::Property::zero(),
+            phantom_data: PhantomData,
+        }
     }
     fn attribute_type_id() -> AttributeTypeId;
 }
@@ -76,7 +79,6 @@ macro_rules! attribute_impl {
             serde::Serialize,
             serde::Deserialize,
         )]
-        
         #[reflect(AccessAttribute)]
         pub struct $StructName {
             base_value: $ValueType,
@@ -86,7 +88,7 @@ macro_rules! attribute_impl {
         impl $crate::attributes::Attribute for $StructName {
             type Property = $ValueType;
 
-            fn new<T>(value: T) -> Self 
+            fn new<T>(value: T) -> Self
             where
                 T: $crate::num_traits::Num + $crate::num_traits::AsPrimitive<Self::Property> + Copy,
             {
@@ -157,9 +159,10 @@ pub struct AttributeQueryData<T: Attribute + 'static> {
 
 impl<T: Attribute> AttributeQueryDataItem<'_, '_, T> {
     pub fn update_attribute(&mut self, calculator: &AttributeCalculator<T>) -> bool {
+        let old_val = self.attribute.current_value();
         let new_val = calculator.eval(self.attribute.base_value());
 
-        let has_changed = new_val.are_different(self.attribute.current_value());
+        let has_changed = old_val.are_different(new_val);
         if has_changed {
             self.attribute.set_current_value(new_val);
         }
@@ -167,12 +170,13 @@ impl<T: Attribute> AttributeQueryDataItem<'_, '_, T> {
     }
 
     pub fn update_attribute_from_cache(&mut self) -> bool {
+        let old_val = self.attribute.current_value();
         let new_val = self
             .calculator_cache
             .calculator
             .eval(self.attribute.base_value());
 
-        let has_changed = new_val.are_different(self.attribute.current_value());
+        let has_changed = old_val.are_different(new_val);
         if has_changed {
             self.attribute.set_current_value(new_val);
         }
@@ -219,7 +223,7 @@ where
 
 /// When the Source attribute changes, we update the bounds of the target attribute
 pub fn derived_clamp_attributes_observer<S, T>(
-    trigger: On<OnAttributeValueChanged<S>>,
+    trigger: On<AttributeValueChanged<S>>,
     mut query: Query<(&mut DerivedClamp<T>, &S)>,
 ) where
     S: Attribute,
@@ -247,7 +251,7 @@ where
 }
 
 pub(crate) fn clamp_attributes_observer<T: Attribute>(
-    trigger: On<OnAttributeValueChanged<T>>,
+    trigger: On<AttributeValueChanged<T>>,
     mut query: Query<(&mut T, &Clamp<T>)>,
 ) {
     let Ok((mut attribute, clamp)) = query.get_mut(trigger.event_target()) else {
@@ -329,27 +333,20 @@ pub trait ValueSource: Send + Sync + 'static {
     fn clone_value(&self) -> Box<dyn ValueSource<Output = Self::Output>>;
 }
 
-/// A ['Value'] refers to an Attribute value.
+pub trait IntoValue {
+    type Out: Num;
+
+    fn into_value(self) -> Value<Self::Out>;
+}
+
+/// A [Value] refers to an Attribute value.
 /// It can be a literal value, or a reference to an Attribute.
 #[derive(Deref, DerefMut)]
-pub struct Value<P: Num>(Box<dyn ValueSource<Output = P>>);
-
-impl<P: Num + Display + Debug + Copy + Clone + Send + Sync + 'static> Value<P> {
-    pub fn new<T: Attribute<Property = P>>() -> Self {
-        Self(Box::new(AttributeValue::<T> {
-            value: P::zero(),
-            phantom_data: Default::default(),
-        }))
-    }
-
-    pub fn lit(value: P) -> Self {
-        Self(Box::new(Lit(value)))
-    }
-}
+pub struct Value<P: Num>(pub Box<dyn ValueSource<Output = P>>);
 
 impl<P: Num + Display + Debug + Copy + Clone + Send + Sync + 'static> Default for Value<P> {
     fn default() -> Self {
-        Value::lit(P::zero())
+        Value(Box::new(Lit(P::zero())))
     }
 }
 
@@ -371,7 +368,7 @@ impl<P: Num + 'static> Display for Value<P> {
     }
 }
 
-/// An ['AttributeValue'] is a dynamic reference to an Attribute.
+/// An [AttributeValue] is a dynamic reference to an Attribute.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct AttributeValue<T: Attribute> {
     value: T::Property,
@@ -400,8 +397,20 @@ impl<T: Attribute> ValueSource for AttributeValue<T> {
     }
 }
 
+impl<T: Attribute> IntoValue for AttributeValue<T> {
+    type Out = T::Property;
+
+    fn into_value(self) -> Value<Self::Out> {
+        Value(Box::new(AttributeValue::<T> {
+            value: Self::Out::zero(),
+            phantom_data: Default::default(),
+        }))
+    }
+}
+
+/// A [Lit] is a static value.
 #[derive(Deref, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Lit<P: Num>(P);
+pub struct Lit<P: Num>(pub P);
 
 impl<P: Num + Display + Debug + Copy + Clone + Send + Sync + 'static> ValueSource for Lit<P> {
     type Output = P;
@@ -418,6 +427,36 @@ impl<P: Num + Display + Debug + Copy + Clone + Send + Sync + 'static> ValueSourc
         Box::new(Lit(self.0))
     }
 }
+
+#[macro_export]
+macro_rules! impl_into_value {
+    ( $x:ty ) => {
+        impl IntoValue for $x {
+            type Out = $x;
+
+            fn into_value(self) -> Value<$x> {
+                Value(Box::new(Lit(self)))
+            }
+        }
+    };
+}
+
+impl_into_value!(i8);
+impl_into_value!(i16);
+impl_into_value!(i32);
+impl_into_value!(i64);
+impl_into_value!(i128);
+impl_into_value!(isize);
+
+impl_into_value!(u8);
+impl_into_value!(u16);
+impl_into_value!(u32);
+impl_into_value!(u64);
+impl_into_value!(u128);
+impl_into_value!(usize);
+
+impl_into_value!(f32);
+impl_into_value!(f64);
 
 pub trait AttributeAccessor: Send + Sync + 'static {
     type Output: Num + PartialOrd + Copy + Clone + Display + Debug + Send + Sync;
@@ -575,7 +614,7 @@ mod test {
     use crate::ReflectAccessAttribute;
 
     attribute!(TestAttr, u32);
-    
+
     /*
     #[test]
     fn test_serialize() {

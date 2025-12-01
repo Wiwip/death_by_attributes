@@ -38,7 +38,8 @@ pub fn apply_modifier<T: Attribute>(
     let has_changed = new_base_value.are_different(base_value);
     if has_changed {
         let mut attributes_mut = attributes.get_mut(ev.target)?;
-        ev.attribute.set_base_value(new_base_value, &mut attributes_mut)?;
+        ev.attribute
+            .set_base_value(new_base_value, &mut attributes_mut)?;
     }
     Ok(())
 }

@@ -24,4 +24,3 @@ pub fn pretty_type_name<T>() -> String {
 pub fn pretty_type_name_str(val: &str) -> String {
     format!("{}", ShortName(val))
 }
-

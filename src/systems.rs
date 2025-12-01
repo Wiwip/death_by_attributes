@@ -1,10 +1,12 @@
 use crate::actors::Actor;
+use crate::assets::EffectDef;
 use crate::attributes::{Attribute, AttributeQueryData, AttributeQueryDataReadOnly};
+use crate::condition::GameplayContext;
 use crate::effect::Stacks;
 use crate::graph::{NodeType, QueryGraphAdapter};
 use crate::modifier::Who;
 use crate::prelude::*;
-use crate::{AttributesRef, Dirty, OnAttributeValueChanged};
+use crate::{AttributeValueChanged, AttributesMut, AttributesRef, CurrentValueChanged, Dirty};
 use bevy::prelude::*;
 use petgraph::visit::IntoNeighbors;
 use std::any::type_name;
@@ -149,11 +151,10 @@ fn update_effect_tree_attributes<T: Attribute>(
     };
 
     // Signal to update the attribute
-    commands
-        .trigger(UpdateAttributeSignal {
-            entity: current_entity,
-            calculator: node_calculator,
-        });
+    commands.trigger(UpdateAttributeSignal {
+        entity: current_entity,
+        calculator: node_calculator,
+    });
 
     // Cleans the node
     commands.entity(current_entity).try_remove::<Dirty<T>>();
@@ -174,18 +175,31 @@ pub fn update_attribute<T: Attribute>(
 ) {
     if let Ok(mut attribute) = attributes.get_mut(trigger.event_target()) {
         attribute.calculator_cache.calculator = trigger.event().calculator;
+
+        let old_value = attribute.attribute.current_value();
+
         let should_notify_observers = attribute.update_attribute(&trigger.event().calculator);
         if should_notify_observers {
-            commands.trigger(OnAttributeValueChanged::<T> {
+            commands.trigger(AttributeValueChanged::<T> {
                 entity: trigger.event_target(),
                 _marker: Default::default(),
+            });
+
+            commands.trigger(CurrentValueChanged::<T> {
+                entity: trigger.event_target(),
+                phantom_data: Default::default(),
+                old: old_value,
+                new: attribute.attribute.current_value(),
             });
         }
     };
 }
 
 pub fn apply_periodic_effect<T: Attribute>(
+    actors: Query<AttributesRef>,
     effects: Query<(
+        AttributesRef,
+        &Effect,
         &EffectTicker,
         &AppliedEffects,
         &Stacks,
@@ -194,9 +208,34 @@ pub fn apply_periodic_effect<T: Attribute>(
     )>,
     modifiers: Query<&AttributeModifier<T>>,
     mut event_writer: MessageWriter<ApplyAttributeModifierEvent<T>>,
+    effect_assets: Res<Assets<EffectDef>>,
 ) {
-    for (timer, effect_modifiers, stacks, target, source) in effects.iter() {
+    for (effect_ref, effect, timer, effect_modifiers, stacks, target, source) in effects.iter() {
         if !timer.just_finished() {
+            continue;
+        }
+
+        let effect_def = effect_assets
+            .get(&effect.0)
+            .ok_or("No effect asset.")
+            .unwrap();
+
+        let source_actor_ref = actors.get(source.0).unwrap();
+        let target_actor_ref = actors.get(target.0).unwrap();
+
+        let context = GameplayContext {
+            target_actor: &target_actor_ref,
+            source_actor: &source_actor_ref,
+            owner: &effect_ref,
+        };
+
+        // Determines whether the effect should activate
+        let should_be_activated = effect_def
+            .conditions
+            .iter()
+            .all(|condition| condition.0.eval(&context).unwrap_or(false));
+
+        if !should_be_activated {
             continue;
         }
 
@@ -229,7 +268,11 @@ pub fn apply_periodic_effect<T: Attribute>(
                     });
                 }
                 Who::Effect => {
-                    todo!()
+                    event_writer.write(ApplyAttributeModifierEvent {
+                        target: effect_ref.id(),
+                        modifier: applied_modifier,
+                        attribute: attribute_modifier.as_accessor(),
+                    });
                 }
             }
         }

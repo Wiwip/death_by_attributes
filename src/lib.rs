@@ -42,11 +42,12 @@ use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
 
 pub mod prelude {
     pub use crate::attributes::{
-        AccessAttribute, Attribute, AttributeTypeId, ReflectAccessAttribute,
+        AccessAttribute, Attribute, AttributeTypeId, ReflectAccessAttribute, Value,
     };
     pub use crate::effect::*;
     pub use crate::modifier::prelude::*;
     pub use crate::modifier::*;
+    pub use crate::schedule::EffectsSet;
     pub use crate::{AttributesPlugin, attribute};
 }
 
@@ -193,24 +194,24 @@ impl<T> Default for Dirty<T> {
 
 #[derive(EntityEvent, Clone)]
 #[entity_event(propagate = &'static EffectTarget, auto_propagate)]
-pub struct OnAttributeValueChanged<T> {
+pub struct AttributeValueChanged<T> {
     entity: Entity,
     _marker: PhantomData<T>,
 }
 
-#[derive(Event, Debug)]
-pub struct OnBaseValueChange<A: Attribute> {
-    pub phantom_data: PhantomData<A>,
-    pub old: f64,
-    pub new: f64,
+#[derive(EntityEvent, Debug)]
+pub struct OnBaseValueChange<T: Attribute> {
+    pub phantom_data: PhantomData<T>,
+    pub old: T::Property,
+    pub new: T::Property,
     pub entity: Entity,
 }
 
-#[derive(Event, Debug)]
-pub struct OnCurrentValueChanged<A: Attribute> {
-    pub phantom_data: PhantomData<A>,
-    pub old: f64,
-    pub new: f64,
+#[derive(EntityEvent, Debug)]
+pub struct CurrentValueChanged<T: Attribute> {
+    pub phantom_data: PhantomData<T>,
+    pub old: T::Property,
+    pub new: T::Property,
     pub entity: Entity,
 }
 

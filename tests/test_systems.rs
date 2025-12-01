@@ -64,7 +64,7 @@ fn test_update_current_values() {
         .world_mut()
         .run_system_once(move |mut ctx: EffectContext| {
             let effect_def = EffectBuilder::new(EffectApplicationPolicy::Permanent)
-                .modify::<TestA>(Value::lit(42.0), ModOp::Add, Who::Target, 1.0)
+                .modify::<TestA>(42.0f32, ModOp::Add, Who::Target, 1.0)
                 .build();
 
             ctx.apply_dynamic_effect_to_self(entity, effect_def);

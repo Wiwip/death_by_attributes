@@ -1,7 +1,6 @@
 mod abilities;
 mod systems;
 
-
 use crate::ability::systems::{
     activate_ability, reset_ability_cooldown, tick_ability_cooldown, try_activate_ability_observer,
 };
@@ -9,6 +8,7 @@ use crate::assets::AbilityDef;
 use bevy::prelude::*;
 
 use crate::condition::{AbilityCondition, BoxCondition, TagCondition};
+use crate::prelude::Value;
 pub use abilities::{AbilityBuilder, GrantAbilityCommand};
 
 pub struct AbilityPlugin;
@@ -30,7 +30,7 @@ impl Plugin for AbilityPlugin {
 pub struct AbilityOf(pub Entity);
 
 /// All effects that are targeting this entity.
-#[derive(Component, Reflect, Debug)]
+#[derive(Component, Reflect, Debug, Default)]
 #[relationship_target(relationship = AbilityOf, linked_spawn)]
 pub struct Abilities(Vec<Entity>);
 
@@ -62,8 +62,12 @@ impl TryActivateAbility {
     }
 }
 
-#[derive(Component)]
-pub struct AbilityCooldown(pub Timer);
+#[derive(Component, Reflect)]
+pub struct AbilityCooldown {
+    timer: Timer,
+    #[reflect(ignore)]
+    value: Value<f64>,
+}
 
 pub enum TargetData {
     SelfCast,
@@ -98,9 +102,3 @@ pub struct AbilityCancel {
     #[event_target]
     pub ability: Entity,
 }
-
-
-
-
-
-

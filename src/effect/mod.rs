@@ -4,7 +4,6 @@ mod stacks;
 mod targeting;
 mod timing;
 
-
 use crate::assets::EffectDef;
 use crate::effect::application::apply_effect_event_observer;
 use crate::effect::stacks::{NotifyAddStackEvent, read_add_stack_event};

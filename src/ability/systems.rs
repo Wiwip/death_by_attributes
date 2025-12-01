@@ -1,15 +1,16 @@
 use crate::ability::{
-    Abilities, Ability, AbilityCooldown, AbilityExecute, TargetData, TryActivateAbility,
+    Abilities, Ability, AbilityCooldown, AbilityExecute, AbilityOf, TargetData, TryActivateAbility,
 };
 use crate::assets::AbilityDef;
 use crate::condition::{BoxCondition, GameplayContext};
 use crate::{AttributesMut, AttributesRef};
 use bevy::asset::Assets;
 use bevy::prelude::*;
+use std::time::Duration;
 
 pub fn tick_ability_cooldown(mut query: Query<&mut AbilityCooldown>, time: Res<Time>) {
     query.par_iter_mut().for_each(|mut cooldown| {
-        cooldown.0.tick(time.delta());
+        cooldown.timer.tick(time.delta());
     });
 }
 
@@ -25,19 +26,26 @@ pub fn try_activate_ability_observer(
     ability_assets: Res<Assets<AbilityDef>>,
     mut commands: Commands,
 ) -> Result<(), BevyError> {
-    let (source_entity_ref, actor_abilities) = actors.get(trigger.ability)?;
+    let Ok((source_entity_ref, actor_abilities)) = actors.get(trigger.ability) else {
+        return Ok(());
+    };
+
+    let target_entity_ref = match trigger.target_data {
+        TargetData::SelfCast => source_entity_ref,
+        TargetData::Target(target) => {
+            let Ok((entity, _)) = actors.get(target) else {
+                return Ok(());
+            };
+            entity
+        }
+    };
 
     for &ability_entity in actor_abilities.0.iter() {
         let (ability_ref, ability, cooldown) = abilities
             .get(ability_entity)
             .expect("Ability not found in: try_activate_ability_observer.");
-        let target_entity_ref = match trigger.target_data {
-            TargetData::SelfCast => source_entity_ref,
-            TargetData::Target(target) => actors.get(target)?.0,
-        };
 
-        if !cooldown.0.is_finished() {
-            debug!("Ability on cooldown!");
+        if !cooldown.timer.is_finished() {
             continue;
         }
 
@@ -102,10 +110,18 @@ pub(crate) struct AbilityCooldownReset(pub Entity);
 
 pub(crate) fn reset_ability_cooldown(
     trigger: On<AbilityCooldownReset>,
-    mut cooldowns: Query<&mut AbilityCooldown>,
+    mut cooldowns: Query<(&AbilityOf, &mut AbilityCooldown)>,
+    query: Query<AttributesRef>,
 ) -> Result<(), BevyError> {
-    let mut cooldown = cooldowns.get_mut(trigger.0)?;
-    cooldown.0.reset();
+    let (parent, mut cooldown) = cooldowns.get_mut(trigger.0)?;
+
+    let entity_ref = query.get(parent.0)?;
+    let cd_value = cooldown.value.value(&entity_ref)?;
+
+    cooldown
+        .timer
+        .set_duration(Duration::from_secs_f64(cd_value));
+    cooldown.timer.reset();
     Ok(())
 }
 
@@ -125,16 +141,16 @@ pub(crate) fn activate_ability(
     ability_assets: Res<Assets<AbilityDef>>,
     mut commands: Commands,
 ) -> Result<(), BevyError> {
-    let mut actor_mut = actors.get_mut(trigger.target)?;
+    let mut source_actor_mut = actors.get_mut(trigger.source)?;
     let ability = abilities.get(trigger.ability)?;
 
     let ability_spec = ability_assets
         .get(&ability.0.clone())
         .ok_or("No ability asset.")?;
 
-    debug!("Commit ability cost");
+    debug!("{}: Commit ability cost.", source_actor_mut.id());
     for effect in &ability_spec.cost_effects {
-        effect.apply(&mut actor_mut);
+        effect.apply(&mut source_actor_mut);
     }
 
     // Activate the ability
