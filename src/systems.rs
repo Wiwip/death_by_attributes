@@ -6,7 +6,7 @@ use crate::effect::Stacks;
 use crate::graph::{NodeType, QueryGraphAdapter};
 use crate::modifier::Who;
 use crate::prelude::*;
-use crate::{AttributeValueChanged, AttributesMut, AttributesRef, CurrentValueChanged, Dirty};
+use crate::{AttributeValueChanged, AttributesRef, CurrentValueChanged, Dirty};
 use bevy::prelude::*;
 use petgraph::visit::IntoNeighbors;
 use std::any::type_name;

@@ -22,7 +22,7 @@ pub fn tick_ability_cooldown(mut query: Query<&mut AbilityCooldown>, time: Res<T
 pub fn try_activate_ability_observer(
     trigger: On<TryActivateAbility>,
     actors: Query<(AttributesRef, &Abilities), Without<AbilityCooldown>>,
-    abilities: Query<(AttributesRef, &Ability, &AbilityCooldown)>,
+    abilities: Query<(AttributesRef, &Ability, Option<&AbilityCooldown>)>,
     ability_assets: Res<Assets<AbilityDef>>,
     mut commands: Commands,
 ) -> Result<(), BevyError> {
@@ -41,11 +41,20 @@ pub fn try_activate_ability_observer(
     };
 
     for &ability_entity in actor_abilities.0.iter() {
-        let (ability_ref, ability, cooldown) = abilities
+        let (ability_ref, ability, opt_cooldown) = abilities
             .get(ability_entity)
             .expect("Ability not found in: try_activate_ability_observer.");
 
-        if !cooldown.timer.is_finished() {
+        // Handle cooldowns
+        let is_finished = match opt_cooldown {
+            None => {
+                true
+            }
+            Some(cd) => {
+                cd.timer.is_finished()
+            }
+        };
+        if !is_finished {
             continue;
         }
 
@@ -76,7 +85,7 @@ pub fn try_activate_ability_observer(
 }
 
 fn can_activate_ability(
-    ability_entity: &AttributesRef,
+    ability_entity_ref: &AttributesRef,
     source_entity_ref: &AttributesRef,
     target_entity_ref: &AttributesRef,
     ability_def: &AbilityDef,
@@ -85,11 +94,11 @@ fn can_activate_ability(
     let context = GameplayContext {
         target_actor: &target_entity_ref,
         source_actor: &source_entity_ref,
-        owner: &ability_entity,
+        owner: &ability_entity_ref,
     };
     let meet_conditions = conditions.0.eval(&context).unwrap_or(false);
     if !meet_conditions {
-        debug!("Ability conditions not met!");
+        debug!("Ability({}) conditions[{:?}] not met for: {}.", ability_entity_ref.id(), conditions, ability_def.name);
         return Ok(false);
     }
 
@@ -113,7 +122,10 @@ pub(crate) fn reset_ability_cooldown(
     mut cooldowns: Query<(&AbilityOf, &mut AbilityCooldown)>,
     query: Query<AttributesRef>,
 ) -> Result<(), BevyError> {
-    let (parent, mut cooldown) = cooldowns.get_mut(trigger.0)?;
+    let Ok((parent, mut cooldown)) = cooldowns.get_mut(trigger.0) else {
+        // This event does not affect an ability without a cooldown.
+        return Ok(());
+    };
 
     let entity_ref = query.get(parent.0)?;
     let cd_value = cooldown.value.value(&entity_ref)?;

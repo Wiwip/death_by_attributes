@@ -19,6 +19,7 @@ pub mod inspector;
 pub mod math;
 mod modifier;
 pub mod mutator;
+mod registry;
 mod schedule;
 mod systems;
 mod trigger;
@@ -47,27 +48,36 @@ pub mod prelude {
     pub use crate::effect::*;
     pub use crate::modifier::prelude::*;
     pub use crate::modifier::*;
+    pub use crate::registry::{
+        Registry, RegistryMut, ability_registry::AbilityToken, effect_registry::EffectToken,
+    };
     pub use crate::schedule::EffectsSet;
     pub use crate::{AttributesPlugin, attribute};
 }
 
 use crate::graph::NodeType;
+use crate::registry::RegistryPlugin;
 pub use num_traits;
 
 pub struct AttributesPlugin;
 
 impl Plugin for AttributesPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((AbilityPlugin, ConditionPlugin, EffectsPlugin))
-            .add_plugins((init_attribute::<EffectIntensity>, init_attribute::<Stacks>))
-            .init_schedule(PreUpdate)
-            .init_schedule(PostUpdate)
-            .init_asset::<ActorDef>()
-            .init_asset::<EffectDef>()
-            .init_asset::<AbilityDef>()
-            .register_type::<AppliedEffects>()
-            .register_type::<EffectTarget>()
-            .register_type::<NodeType>();
+        app.add_plugins((
+            AbilityPlugin,
+            ConditionPlugin,
+            EffectsPlugin,
+            RegistryPlugin,
+        ))
+        .add_plugins((init_attribute::<EffectIntensity>, init_attribute::<Stacks>))
+        .init_schedule(PreUpdate)
+        .init_schedule(PostUpdate)
+        .init_asset::<ActorDef>()
+        .init_asset::<EffectDef>()
+        .init_asset::<AbilityDef>()
+        .register_type::<AppliedEffects>()
+        .register_type::<EffectTarget>()
+        .register_type::<NodeType>();
 
         app.configure_sets(
             Update,

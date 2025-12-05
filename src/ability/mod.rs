@@ -49,7 +49,7 @@ impl TryActivateAbility {
     pub fn by_tag<T: Component>(target: Entity, target_data: TargetData) -> Self {
         Self {
             ability: target,
-            condition: BoxCondition::new(TagCondition::<T>::owner()),
+            condition: BoxCondition::new(TagCondition::<T>::effect()),
             target_data,
         }
     }
@@ -83,10 +83,11 @@ pub struct AbilityBegin {
 
 #[derive(EntityEvent)]
 pub struct AbilityExecute {
-    pub target: Entity,
-    pub source: Entity,
     #[event_target]
     pub ability: Entity,
+    
+    pub target: Entity,
+    pub source: Entity,
 }
 
 #[derive(EntityEvent)]

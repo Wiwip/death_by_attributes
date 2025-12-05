@@ -13,8 +13,7 @@ use std::fmt::{Debug, Display, Formatter};
 
 pub mod prelude {
     pub use super::attribute_modifier::AttributeModifier;
-    pub use super::calculator::ModOp;
-    pub use super::calculator::{AttributeCalculator, AttributeCalculatorCached};
+    pub use super::calculator::{ModOp, AttributeCalculator, AttributeCalculatorCached};
     pub use super::events::{ApplyAttributeModifierEvent, apply_modifier_events};
 }
 

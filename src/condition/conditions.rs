@@ -38,6 +38,12 @@ impl<T: Attribute> AttributeCondition<T> {
     }
 }
 
+impl<T: Attribute> std::fmt::Debug for AttributeCondition<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Attribute {} on {:?} in range {:?}", pretty_type_name::<T>(), self.who, self.bounds)
+    }
+}
+
 impl<T: Attribute> Condition for AttributeCondition<T> {
     fn eval(&self, context: &GameplayContext) -> Result<bool, BevyError> {
         let entity = self.who.resolve_entity(context);
@@ -88,6 +94,13 @@ impl Condition for ChanceCondition {
     }
 }
 
+impl std::fmt::Debug for ChanceCondition {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Chance: {:.3}", self.0)
+    }
+}
+
+#[derive(Debug)]
 pub struct And<C1, C2> {
     c1: C1,
     c2: C2,
@@ -103,6 +116,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct Or<C1, C2> {
     c1: C1,
     c2: C2,
@@ -118,6 +132,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct Not<C>(C);
 
 impl<C: Condition> Condition for Not<C> {
@@ -147,7 +162,7 @@ impl<C: Component> TagCondition<C> {
         Self::new(Who::Target)
     }
 
-    pub fn owner() -> Self {
+    pub fn effect() -> Self {
         Self::new(Who::Effect)
     }
 }
@@ -155,6 +170,12 @@ impl<C: Component> TagCondition<C> {
 impl<C: Component> Condition for TagCondition<C> {
     fn eval(&self, context: &GameplayContext) -> Result<bool, BevyError> {
         Ok(self.target.resolve_entity(context).contains::<C>())
+    }
+}
+
+impl<C: Component> std::fmt::Debug for TagCondition<C> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Has Tag {} on {}", pretty_type_name::<C>(), self.target)
     }
 }
 
@@ -175,6 +196,12 @@ impl Condition for AbilityCondition {
             .get::<Ability>()
             .map(|ability| ability.0.id() == self.asset)
             .unwrap_or(false))
+    }
+}
+
+impl std::fmt::Debug for AbilityCondition {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Is Ability {}", self.asset)
     }
 }
 

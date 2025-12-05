@@ -193,8 +193,6 @@ impl ApplyEffectEvent {
         effects: &mut Query<&Effect>,
         add_stack_event: &mut MessageWriter<NotifyAddStackEvent>,
     ) -> Result<(), BevyError> {
-        debug!("Applying duration effect to {}", self.targeting.target());
-
         // We want to know whether an effect with the same handle already exists on the actor
         let (optional_effects, _) = actors.get_mut(self.targeting.target())?;
         let effects_on_actor = match optional_effects {
@@ -217,10 +215,8 @@ impl ApplyEffectEvent {
         match effect.stacking_policy {
             EffectStackingPolicy::None => {
                 // Continue spawning effect
-                debug!("Stacking policy is None");
             }
             EffectStackingPolicy::Add { .. } | EffectStackingPolicy::RefreshDuration => {
-                debug!("Stacking policy is Add or Override");
                 if effects_on_actor.len() > 0 {
                     debug!("Effect already exists on actor. Adding stacks per definition.");
                     add_stack_event.write(NotifyAddStackEvent {
@@ -228,8 +224,6 @@ impl ApplyEffectEvent {
                         handle: self.handle.clone(),
                     });
                     return Ok(());
-                } else {
-                    debug!("Effect does not exist on actor. Creating new effect instance.");
                 }
             }
         }

@@ -1,0 +1,66 @@
+use crate::assets::{AbilityDef, EffectDef};
+use crate::registry::ability_registry::{AbilityRegistry, AbilityToken};
+use crate::registry::effect_registry::{EffectRegistry, EffectToken};
+use bevy::ecs::system::SystemParam;
+use bevy::prelude::*;
+
+pub mod ability_registry;
+pub mod effect_registry;
+
+pub struct RegistryPlugin;
+
+impl Plugin for RegistryPlugin {
+    fn build(&self, app: &mut App) {
+        app.insert_resource(EffectRegistry::default());
+        app.insert_resource(AbilityRegistry::default());
+    }
+}
+
+#[derive(SystemParam)]
+pub struct Registry<'w> {
+    ability_registry: Res<'w, AbilityRegistry>,
+    //ability_assets: Res<'w, Assets<AbilityDef>>,
+
+    effect_registry: Res<'w, EffectRegistry>,
+    //effect_assets: Res<'w, Assets<EffectDef>>,
+}
+
+impl Registry<'_> {
+    pub fn effect(&self, name: EffectToken) -> Handle<EffectDef> {
+        self.effect_registry.get(name).clone()
+    }
+    
+    pub fn ability(&self, name: AbilityToken) -> Handle<AbilityDef> {
+        self.ability_registry.get(name).clone()
+    }
+}
+
+
+#[derive(SystemParam)]
+pub struct RegistryMut<'w> {
+    ability_registry: ResMut<'w, AbilityRegistry>,
+    ability_assets: ResMut<'w, Assets<AbilityDef>>,
+
+    effect_registry: ResMut<'w, EffectRegistry>,
+    effect_assets: ResMut<'w, Assets<EffectDef>>,
+}
+
+impl RegistryMut<'_> {
+    pub fn add_effect(&mut self, name: EffectToken, effect: EffectDef) {
+        let handle = self.effect_assets.add(effect);
+        self.effect_registry.add(name, handle);
+    }
+
+    pub fn effect(&self, name: EffectToken) -> Handle<EffectDef> {
+        self.effect_registry.get(name).clone()
+    }
+
+    pub fn add_ability(&mut self, name: AbilityToken, ability: AbilityDef) {
+        let handle = self.ability_assets.add(ability);
+        self.ability_registry.add(name, handle);
+    }
+
+    pub fn ability(&self, name: AbilityToken) -> Handle<AbilityDef> {
+        self.ability_registry.get(name).clone()
+    }
+}

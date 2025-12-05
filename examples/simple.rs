@@ -13,7 +13,7 @@ use root_attribute::attributes::Attribute;
 use root_attribute::attributes::ReflectAccessAttribute;
 use root_attribute::condition::{AttributeCondition, ChanceCondition};
 use root_attribute::context::EffectContext;
-use root_attribute::effect::{EffectStackingPolicy, Stacks};
+use root_attribute::effect::{EffectStackingPolicy};
 use root_attribute::graph::QueryGraphAdapter;
 use root_attribute::inspector::ActorInspectorPlugin;
 use root_attribute::inspector::debug_overlay::DebugOverlayMarker;
@@ -242,13 +242,13 @@ fn setup_actor(
 
     let player_entity = ctx.spawn_actor(&actor_template).id();
 
-    //ctx.apply_effect_to_self(player_entity, &efx.ap_buff);
-    //ctx.apply_effect_to_self(player_entity, &efx.hp_buff);
+    ctx.apply_effect_to_self(player_entity, &efx.ap_buff);
+    ctx.apply_effect_to_self(player_entity, &efx.hp_buff);
     ctx.apply_effect_to_self(player_entity, &efx.hp_regen);
 
     // Should have two stacks
-    //ctx.apply_effect_to_self(player_entity, &efx.mp_buff);
-    //ctx.apply_effect_to_self(player_entity, &efx.mp_buff);
+    ctx.apply_effect_to_self(player_entity, &efx.mp_buff);
+    ctx.apply_effect_to_self(player_entity, &efx.mp_buff);
 }
 
 #[derive(Component, Copy, Clone)]
@@ -302,7 +302,7 @@ pub fn analyze_dependencies_with_petgraph(
     for actor_entity in actors.iter() {
         println!("Analyzing actor: {:?}", actor_entity);
 
-        // Use petgraph's depth_first_search with custom visitor
+        // Use petgraph's depth_first_search with a custom visitor
         depth_first_search(&graph, Some(actor_entity), |event| {
             match event {
                 DfsEvent::Discover(entity, time) => {

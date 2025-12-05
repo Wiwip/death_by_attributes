@@ -3,6 +3,7 @@ use bevy::app::{App, Plugin, PreUpdate};
 use bevy::prelude::BevyError;
 use num_traits::{AsPrimitive, Num};
 use std::collections::Bound;
+use std::fmt::Debug;
 use std::ops::RangeBounds;
 
 mod conditions;
@@ -10,6 +11,7 @@ mod systems;
 
 use crate::attributes::Attribute;
 use crate::{AttributesMut, AttributesRef};
+
 pub use conditions::{
     AbilityCondition, And, AttributeCondition, ChanceCondition, ConditionExt, Not, Or,
     StackCondition, TagCondition,
@@ -25,10 +27,11 @@ impl Plugin for ConditionPlugin {
     }
 }
 
-pub trait Condition: Send + Sync {
+pub trait Condition: Debug + Send + Sync {
     fn eval(&self, context: &GameplayContext) -> Result<bool, BevyError>;
 }
 
+#[derive(Debug)]
 pub struct BoxCondition(pub Box<dyn Condition>);
 
 impl BoxCondition {
