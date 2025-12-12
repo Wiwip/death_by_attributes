@@ -1,9 +1,9 @@
 use crate::assets::EffectDef;
 use crate::attributes::{Attribute, IntoValue};
 use crate::condition::{AttributeCondition, BoxCondition};
-use crate::effect::EffectStackingPolicy;
 use crate::effect::application::EffectApplicationPolicy;
-use crate::modifier::{Modifier, ModifierFn, Who};
+use crate::effect::EffectStackingPolicy;
+use crate::modifier::Who;
 use crate::mutator::EntityActions;
 use crate::prelude::{AttributeModifier, ModOp};
 use bevy::ecs::system::IntoObserverSystem;
@@ -11,29 +11,22 @@ use bevy::prelude::{Bundle, Entity, EntityCommands, EntityEvent, Name};
 use std::ops::RangeBounds;
 
 pub struct EffectBuilder {
-    effect_entity_commands: Vec<Box<ModifierFn>>,
-    triggers: Vec<EntityActions>,
-    effects: Vec<Box<dyn Modifier>>,
-    modifiers: Vec<Box<dyn Modifier>>,
-    application: EffectApplicationPolicy,
-    application_conditions: Vec<BoxCondition>,
-    conditions: Vec<BoxCondition>,
-    stacking_policy: EffectStackingPolicy,
-    intensity: Option<f32>,
+    def: EffectDef,
 }
 
 impl EffectBuilder {
     pub fn new(application: EffectApplicationPolicy) -> Self {
         Self {
-            effect_entity_commands: vec![],
-            triggers: vec![],
-            effects: vec![],
-            modifiers: vec![],
-            application,
-            application_conditions: vec![],
-            conditions: vec![],
-            stacking_policy: EffectStackingPolicy::None,
-            intensity: None,
+            def: EffectDef {
+                application_policy: application,
+                stacking_policy: EffectStackingPolicy::None,
+                effect_fn: vec![],
+                modifiers: vec![],
+                activate_conditions: vec![],
+                attach_conditions: vec![],
+                on_actor_triggers: vec![],
+                on_effect_triggers: vec![],
+            },
         }
     }
 
@@ -49,11 +42,11 @@ impl EffectBuilder {
         Self::new(EffectApplicationPolicy::for_seconds(duration))
     }
 
-    pub fn every_seconds(interval: f32) -> Self {
+    pub fn every_second_permanently(interval: f32) -> Self {
         Self::new(EffectApplicationPolicy::every_seconds(interval))
     }
 
-    pub fn every_seconds_for_duration(interval: f32, duration: f32) -> Self {
+    pub fn every_second_for_duration(interval: f32, duration: f32) -> Self {
         Self::new(EffectApplicationPolicy::every_seconds_for_duration(
             interval, duration,
         ))
@@ -61,12 +54,12 @@ impl EffectBuilder {
 
     /// Modifies an attribute.
     ///
-    /// A [Value](crate::attributes::Value) represents the magnitude of the change to the attribute.
+    /// A [Value](crate::attributes::Value) represents the value of the change to the attribute.
     /// It can be a literal [Lit](crate::attributes::Lit), an [AttributeValue](crate::attributes::AttributeValue), or anything implementing [ValueSource](crate::attributes::ValueSource)
     ///
     /// # Example
     /// ```
-    /// use root_attribute::prelude::*;
+    /// # use root_attribute::prelude::*;
     /// attribute!(Health, u32);
     /// attribute!(Damage, u32);
     ///
@@ -80,11 +73,10 @@ impl EffectBuilder {
     ///     .build();
     ///
     /// // Regen 2 health every 1.0 seconds for 12.0 seconds.
-    /// let regen = EffectBuilder::every_seconds_for_duration(1.0, 12.0)
+    /// let regen = EffectBuilder::every_second_for_duration(1.0, 12.0)
     ///     .modify::<Health>(2u32, ModOp::Add, Who::Source, 1.0)
     ///     .build();
     /// ```
-    /// This function adds a new `AttributeModifier` to the `modifiers` collection and returns the updated object.
     pub fn modify<T: Attribute>(
         mut self,
         value: impl IntoValue<Out = T::Property> + 'static,
@@ -92,26 +84,52 @@ impl EffectBuilder {
         who: Who,
         scaling: f64,
     ) -> Self {
-        self.modifiers.push(Box::new(AttributeModifier::<T>::new(
-            value.into_value(),
-            modifier,
-            who,
-            scaling,
-        )));
+        self.def
+            .modifiers
+            .push(Box::new(AttributeModifier::<T>::new(
+                value.into_value(),
+                modifier,
+                who,
+                scaling,
+            )));
         self
     }
 
-    pub fn if_condition(mut self, condition: impl crate::condition::Condition + 'static) -> Self {
-        self.application_conditions
+    /// Attach the effect to the target entity only if the condition is met.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use root_attribute::prelude::*;
+    /// attribute!(Health, f32);
+    /// attribute!(Damage, f32);
+    ///
+    /// // A damage over time effect that has a 10% chance of applying.
+    /// EffectBuilder::every_second_for_duration(1.0, 12.0)
+    ///     .modify::<Health>(Damage::value(), ModOp::Add, Who::Target, 1.0)
+    ///     .attach_if(ChanceCondition(0.10))
+    ///     .build()
+    /// ```
+    pub fn attach_if(mut self, condition: impl crate::condition::Condition + 'static) -> Self {
+        self.def
+            .attach_conditions
             .push(BoxCondition::new(condition));
         self
     }
 
-    pub fn add_trigger<E: EntityEvent, B: Bundle, M>(
+
+    pub fn activate_while(mut self, condition: impl crate::condition::Condition + 'static) -> Self {
+        self.def
+            .activate_conditions
+            .push(BoxCondition::new(condition));
+        self
+    }
+
+    pub fn add_effect_trigger<E: EntityEvent, B: Bundle, M>(
         mut self,
         observer: impl IntoObserverSystem<E, B, M> + Clone + Send + Sync + 'static,
     ) -> Self {
-        self.triggers.push(EntityActions::new(
+        self.def.on_effect_triggers.push(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
                 entity_commands.observe(observer.clone());
             },
@@ -119,16 +137,15 @@ impl EffectBuilder {
         self
     }
 
-    pub fn intensity(mut self, intensity: f32) -> Self {
-        self.intensity = Some(intensity);
-        self
-    }
-
-    pub fn while_condition(
+    pub fn add_actor_trigger<E: EntityEvent, B: Bundle, M>(
         mut self,
-        condition: impl crate::condition::Condition + 'static,
+        observer: impl IntoObserverSystem<E, B, M> + Clone + Send + Sync + 'static,
     ) -> Self {
-        self.conditions.push(BoxCondition::new(condition));
+        self.def.on_actor_triggers.push(EntityActions::new(
+            move |entity_commands: &mut EntityCommands| {
+                entity_commands.observe(observer.clone());
+            },
+        ));
         self
     }
 
@@ -137,7 +154,9 @@ impl EffectBuilder {
         range: impl RangeBounds<T::Property> + Send + Sync + 'static,
     ) -> Self {
         let predicate = AttributeCondition::<T>::new(range, Who::Source);
-        self.conditions.push(BoxCondition::new(predicate));
+        self.def
+            .activate_conditions
+            .push(BoxCondition::new(predicate));
         self
     }
 
@@ -146,12 +165,14 @@ impl EffectBuilder {
         range: impl RangeBounds<T::Property> + Send + Sync + 'static,
     ) -> Self {
         let predicate = AttributeCondition::<T>::new(range, Who::Target);
-        self.conditions.push(BoxCondition::new(predicate));
+        self.def
+            .activate_conditions
+            .push(BoxCondition::new(predicate));
         self
     }
 
     pub fn name(mut self, name: String) -> Self {
-        self.effect_entity_commands.push(Box::new(
+        self.def.effect_fn.push(Box::new(
             move |effect_entity: &mut EntityCommands, _: Entity| {
                 effect_entity.insert(Name::new(name.clone()));
             },
@@ -160,7 +181,7 @@ impl EffectBuilder {
     }
 
     pub fn insert(mut self, bundle: impl Bundle + Copy) -> Self {
-        self.effect_entity_commands.push(Box::new(
+        self.def.effect_fn.push(Box::new(
             move |effect_entity: &mut EntityCommands, _: Entity| {
                 effect_entity.insert(bundle);
             },
@@ -169,21 +190,11 @@ impl EffectBuilder {
     }
 
     pub fn with_stacking_policy(mut self, policy: EffectStackingPolicy) -> Self {
-        self.stacking_policy = policy;
+        self.def.stacking_policy = policy;
         self
     }
 
     pub fn build(self) -> EffectDef {
-        EffectDef {
-            effect_fn: self.effect_entity_commands,
-            triggers: self.triggers,
-            effect_modifiers: self.effects,
-            modifiers: self.modifiers,
-            application: self.application,
-            application_conditions: self.application_conditions,
-            conditions: self.conditions,
-            stacking_policy: self.stacking_policy,
-            intensity: self.intensity,
-        }
+        self.def
     }
 }

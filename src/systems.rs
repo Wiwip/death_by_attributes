@@ -231,7 +231,7 @@ pub fn apply_periodic_effect<T: Attribute>(
 
         // Determines whether the effect should activate
         let should_be_activated = effect_def
-            .conditions
+            .activate_conditions
             .iter()
             .all(|condition| condition.0.eval(&context).unwrap_or(false));
 

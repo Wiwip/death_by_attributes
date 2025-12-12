@@ -161,8 +161,8 @@ pub(crate) fn activate_ability(
         .ok_or("No ability asset.")?;
 
     debug!("{}: Commit ability cost.", source_actor_mut.id());
-    for effect in &ability_spec.cost_effects {
-        effect.apply(&mut source_actor_mut);
+    for effect in &ability_spec.cost_modifiers {
+        effect.apply_immediate(&mut source_actor_mut);
     }
 
     // Activate the ability

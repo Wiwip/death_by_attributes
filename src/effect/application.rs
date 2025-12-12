@@ -6,7 +6,7 @@ use crate::effect::timing::{EffectDuration, EffectTicker};
 use crate::effect::{AppliedEffects, Effect, EffectStackingPolicy, EffectTargeting};
 use crate::graph::NodeType;
 use crate::modifier::{Modifier, Who};
-use crate::prelude::{Attribute, EffectIntensity, EffectSource, EffectTarget};
+use crate::prelude::{EffectSource, EffectTarget};
 use bevy::asset::{Assets, Handle};
 use bevy::log::debug;
 use bevy::prelude::*;
@@ -143,12 +143,12 @@ impl ApplyEffectEvent {
         let context = GameplayContext {
             target_actor: &target_actor_ref,
             source_actor: &source_actor_ref,
-            owner: &source_actor_ref, // TODO: Should this be the source actor? The effect doesn't exist for instant effects.
+            owner: &source_actor_ref, // TODO: Make optional
         };
 
         // Determines whether the effect should activate
         let should_be_activated = effect
-            .conditions
+            .activate_conditions
             .iter()
             .all(|condition| condition.0.eval(&context).unwrap_or(false));
 
@@ -172,11 +172,11 @@ impl ApplyEffectEvent {
             match modifier.who() {
                 Who::Target => {
                     let (_, target) = actors.get_mut(self.targeting.target()).unwrap();
-                    modifier.write_event(target.id(), commands);
+                    modifier.apply_delayed(target.id(), commands);
                 }
                 Who::Source => {
                     let (_, source) = actors.get_mut(self.targeting.source()).unwrap();
-                    modifier.write_event(source.id(), commands);
+                    modifier.apply_delayed(source.id(), commands);
                 }
                 Who::Effect => {
                     todo!()
@@ -187,13 +187,13 @@ impl ApplyEffectEvent {
 
     fn spawn_persistent_effect(
         &self,
-        mut commands: &mut Commands,
+        commands: &mut Commands,
         effect: &EffectDef,
         actors: &mut Query<(Option<&AppliedEffects>, AttributesMut), Without<Effect>>,
         effects: &mut Query<&Effect>,
         add_stack_event: &mut MessageWriter<NotifyAddStackEvent>,
     ) -> Result<(), BevyError> {
-        // We want to know whether an effect with the same handle already exists on the actor
+        // We want to know whether an effect with the same handle already points to the actor
         let (optional_effects, _) = actors.get_mut(self.targeting.target())?;
         let effects_on_actor = match optional_effects {
             None => {
@@ -239,7 +239,7 @@ impl ApplyEffectEvent {
 
         // Determines whether the effect should activate
         let should_be_applied = effect
-            .application_conditions
+            .attach_conditions
             .iter()
             .all(|condition| condition.0.eval(&context).unwrap_or(true));
 
@@ -262,21 +262,12 @@ impl ApplyEffectEvent {
         ));
 
         // Converts the policy to components that can be added to the entity
-        let (duration, ticker) = effect.application.to_bundles();
+        let (duration, ticker) = effect.application_policy.to_bundles();
         if let Some(duration) = duration {
             effect_commands.insert(duration);
         }
         if let Some(ticker) = ticker {
             effect_commands.insert(ticker);
-        }
-        if let Some(intensity) = effect.intensity {
-            effect_commands.insert(EffectIntensity::new(intensity));
-        }
-
-        // Prepare entity commands
-        for effect_mod in &effect.effect_modifiers {
-            let (_, target) = actors.get_mut(self.targeting.target())?;
-            effect_mod.spawn(&mut commands, target.as_readonly());
         }
 
         // Spawn effect modifiers
@@ -302,7 +293,13 @@ impl ApplyEffectEvent {
             });
 
         // Spawn effect triggers
-        for triggers in &effect.triggers {
+        for triggers in &effect.on_actor_triggers {
+            let mut entity_commands = commands.entity(self.entity);
+            triggers.apply(&mut entity_commands);
+        }
+
+        // Spawn effect triggers
+        for triggers in &effect.on_effect_triggers {
             let mut entity_commands = commands.entity(self.targeting.target());
             triggers.apply(&mut entity_commands);
         }
@@ -323,11 +320,11 @@ pub(crate) fn apply_effect_event_observer(
         .get(&trigger.handle)
         .ok_or("No effect asset.")?;
 
-    if effect.application.should_apply_now() {
+    if effect.application_policy.should_apply_now() {
         trigger.apply_instant_effect(&mut actors, &mut commands, effect)?;
     }
 
-    if effect.application != EffectApplicationPolicy::Instant {
+    if effect.application_policy != EffectApplicationPolicy::Instant {
         trigger.spawn_persistent_effect(
             &mut commands,
             effect,
@@ -338,4 +335,109 @@ pub(crate) fn apply_effect_event_observer(
     }
 
     Ok(())
+}
+
+mod test {
+    use bevy::ecs::system::RunSystemOnce;
+    use super::*;
+    use crate::ability::AbilityBuilder;
+    use crate::actors::{Actor, ActorBuilder};
+    use crate::assets::{AbilityDef, ActorDef};
+    use crate::condition::AttributeCondition;
+    use crate::context::EffectContext;
+    use crate::init_attribute;
+    use crate::prelude::*;
+
+    attribute!(TestA, f32);
+    attribute!(TestB, f64);
+
+    #[derive(Component, Copy, Clone, Debug, PartialEq)]
+    struct ConditionTag;
+
+    fn prepare_actor(
+        mut actor_assets: ResMut<Assets<ActorDef>>,
+        mut ctx: EffectContext,
+        registry: Registry,
+    ) {
+        let actor_template = actor_assets.add(
+            ActorBuilder::new()
+                .with_name("TestActor".into())
+                .with::<TestA>(100.0)
+                .with::<TestB>(1.0)
+                .grant_ability(&registry.ability(TEST_ABILITY_TOKEN))
+                .with_effect(&registry.effect(CONDITION_EFFECT))
+                .build()
+        );
+        ctx.spawn_actor(&actor_template);
+    }
+
+    fn prepare_effects(mut registry: RegistryMut) {
+        registry.add_effect(
+            TEST_EFFECT,
+            Effect::permanent()
+                .name("Increase Effect".into())
+                .modify::<TestA>(200.0_f32, ModOp::Add, Who::Target, 1.0)
+                .build()
+        );
+
+        registry.add_effect(
+            CONDITION_EFFECT,
+            Effect::permanent()
+                .name("Condition Effect".into())
+                .activate_while(AttributeCondition::<TestA>::target(150.0..))
+                .insert(ConditionTag)
+                .build()
+        );
+    }
+
+    pub const TEST_EFFECT: EffectToken = EffectToken::new_static("test.test");
+    pub const CONDITION_EFFECT: EffectToken = EffectToken::new_static("test.condition");
+
+    fn prepare_abilities(mut abilities: RegistryMut) {
+        abilities.add_ability(TEST_ABILITY_TOKEN, fireball_ability());
+    }
+
+    pub const TEST_ABILITY_TOKEN: AbilityToken = AbilityToken::new_static("test.test");
+
+    pub fn fireball_ability() -> AbilityDef {
+        AbilityBuilder::new()
+            .with_name("Test Ability".into())
+            .with_cooldown(TestB::value())
+            .with_cost::<TestB>(3.0)
+            .build()
+    }
+
+    #[test]
+    fn test_attribute_condition() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
+        app.add_plugins((init_attribute::<TestA>, init_attribute::<TestB>));
+
+        app.add_systems(
+            Startup,
+            (prepare_effects, prepare_abilities, prepare_actor).chain(),
+        );
+
+        app.update();
+
+        let mut query = app.world_mut().query::<(Entity, &Actor, &TestA, &TestB)>();
+        let actor_id = query.single(app.world()).unwrap().0;
+
+        // Check that the effect is inactive
+        let mut query = app.world_mut().query::<(Entity, &Effect, &ConditionTag, Option<&EffectInactive>)>();
+        let opt_inactive = query.single(app.world()).unwrap().3;
+        assert!(opt_inactive.is_some());
+
+        app.world_mut().run_system_once(move |mut ctx: EffectContext, registry: Registry|{
+            ctx.apply_effect_to_self(actor_id, &registry.effect(TEST_EFFECT));
+        }).unwrap();
+
+        app.update();
+        app.update();
+
+        // Check that the effect is active
+        let mut query = app.world_mut().query::<(Entity, &Effect, &ConditionTag, Option<&EffectInactive>)>();
+        let opt_inactive = query.single(app.world()).unwrap().3;
+        assert!(opt_inactive.is_none());
+    }
 }

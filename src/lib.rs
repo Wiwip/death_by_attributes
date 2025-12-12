@@ -45,6 +45,7 @@ pub mod prelude {
     pub use crate::attributes::{
         AccessAttribute, Attribute, AttributeTypeId, ReflectAccessAttribute, Value,
     };
+    pub use crate::condition::{ChanceCondition, Condition};
     pub use crate::effect::*;
     pub use crate::modifier::prelude::*;
     pub use crate::modifier::*;
@@ -56,6 +57,7 @@ pub mod prelude {
 }
 
 use crate::graph::NodeType;
+use crate::modifier::Who;
 use crate::registry::RegistryPlugin;
 pub use num_traits;
 
@@ -187,6 +189,11 @@ pub type AttributesRef<'w> = EntityRefExcept<
         AbilityCooldown,
     ),
 >;
+
+pub trait Spawnable: Send + Sync {
+    fn spawn(&self, commands: &mut Commands, actor_entity: AttributesRef) -> Entity;
+    fn who(&self) -> Who;
+}
 
 #[derive(Component, Copy, Clone, Debug)]
 #[component(storage = "SparseSet")]

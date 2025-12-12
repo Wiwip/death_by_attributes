@@ -5,8 +5,8 @@ mod events;
 use crate::attributes::Attribute;
 use crate::condition::GameplayContext;
 use crate::inspector::pretty_type_name;
-use crate::prelude::{AttributeModifier, AttributeTypeId};
-use crate::{AttributesMut, AttributesRef};
+use crate::prelude::{AttributeModifier};
+use crate::{AttributesMut, AttributesRef, Spawnable};
 use bevy::prelude::{Commands, Component, Entity, EntityCommands, Reflect, reflect_trait};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter};
@@ -22,12 +22,9 @@ pub type ModifierFn = dyn Fn(&mut EntityCommands, Entity) + Send + Sync;
 #[derive(Component, Default, Copy, Clone, Debug, Reflect)]
 pub struct ModifierMarker;
 
-pub trait Modifier: Send + Sync {
-    fn spawn(&self, commands: &mut Commands, actor_entity: AttributesRef) -> Entity;
-    fn apply(&self, actor_entity: &mut AttributesMut) -> bool;
-    fn write_event(&self, target: Entity, commands: &mut Commands);
-    fn who(&self) -> Who;
-    fn attribute_type_id(&self) -> AttributeTypeId;
+pub trait Modifier: Spawnable + Send + Sync {
+    fn apply_immediate(&self, actor_entity: &mut AttributesMut) -> bool;
+    fn apply_delayed(&self, target: Entity, commands: &mut Commands);
 }
 
 #[reflect_trait] // Generates a `ReflectMyTrait` type

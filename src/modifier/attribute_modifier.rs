@@ -6,8 +6,8 @@ use crate::math::AbsDiff;
 use crate::modifier::calculator::{AttributeCalculator, ModOp};
 use crate::modifier::{Modifier, ModifierMarker};
 use crate::modifier::{ReflectAccessModifier, Who};
-use crate::prelude::{ApplyAttributeModifierEvent, AttributeTypeId, EffectSource, EffectTarget};
-use crate::{AttributesMut, AttributesRef};
+use crate::prelude::{ApplyAttributeModifierEvent, EffectSource, EffectTarget};
+use crate::{AttributesMut, AttributesRef, Spawnable};
 use bevy::prelude::*;
 use std::any::type_name;
 use std::fmt::Debug;
@@ -48,9 +48,9 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let scaling = if self.scaling.fract() == 0.0 {
-            format!("{}", "")
+            "".to_string()
         } else {
-            format!("[*{:.2}]", self.scaling)
+            format!("[{:.}%]", self.scaling * 100.0)
         };
 
         write!(
@@ -65,28 +65,8 @@ where
     }
 }
 
-impl<T> Modifier for AttributeModifier<T>
-where
-    T: Attribute,
-{
-    fn spawn(&self, commands: &mut Commands, actor_entity: AttributesRef) -> Entity {
-        commands
-            .spawn((
-                NodeType::Modifier,
-                EffectSource(actor_entity.id()),
-                EffectTarget(actor_entity.id()),
-                AttributeModifier::<T> {
-                    value_source: self.value_source.clone(),
-                    who: self.who,
-                    operation: self.operation,
-                    scaling: self.scaling,
-                },
-                Name::new(format!("Mod<{}> ({:?})", pretty_type_name::<T>(), self.who)),
-            ))
-            .id()
-    }
-
-    fn apply(&self, actor_entity: &mut AttributesMut) -> bool {
+impl<T: Attribute> Modifier for AttributeModifier<T> {
+    fn apply_immediate(&self, actor_entity: &mut AttributesMut) -> bool {
         // Measure the modifier
         let new_val = match actor_entity.get::<T>() {
             None => panic!("Could not find attribute {}", type_name::<T>()),
@@ -112,19 +92,35 @@ where
         }
     }
 
-    fn write_event(&self, target: Entity, commands: &mut Commands) {
+    fn apply_delayed(&self, target: Entity, commands: &mut Commands) {
         commands.write_message(ApplyAttributeModifierEvent::<T> {
             target,
             modifier: self.clone(),
             attribute: BoxAttributeAccessor::new(AttributeExtractor::<T>::new()),
         });
     }
+}
+
+impl<T: Attribute> Spawnable for AttributeModifier<T> {
+    fn spawn(&self, commands: &mut Commands, actor_entity: AttributesRef) -> Entity {
+        commands
+            .spawn((
+                NodeType::Modifier,
+                EffectSource(actor_entity.id()),
+                EffectTarget(actor_entity.id()),
+                AttributeModifier::<T> {
+                    value_source: self.value_source.clone(),
+                    who: self.who,
+                    operation: self.operation,
+                    scaling: self.scaling,
+                },
+                Name::new(format!("{}", self)),
+            ))
+            .id()
+    }
 
     fn who(&self) -> Who {
         self.who
     }
 
-    fn attribute_type_id(&self) -> AttributeTypeId {
-        T::attribute_type_id()
-    }
 }

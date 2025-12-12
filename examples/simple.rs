@@ -130,7 +130,7 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
             .name("MagicPower Buff".into())
             .modify::<MagicPower>(Intelligence::value(), ModOp::Add, Who::Target, 1.0)
             .modify::<MagicPower>(5u32, ModOp::Add, Who::Target, 1.0)
-            .while_condition(AttributeCondition::<Health>::new(..=100, Who::Source))
+            .activate_while(AttributeCondition::<Health>::new(..=100, Who::Source))
             .with_stacking_policy(EffectStackingPolicy::Add {
                 count: 1,
                 max_stack: 10,
@@ -142,7 +142,7 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
     let hp_buff = effects.add(
         Effect::permanent()
             .name("MaxHealth Increase".into())
-            .modify::<MaxHealth>(1u32, ModOp::Increase, Who::Target, 0.10)
+            .modify::<MaxHealth>(1u32, ModOp::Increase, Who::Target, 1.0)
             .modify::<ManaPool>(Health::value(), ModOp::Add, Who::Target, 0.1)
             .with_stacking_policy(EffectStackingPolicy::RefreshDuration)
             .build(),
@@ -155,7 +155,7 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
             .modify::<Health>(3u32, ModOp::Add, Who::Target, 1.0)
             .modify::<Health>(HealthRegen::value(), ModOp::Add, Who::Target, 1.0)
             .modify::<Mana>(ManaRegen::value(), ModOp::Add, Who::Target, 1.0)
-            .while_condition(ChanceCondition(0.10))
+            .activate_while(ChanceCondition(0.10))
             .build(),
     );
 
@@ -237,7 +237,7 @@ fn setup_actor(
             .insert((Player, DebugOverlayMarker))
             .grant_ability(&abilities.fireball)
             .grant_ability(&abilities.frostball)
-            .build(),
+            .build()
     );
 
     let player_entity = ctx.spawn_actor(&actor_template).id();

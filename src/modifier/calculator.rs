@@ -1,7 +1,8 @@
 use crate::AttributesRef;
+use crate::math::SaturatingAttributes;
 use crate::prelude::{Attribute, AttributeModifier};
 use bevy::prelude::*;
-use num_traits::{AsPrimitive, FromPrimitive, Zero};
+use num_traits::{AsPrimitive, Bounded, FromPrimitive, Zero};
 use serde::Serialize;
 use std::fmt::{Debug, Display, Formatter};
 
@@ -57,24 +58,28 @@ impl<T: Attribute> AttributeCalculator<T> {
         }
 
         // Step 1 - Additions
-        let addition_result = base_value + self.additive;
+        let addition_result: T::Property = base_value.saturating_add(self.additive);
 
         // Step 2 - Substraction
-        let subtraction_result: f64 = (addition_result - self.subtractive).as_();
+        let subtraction_result: f64 = addition_result.saturating_sub(self.subtractive).as_();
 
         // Step 3 - Additive Multiplication
         // Clamp self.increase to prevent negative increase to attributes
-        let clamped_increase = if self.increase < 0.0 {
-            0.0
-        } else {
-            self.increase
-        };
+        let clamped_increase = self.increase.max(0.0);
         let add_multi_result = subtraction_result * (1.0 + clamped_increase);
 
         // Step 4 - More multipliers
         let result = add_multi_result * self.more;
 
-        T::Property::from_f64(result).unwrap()
+        // Step 5 - Clamp the result to property's min/max values
+        let min = T::Property::min_value();
+        let max = T::Property::max_value();
+
+        let min_f: f64 = min.as_();
+        let max_f: f64 = max.as_();
+
+        let clamped_value = result.clamp(min_f, max_f);
+        T::Property::from_f64(clamped_value).unwrap()
     }
 
     pub fn combine(self, other: AttributeCalculator<T>) -> AttributeCalculator<T> {

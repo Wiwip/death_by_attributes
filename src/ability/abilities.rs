@@ -5,11 +5,13 @@ use crate::condition::{AttributeCondition, BoxCondition};
 use crate::inspector::pretty_type_name;
 use crate::modifier::{Modifier, Who};
 use crate::mutator::EntityActions;
-use crate::prelude::{AttributeModifier, ModOp};
+use crate::prelude::{AttributeCalculatorCached, AttributeModifier, ModOp};
 use bevy::asset::{Assets, Handle};
 use bevy::ecs::system::IntoObserverSystem;
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
+use num_traits::{AsPrimitive, Num};
+use std::sync::Arc;
 
 pub struct GrantAbilityCommand {
     pub parent: Entity,
@@ -72,9 +74,21 @@ impl AbilityBuilder {
         }
     }
 
+    pub fn with<T: Attribute>(
+        mut self,
+        value: impl Num + AsPrimitive<T::Property> + Copy + Send + Sync + 'static,
+    ) -> AbilityBuilder {
+        self.mutators.push(EntityActions::new(
+            move |entity_commands: &mut EntityCommands| {
+                entity_commands.insert((T::new(value), AttributeCalculatorCached::<T>::default()));
+            },
+        ));
+        self
+    }
+
     pub fn with_cost<T: Attribute>(mut self, cost: T::Property) -> Self {
         let mutator =
-            AttributeModifier::<T>::new(Value(Box::new(Lit(cost))), ModOp::Sub, Who::Source, 1.0);
+            AttributeModifier::<T>::new(Value(Arc::new(Lit(cost))), ModOp::Sub, Who::Source, 1.0);
         self.cost_mods.push(Box::new(mutator));
 
         let condition = AttributeCondition::<T>::source(cost..);
@@ -148,8 +162,8 @@ impl AbilityBuilder {
             mutators: self.mutators,
             observers: self.triggers,
             cost: self.cost_condition,
-            condition: vec![],
-            cost_effects: self.cost_mods,
+            execution_conditions: vec![],
+            cost_modifiers: self.cost_mods,
         }
     }
 }

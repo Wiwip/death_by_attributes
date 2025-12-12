@@ -1,6 +1,6 @@
 use crate::condition::systems::evaluate_effect_conditions;
-use bevy::app::{App, Plugin, PreUpdate};
-use bevy::prelude::BevyError;
+use bevy::app::{App, Plugin};
+use bevy::prelude::*;
 use num_traits::{AsPrimitive, Num};
 use std::collections::Bound;
 use std::fmt::Debug;
@@ -16,6 +16,7 @@ pub use conditions::{
     AbilityCondition, And, AttributeCondition, ChanceCondition, ConditionExt, Not, Or,
     StackCondition, TagCondition,
 };
+use crate::prelude::EffectsSet;
 
 pub struct ConditionPlugin;
 
@@ -23,7 +24,8 @@ impl Plugin for ConditionPlugin {
     fn build(&self, app: &mut App) {
         // This system is responsible for checking conditions and
         // activating/deactivating their related effects.
-        app.add_systems(PreUpdate, evaluate_effect_conditions);
+        app.add_systems(Update, evaluate_effect_conditions.in_set(EffectsSet::Prepare));
+        //app.add_systems(Update, evaluate_effect_conditions.in_set(EffectsSet::Notify));
     }
 }
 

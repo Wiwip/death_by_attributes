@@ -86,6 +86,7 @@ impl<T: Attribute> std::fmt::Display for AttributeCondition<T> {
     }
 }
 
+#[derive(Serialize)]
 pub struct ChanceCondition(pub f32);
 
 impl Condition for ChanceCondition {
@@ -100,7 +101,7 @@ impl std::fmt::Debug for ChanceCondition {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct And<C1, C2> {
     c1: C1,
     c2: C2,
@@ -116,7 +117,7 @@ where
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Or<C1, C2> {
     c1: C1,
     c2: C2,
@@ -132,7 +133,7 @@ where
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Not<C>(C);
 
 impl<C: Condition> Condition for Not<C> {
@@ -141,6 +142,7 @@ impl<C: Condition> Condition for Not<C> {
     }
 }
 
+#[derive(Serialize)]
 pub struct TagCondition<C: Component> {
     target: Who,
     phantom_data: PhantomData<C>,

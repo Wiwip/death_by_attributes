@@ -58,7 +58,7 @@ pub fn evaluate_effect_conditions(
 
         // Determines whether the effect should activate
         let should_be_active = effect
-            .conditions
+            .activate_conditions
             .iter()
             .all(|condition| condition.0.eval(&context).unwrap_or(false));
 

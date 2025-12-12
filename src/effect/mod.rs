@@ -7,7 +7,7 @@ mod timing;
 use crate::assets::EffectDef;
 use crate::effect::application::apply_effect_event_observer;
 use crate::effect::stacks::{NotifyAddStackEvent, read_add_stack_event};
-use bevy::app::{App, Plugin, PreUpdate};
+use bevy::app::{App, Plugin};
 use bevy::asset::Handle;
 use bevy::ecs::query::QueryData;
 use bevy::prelude::{Component, Deref, Entity, Event, IntoScheduleConfigs, Reflect, Update};
@@ -26,8 +26,8 @@ pub struct EffectsPlugin;
 
 impl Plugin for EffectsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PreUpdate, tick_effect_tickers)
-            .add_systems(PreUpdate, tick_effect_durations)
+        app.add_systems(Update, tick_effect_tickers.in_set(EffectsSet::Prepare))
+            .add_systems(Update, tick_effect_durations.in_set(EffectsSet::Prepare))
             .add_systems(Update, read_add_stack_event.in_set(EffectsSet::Prepare))
             .add_observer(apply_effect_event_observer)
             .add_message::<NotifyAddStackEvent>();

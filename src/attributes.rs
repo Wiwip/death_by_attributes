@@ -1,15 +1,14 @@
 use crate::condition::{convert_bounds, multiply_bounds};
 use crate::effect::AttributeDependencies;
 use crate::inspector::pretty_type_name;
-use crate::math::AbsDiff;
+use crate::math::{AbsDiff, SaturatingAttributes};
 use crate::prelude::*;
 use crate::systems::{MarkNodeDirty, NotifyAttributeDependencyChanged};
 use crate::{AttributeError, AttributeValueChanged, AttributesMut, AttributesRef};
 use bevy::ecs::component::Mutable;
 use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
-use bevy::reflect::{GetTypeRegistration, Typed};
-use num_traits::NumCast;
+use bevy::reflect::GetTypeRegistration;
 pub use num_traits::{
     AsPrimitive, Bounded, FromPrimitive, Num, NumAssign, NumAssignOps, NumOps, Saturating,
     SaturatingAdd, SaturatingMul, Zero,
@@ -24,6 +23,7 @@ use std::hash::{DefaultHasher, Hash};
 use std::iter::Sum;
 use std::marker::PhantomData;
 use std::ops::RangeBounds;
+use std::sync::Arc;
 
 pub trait Attribute
 where
@@ -33,18 +33,16 @@ where
 {
     type Property: Num
         + NumOps
-        + NumCast
         + NumAssign
         + NumAssignOps
+        + SaturatingAttributes<Output = Self::Property>
         + Sum
         + Bounded
         + AbsDiff
         + PartialOrd
         + FromPrimitive
         + AsPrimitive<f64>
-        + FromReflect
-        + GetTypeRegistration
-        + Typed
+        + Reflect
         + Copy
         + Clone
         + Debug
@@ -329,8 +327,6 @@ pub trait ValueSource: Send + Sync + 'static {
 
     fn value(&self, entity: &AttributesRef) -> Result<Self::Output, AttributeError>;
     fn describe(&self) -> String;
-
-    fn clone_value(&self) -> Box<dyn ValueSource<Output = Self::Output>>;
 }
 
 pub trait IntoValue {
@@ -342,17 +338,17 @@ pub trait IntoValue {
 /// A [Value] refers to an Attribute value.
 /// It can be a literal value, or a reference to an Attribute.
 #[derive(Deref, DerefMut)]
-pub struct Value<P: Num>(pub Box<dyn ValueSource<Output = P>>);
+pub struct Value<P: Num>(pub Arc<dyn ValueSource<Output = P>>);
 
 impl<P: Num + Display + Debug + Copy + Clone + Send + Sync + 'static> Default for Value<P> {
     fn default() -> Self {
-        Value(Box::new(Lit(P::zero())))
+        Value(Arc::new(Lit(P::zero())))
     }
 }
 
 impl<P: Num + 'static> Clone for Value<P> {
     fn clone(&self) -> Self {
-        Self(self.0.clone_value())
+        Self(self.0.clone())
     }
 }
 
@@ -388,20 +384,13 @@ impl<T: Attribute> ValueSource for AttributeValue<T> {
     fn describe(&self) -> String {
         format!("{}", pretty_type_name::<T>())
     }
-
-    fn clone_value(&self) -> Box<dyn ValueSource<Output = Self::Output>> {
-        Box::new(AttributeValue::<T> {
-            value: self.value,
-            phantom_data: Default::default(),
-        })
-    }
 }
 
 impl<T: Attribute> IntoValue for AttributeValue<T> {
     type Out = T::Property;
 
     fn into_value(self) -> Value<Self::Out> {
-        Value(Box::new(AttributeValue::<T> {
+        Value(Arc::new(AttributeValue::<T> {
             value: Self::Out::zero(),
             phantom_data: Default::default(),
         }))
@@ -422,10 +411,6 @@ impl<P: Num + Display + Debug + Copy + Clone + Send + Sync + 'static> ValueSourc
     fn describe(&self) -> String {
         format!("{}", self.0)
     }
-
-    fn clone_value(&self) -> Box<dyn ValueSource<Output = Self::Output>> {
-        Box::new(Lit(self.0))
-    }
 }
 
 #[macro_export]
@@ -435,7 +420,7 @@ macro_rules! impl_into_value {
             type Out = $x;
 
             fn into_value(self) -> Value<$x> {
-                Value(Box::new(Lit(self)))
+                Value(Arc::new(Lit(self)))
             }
         }
     };
