@@ -1,17 +1,20 @@
-use crate::Abilities;
+use std::collections::VecDeque;
 use crate::ability::{AbilityOf, GrantAbilityCommand};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
-use crate::attributes::{Attribute, Clamp, DerivedClamp, derived_clamp_base_value_observer};
-use crate::condition::convert_bounds;
+use crate::attribute_clamp::{Clamp, observe_current_value_change_for_clamp_bounds};
+use crate::attributes::{Attribute, AttributeValue, IntoValue, Lit};
+use crate::condition::{convert_bounds, multiply_bounds};
 use crate::effect::EffectTargeting;
 use crate::graph::NodeType;
 use crate::inspector::pretty_type_name;
 use crate::mutator::EntityActions;
-use crate::prelude::{ApplyEffectEvent, AttributeCalculatorCached};
+use crate::prelude::{ApplyEffectEvent, AttributeCalculatorCached, Value};
+use crate::{Abilities, CurrentValueChanged};
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use num_traits::{AsPrimitive, Num};
+use num_traits::{AsPrimitive, Num, Zero};
 use std::ops::RangeBounds;
+use std::sync::Arc;
 
 #[allow(dead_code)]
 #[derive(Component, Clone, Debug)]
@@ -43,9 +46,9 @@ impl EntityCommand for SpawnActorCommand {
                     ));
 
                     // Apply mutators
-                    for mutator in &actor_def.mutators {
+                    for actions in &actor_def.builder_actions {
                         let mut entity_commands = commands.entity(actor_entity);
-                        (mutator.func)(&mut entity_commands);
+                        (actions.func)(&mut entity_commands);
                     }
 
                     // Spawn the granted ability entities
@@ -70,6 +73,8 @@ impl EntityCommand for SpawnActorCommand {
                     });
                 }
 
+
+
                 // Queue the commands for deferred application
                 world.commands().append(&mut queue);
             });
@@ -79,7 +84,7 @@ impl EntityCommand for SpawnActorCommand {
 
 pub struct ActorBuilder {
     name: String,
-    builder_actions: Vec<EntityActions>,
+    builder_actions: VecDeque<EntityActions>,
     abilities: Vec<Handle<AbilityDef>>,
     effects: Vec<Handle<EffectDef>>,
 }
@@ -88,13 +93,13 @@ impl ActorBuilder {
     pub fn new() -> ActorBuilder {
         Self {
             name: "Actor".to_string(),
-            builder_actions: vec![],
+            builder_actions: VecDeque::new(),
             abilities: vec![],
             effects: vec![],
         }
     }
 
-    pub fn with_name(mut self, name: &str) -> ActorBuilder {
+    pub fn name(mut self, name: &str) -> ActorBuilder {
         self.name = name.to_string();
         self
     }
@@ -103,7 +108,7 @@ impl ActorBuilder {
         mut self,
         value: impl Num + AsPrimitive<T::Property> + Copy + Send + Sync + 'static,
     ) -> ActorBuilder {
-        self.builder_actions.push(EntityActions::new(
+        self.builder_actions.push_front(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
                 entity_commands.insert((T::new(value), AttributeCalculatorCached::<T>::default()));
             },
@@ -116,48 +121,67 @@ impl ActorBuilder {
         self
     }
 
-    pub fn clamp<T>(mut self, range: impl RangeBounds<f64>) -> ActorBuilder
+    pub fn clamp<T>(
+        mut self,
+        limits: impl RangeBounds<f64> + Clone + Send + Sync + 'static,
+    ) -> ActorBuilder
     where
         T: Attribute,
         f64: AsPrimitive<T::Property>,
     {
-        let bounds = convert_bounds::<f64, T>(range);
-        let clamp = Clamp::<T>::new(bounds);
-
-        self.builder_actions.push(EntityActions::new(
+        self.builder_actions.push_back(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
-                entity_commands.insert(clamp.clone());
+                let limits = convert_bounds::<f64, T>(limits.clone());
+                
+                entity_commands.insert(Clamp::<T> {
+                    value: T::value().into_value(),
+                    limits,
+                    bounds: limits,
+                });
             },
         ));
+
         self
     }
 
-    pub fn clamp_from<S, T>(
+    pub fn clamp_by<S, T>(
         mut self,
         limits: impl RangeBounds<f64> + Send + Sync + 'static,
     ) -> ActorBuilder
     where
         S: Attribute,
         T: Attribute,
-        S::Property: AsPrimitive<T::Property>,
         f64: AsPrimitive<T::Property>,
+        S: Attribute<Property = T::Property>,
     {
         let bounds = (limits.start_bound().cloned(), limits.end_bound().cloned());
 
-        self.builder_actions.push(EntityActions::new(
+        self.builder_actions.push_back(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
-                let mut observer = Observer::new(derived_clamp_base_value_observer::<S, T>);
-                observer.watch_entity(entity_commands.id());
+                let parent_actor = entity_commands.id();
+
+                let mut observer =
+                    Observer::new(observe_current_value_change_for_clamp_bounds::<S, T>);
+                observer.watch_entity(parent_actor);
+
+                entity_commands.insert(Clamp::<T>::new(S::value(), bounds));
+                println!("Clamp inserted!");
 
                 entity_commands.commands().spawn((
-                    DerivedClamp::<T>::new(bounds),
                     observer,
                     Name::new(format!(
-                        "Clamp {} by {}",
+                        "Clamp<{}, {}> Observer",
+                        pretty_type_name::<S>(),
                         pretty_type_name::<T>(),
-                        pretty_type_name::<S>()
                     )),
                 ));
+
+                entity_commands.commands().trigger(CurrentValueChanged::<S>{
+                    phantom_data: Default::default(),
+                    old: S::Property::zero(),
+                    new: S::Property::zero(),
+                    entity: parent_actor,
+                })
             },
         ));
 
@@ -165,7 +189,7 @@ impl ActorBuilder {
     }
 
     pub fn insert<T: Bundle + Clone + 'static>(mut self, bundle: T) -> ActorBuilder {
-        self.builder_actions.push(EntityActions::new(
+        self.builder_actions.push_front(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
                 entity_commands.insert(bundle.clone());
             },
@@ -182,7 +206,7 @@ impl ActorBuilder {
         ActorDef {
             name: self.name,
             description: "".to_string(),
-            mutators: self.builder_actions,
+            builder_actions: self.builder_actions,
             abilities: self.abilities,
             effects: self.effects,
         }

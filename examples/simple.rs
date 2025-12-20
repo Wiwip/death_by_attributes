@@ -115,10 +115,7 @@ struct EffectsDatabase {
     hp_regen: Handle<EffectDef>,
 }
 
-fn setup_effects(
-    mut commands: Commands,
-    mut ctx: EffectContext,
-) {
+fn setup_effects(mut commands: Commands, mut ctx: EffectContext) {
     // Attack Power effect
     let ap_buff = ctx.add_effect(
         Effect::permanent()
@@ -224,18 +221,21 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
 
 fn setup_actor(mut ctx: EffectContext, efx: Res<EffectsDatabase>, abilities: Res<AbilityDatabase>) {
     let actor_template = ActorBuilder::new()
-        .with_name("=== Player ===".into())
+        .name("=== Player ===".into())
         .with::<Strength>(12.0)
         .with::<Agility>(7.0)
         .with::<Intelligence>(1.0)
+        // Health
         .with::<Health>(85.0)
-        .clamp_from::<MaxHealth, Health>(..=1.0)
-        .with::<MaxHealth>(500.0)
+        .with::<MaxHealth>(100.0)
         .with::<HealthRegen>(2.0)
-        .with::<Mana>(100.0)
-        .clamp_from::<ManaPool, Mana>(..=1.0)
-        .with::<ManaPool>(100.0)
-        .with::<ManaRegen>(1.0)
+        .clamp_by::<MaxHealth, Health>(..=1.0)
+        // Mana
+        .with::<Mana>(30u32)
+        .with::<ManaPool>(60.0)
+        .with::<ManaRegen>(4.0)
+        .clamp_by::<ManaPool, Mana>(..=1.0)
+        // Misc
         .with::<MagicPower>(1.0)
         .with::<AttackPower>(10.0)
         .with::<Armour>(0.10)

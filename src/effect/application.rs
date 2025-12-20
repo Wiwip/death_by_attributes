@@ -361,7 +361,7 @@ mod test {
     ) {
         let actor_template = actor_assets.add(
             ActorBuilder::new()
-                .with_name("TestActor".into())
+                .name("TestActor".into())
                 .with::<TestA>(100.0)
                 .with::<TestB>(10.0)
                 .with::<TestInt>(50)

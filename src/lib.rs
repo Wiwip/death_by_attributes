@@ -10,6 +10,7 @@ use std::marker::PhantomData;
 pub mod ability;
 pub mod actors;
 pub mod assets;
+mod attribute_clamp;
 pub mod attributes;
 pub mod condition;
 pub mod context;
@@ -27,13 +28,17 @@ mod trigger;
 use crate::ability::{Abilities, Ability, AbilityCooldown, AbilityOf, AbilityPlugin};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::attributes::{
-    Attribute, ReflectAccessAttribute, apply_derived_clamp_attributes, clamp_base_value_observer,
-    on_add_attribute, on_change_notify_attribute_dependencies, on_change_notify_attribute_parents,
+    Attribute, ReflectAccessAttribute, on_add_attribute, on_change_notify_attribute_dependencies,
+    on_change_notify_attribute_parents,
 };
 use crate::condition::ConditionPlugin;
 use crate::effect::{EffectIntensity, EffectsPlugin};
 use crate::inspector::pretty_type_name;
-use crate::prelude::{AppliedEffects, ApplyAttributeModifierMessage, AttributeCalculatorCached, AttributeModifier, Effect, EffectDuration, EffectSource, EffectSources, EffectTarget, EffectTicker, Stacks, apply_modifier_events, GlobalEffectPlugin};
+use crate::prelude::{
+    AppliedEffects, ApplyAttributeModifierMessage, AttributeCalculatorCached, AttributeModifier,
+    Effect, EffectDuration, EffectSource, EffectSources, EffectTarget, EffectTicker,
+    GlobalEffectPlugin, Stacks, apply_modifier_events,
+};
 use crate::schedule::EffectsSet;
 use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
 
@@ -57,6 +62,7 @@ use crate::modifier::Who;
 use crate::registry::RegistryPlugin;
 
 pub use num_traits;
+use crate::attribute_clamp::apply_clamps;
 
 pub struct AttributesPlugin;
 
@@ -121,7 +127,8 @@ pub fn init_attribute<T: Attribute>(app: &mut App) {
         Update,
         (
             update_effect_system::<T>,
-            apply_derived_clamp_attributes::<T>,
+            //apply_derived_clamp_attributes::<T>,
+            apply_clamps::<T>,
         )
             .chain()
             .in_set(EffectsSet::UpdateCurrentValues),
@@ -129,15 +136,13 @@ pub fn init_attribute<T: Attribute>(app: &mut App) {
 
     app.add_systems(
         Update,
-        on_change_notify_attribute_dependencies::<T>.in_set(EffectsSet::Notify),
+        (
+            on_change_notify_attribute_parents::<T>.in_set(EffectsSet::Notify),
+            on_change_notify_attribute_dependencies::<T>.in_set(EffectsSet::Notify),
+        ),
     );
 
-    app.add_systems(
-        Update,
-        on_change_notify_attribute_parents::<T>.in_set(EffectsSet::Notify),
-    );
-
-    app.add_observer(clamp_base_value_observer::<T>);
+    //app.add_observer(clamp_base_value_observer::<T>);
     app.add_observer(mark_node_dirty_observer::<T>);
     app.add_observer(on_add_attribute::<T>);
     app.add_observer(update_attribute::<T>);

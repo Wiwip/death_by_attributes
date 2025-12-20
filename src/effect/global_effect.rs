@@ -25,11 +25,10 @@ pub struct GlobalActor;
 pub struct GlobalEffect;
 
 pub fn spawn_global_actor(mut commands: Commands, mut ctx: EffectContext) {
-    info!("Spawning global actor");
     let global_actor = commands.spawn(GlobalActor).id();
 
     let actor = ActorBuilder::new()
-        .with_name("Global Effect Actor")
+        .name("Global Effect Actor")
         .build();
 
     let actor_handle = ctx.add_actor(actor);
@@ -66,7 +65,7 @@ mod test {
     ) {
         let actor_template = actor_assets.add(
             ActorBuilder::new()
-                .with_name("TestActor".into())
+                .name("TestActor".into())
                 .with::<TestAttribute>(0.0)
                 .grant_ability(&registry.ability(TEST_ABILITY_TOKEN))
                 .with_effect(&registry.effect(CONDITION_EFFECT))

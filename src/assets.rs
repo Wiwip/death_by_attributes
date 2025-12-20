@@ -1,4 +1,4 @@
-
+use std::collections::VecDeque;
 use crate::condition::BoxCondition;
 use crate::effect::EffectStackingPolicy;
 use crate::modifier::{Modifier, ModifierFn};
@@ -10,7 +10,7 @@ use bevy::prelude::*;
 pub struct ActorDef {
     pub name: String,
     pub description: String,
-    pub mutators: Vec<EntityActions>,
+    pub builder_actions: VecDeque<EntityActions>,
     pub abilities: Vec<Handle<AbilityDef>>,
     pub effects: Vec<Handle<EffectDef>>,
 }

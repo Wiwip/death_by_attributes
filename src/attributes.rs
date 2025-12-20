@@ -4,7 +4,7 @@ use crate::inspector::pretty_type_name;
 use crate::math::{AbsDiff, SaturatingAttributes};
 use crate::prelude::*;
 use crate::systems::MarkNodeDirty;
-use crate::{AttributeError, AttributesMut, AttributesRef, BaseValueChanged};
+use crate::{AttributeError, AttributesMut, AttributesRef, CurrentValueChanged};
 use bevy::ecs::component::Mutable;
 use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
@@ -182,123 +182,6 @@ impl<T: Attribute> AttributeQueryDataItem<'_, '_, T> {
     }
 }
 
-#[derive(Component, Clone)]
-pub struct Clamp<A: Attribute> {
-    bounds: (Bound<A::Property>, Bound<A::Property>),
-    phantom_data: PhantomData<A>,
-}
-
-impl<A: Attribute> Clamp<A> {
-    pub fn new(range: impl RangeBounds<A::Property> + Send + Sync + 'static) -> Self {
-        Self {
-            bounds: (range.start_bound().cloned(), range.end_bound().cloned()),
-            phantom_data: PhantomData,
-        }
-    }
-}
-
-#[derive(Component)]
-pub struct DerivedClamp<T>
-where
-    T: Attribute,
-{
-    limits: (Bound<T::Property>, Bound<T::Property>),
-    bounds: (Bound<T::Property>, Bound<T::Property>),
-}
-
-impl<T> DerivedClamp<T>
-where
-    T: Attribute,
-    f64: AsPrimitive<T::Property>,
-{
-    pub fn new(limits: impl RangeBounds<f64> + Send + Sync + Copy + 'static) -> Self {
-        Self {
-            limits: convert_bounds::<f64, T>(limits),
-            bounds: (Bound::Unbounded, Bound::Unbounded),
-        }
-    }
-}
-
-/// When the Source attribute changes, we update the bounds of the target attribute
-pub fn derived_clamp_base_value_observer<S, T>(
-    trigger: On<BaseValueChanged<S>>,
-    mut query: Query<(&mut DerivedClamp<T>, &S)>,
-) where
-    S: Attribute,
-    T: Attribute,
-    S::Property: AsPrimitive<T::Property>,
-{
-    let Ok((mut derived_clamp, source_attribute)) = query.get_mut(trigger.event_target()) else {
-        return;
-    };
-    let source_value: T::Property = source_attribute.current_value().as_();
-
-    // Multiply the source value by the limit to get the derived limit
-    let limit_bounds = multiply_bounds::<T>(derived_clamp.limits, source_value);
-    derived_clamp.bounds = limit_bounds;
-}
-
-pub fn apply_derived_clamp_attributes<T>(mut query: Query<(&mut T, &DerivedClamp<T>), Changed<T>>)
-where
-    T: Attribute,
-{
-    for (mut attribute, clamp) in query.iter_mut() {
-        let clamp_value = bound_clamp(attribute.base_value(), clamp.bounds);
-        attribute.set_base_value(clamp_value);
-    }
-}
-
-pub(crate) fn clamp_base_value_observer<T: Attribute>(
-    trigger: On<BaseValueChanged<T>>,
-    mut query: Query<(&mut T, &Clamp<T>)>,
-) {
-    let Ok((mut attribute, clamp)) = query.get_mut(trigger.event_target()) else {
-        return;
-    };
-
-    let clamp_value = bound_clamp(attribute.base_value(), clamp.bounds);
-    attribute.set_base_value(clamp_value);
-}
-
-fn bound_clamp<V: Num + PartialOrd + Bounded + Copy>(value: V, clamp: impl RangeBounds<V>) -> V {
-    let value = match clamp.start_bound() {
-        Bound::Included(&min) => {
-            if value < min {
-                min
-            } else {
-                value
-            }
-        }
-        Bound::Excluded(&min) => {
-            if value <= min {
-                min + V::min_value()
-            } else {
-                value
-            }
-        }
-        Bound::Unbounded => value,
-    };
-
-    let value = match clamp.end_bound() {
-        Bound::Included(&max) => {
-            if value > max {
-                max
-            } else {
-                value
-            }
-        }
-        Bound::Excluded(&max) => {
-            if value >= max {
-                max - V::min_value()
-            } else {
-                value
-            }
-        }
-        Bound::Unbounded => value,
-    };
-
-    value
-}
 
 #[reflect_trait] // Generates a `ReflectMyTrait` type
 pub trait AccessAttribute {
@@ -373,8 +256,8 @@ impl<P: Num + 'static> Display for Value<P> {
 /// An [AttributeValue] is a dynamic reference to an Attribute.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct AttributeValue<T: Attribute> {
-    value: T::Property,
-    phantom_data: PhantomData<T>,
+    pub value: T::Property,
+    pub phantom_data: PhantomData<T>,
 }
 
 impl<T: Attribute> ValueSource for AttributeValue<T> {

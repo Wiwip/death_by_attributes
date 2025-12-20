@@ -14,7 +14,7 @@ fn prepare_actor(
 ) {
     let actor_template = actor_assets.add(
         ActorBuilder::new()
-            .with_name("TestActor".into())
+            .name("TestActor".into())
             .with::<TestA>(0)
             .build(),
     );
