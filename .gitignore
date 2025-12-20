@@ -86,3 +86,10 @@ fabric.properties
 
 # Android studio 3.1+ serialized cache file
 .idea/caches/build_file_checksums.ser
+/attributes_macro/Cargo.lock
+/Cargo.lock
+/assets/fonts/JetBrainsMono-Bold.ttf
+/assets/fonts/JetBrainsMono-Regular.ttf
+/.idea/modules.xml
+/.idea/root_attribute.iml
+/.idea/vcs.xml
