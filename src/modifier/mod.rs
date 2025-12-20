@@ -14,7 +14,7 @@ use std::fmt::{Debug, Display, Formatter};
 pub mod prelude {
     pub use super::attribute_modifier::AttributeModifier;
     pub use super::calculator::{ModOp, AttributeCalculator, AttributeCalculatorCached};
-    pub use super::events::{ApplyAttributeModifierEvent, apply_modifier_events};
+    pub use super::events::{ApplyAttributeModifierMessage, apply_modifier_events};
 }
 
 pub type ModifierFn = dyn Fn(&mut EntityCommands, Entity) + Send + Sync;

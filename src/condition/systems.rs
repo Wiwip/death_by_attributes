@@ -29,7 +29,7 @@ pub fn evaluate_effect_conditions(
             error!(
                 "Effect {} has no parent entity {}.",
                 effect_entity_ref.id(),
-                target.get()
+                source.get()
             );
             continue;
         };
@@ -65,12 +65,117 @@ pub fn evaluate_effect_conditions(
         let is_inactive = status.is_some();
         if should_be_active && is_inactive {
             // Effect was inactive and its conditions are now met, so activate it.
-            println!("Effect {effect_entity} is now active.");
+            debug!("Effect {effect_entity} is now active.");
             commands.entity(effect_entity).remove::<EffectInactive>();
         } else if !should_be_active && !is_inactive {
             // Effect was active and its conditions are no longer met, so deactivate it.
-            println!("Effect {effect_entity} is now inactive.");
+            debug!("Effect {effect_entity} is now inactive.");
             commands.entity(effect_entity).insert(EffectInactive);
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use bevy::ecs::system::RunSystemOnce;
+    use super::*;
+    use crate::ability::AbilityBuilder;
+    use crate::actors::{Actor, ActorBuilder};
+    use crate::assets::{AbilityDef, ActorDef};
+    use crate::condition::AttributeCondition;
+    use crate::context::EffectContext;
+    use crate::prelude::*;
+
+    attribute!(TestA, f32);
+    attribute!(TestB, f64);
+
+    #[derive(Component, Copy, Clone, Debug, PartialEq)]
+    struct ConditionTag;
+
+    fn prepare_actor(
+        mut actor_assets: ResMut<Assets<ActorDef>>,
+        mut ctx: EffectContext,
+        registry: Registry,
+    ) {
+        let actor_template = actor_assets.add(
+            ActorBuilder::new()
+                .with_name("TestActor".into())
+                .with::<TestA>(100.0)
+                .with::<TestB>(1.0)
+                .grant_ability(&registry.ability(TEST_ABILITY_TOKEN))
+                .with_effect(&registry.effect(CONDITION_EFFECT))
+                .build()
+        );
+        ctx.spawn_actor(actor_template);
+    }
+
+    fn prepare_effects(mut registry: RegistryMut) {
+        registry.add_effect(
+            TEST_EFFECT,
+            Effect::permanent()
+                .name("Increase Effect".into())
+                .modify::<TestA>(200.0_f32, ModOp::Add, Who::Target)
+                .build()
+        );
+
+        registry.add_effect(
+            CONDITION_EFFECT,
+            Effect::permanent()
+                .name("Condition Effect".into())
+                .activate_while(AttributeCondition::<TestA>::target(150.0..))
+                .insert(ConditionTag)
+                .build()
+        );
+    }
+
+    pub const TEST_EFFECT: EffectToken = EffectToken::new_static("test.test");
+    pub const CONDITION_EFFECT: EffectToken = EffectToken::new_static("test.condition");
+
+    fn prepare_abilities(mut abilities: RegistryMut) {
+        abilities.add_ability(TEST_ABILITY_TOKEN, fireball_ability());
+    }
+
+    pub const TEST_ABILITY_TOKEN: AbilityToken = AbilityToken::new_static("test.test");
+
+    pub fn fireball_ability() -> AbilityDef {
+        AbilityBuilder::new()
+            .with_name("Test Ability".into())
+            .with_cooldown(TestB::value())
+            .with_cost::<TestB>(3.0)
+            .build()
+    }
+
+    #[test]
+    fn test_attribute_condition() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
+        app.add_plugins((crate::init_attribute::<TestA>, crate::init_attribute::<TestB>));
+
+        app.add_systems(
+            Startup,
+            (prepare_effects, prepare_abilities, prepare_actor).chain(),
+        );
+
+        app.update();
+
+        let mut query = app.world_mut().query::<(Entity, &Actor, &TestA, &TestB)>();
+        let actor_id = query.single(app.world()).unwrap().0;
+
+        // Check that the effect is inactive
+        let mut query = app.world_mut().query::<(Entity, &Effect, &ConditionTag, Option<&EffectInactive>)>();
+        let opt_inactive = query.single(app.world()).unwrap().3;
+        assert!(opt_inactive.is_some());
+
+        app.world_mut().run_system_once(move |mut ctx: EffectContext, registry: Registry|{
+            ctx.apply_effect_to_self(actor_id, &registry.effect(TEST_EFFECT));
+        }).unwrap();
+
+        app.update();
+        app.update();
+
+        // Check that the effect is active
+        let mut query = app.world_mut().query::<(Entity, &Effect, &ConditionTag, Option<&EffectInactive>)>();
+        let opt_inactive = query.single(app.world()).unwrap().3;
+        assert!(opt_inactive.is_none());
     }
 }

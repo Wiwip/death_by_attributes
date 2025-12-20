@@ -1,10 +1,10 @@
 use crate::condition::{convert_bounds, multiply_bounds};
-use crate::effect::AttributeDependencies;
+use crate::effect::AttributeDependents;
 use crate::inspector::pretty_type_name;
 use crate::math::{AbsDiff, SaturatingAttributes};
 use crate::prelude::*;
-use crate::systems::{MarkNodeDirty, NotifyAttributeDependencyChanged};
-use crate::{AttributeError, AttributeValueChanged, AttributesMut, AttributesRef};
+use crate::systems::MarkNodeDirty;
+use crate::{AttributeError, AttributesMut, AttributesRef, BaseValueChanged};
 use bevy::ecs::component::Mutable;
 use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
@@ -220,8 +220,8 @@ where
 }
 
 /// When the Source attribute changes, we update the bounds of the target attribute
-pub fn derived_clamp_attributes_observer<S, T>(
-    trigger: On<AttributeValueChanged<S>>,
+pub fn derived_clamp_base_value_observer<S, T>(
+    trigger: On<BaseValueChanged<S>>,
     mut query: Query<(&mut DerivedClamp<T>, &S)>,
 ) where
     S: Attribute,
@@ -248,8 +248,8 @@ where
     }
 }
 
-pub(crate) fn clamp_attributes_observer<T: Attribute>(
-    trigger: On<AttributeValueChanged<T>>,
+pub(crate) fn clamp_base_value_observer<T: Attribute>(
+    trigger: On<BaseValueChanged<T>>,
     mut query: Query<(&mut T, &Clamp<T>)>,
 ) {
     let Ok((mut attribute, clamp)) = query.get_mut(trigger.event_target()) else {
@@ -326,6 +326,12 @@ pub trait ValueSource: Send + Sync + 'static {
     type Output: Num;
 
     fn value(&self, entity: &AttributesRef) -> Result<Self::Output, AttributeError>;
+    fn insert_dependency(
+        &self,
+        target: Entity,
+        entity_commands: &mut EntityCommands,
+        func: fn(Entity, Commands),
+    );
     fn describe(&self) -> String;
 }
 
@@ -381,6 +387,26 @@ impl<T: Attribute> ValueSource for AttributeValue<T> {
             .current_value())
     }
 
+    /// Inserts a dependency on the target entity.
+    /// This is used to ensure that the target entity is updated when the source attribute changes.
+    /// The func serves as a trigger to MarkNodeDirty<T> on the attribute that must be recalculated
+    fn insert_dependency(
+        &self,
+        target: Entity,
+        entity_commands: &mut EntityCommands,
+        func: fn(Entity, Commands),
+    ) {
+        entity_commands.insert(AttributeDependency::<T>::new(target));
+
+        let mut observer = Observer::new(
+            move |trigger: On<AttributeDependencyChanged<T>>, commands: Commands| {
+                func(trigger.entity, commands);
+            },
+        );
+        observer.watch_entity(entity_commands.id());
+        entity_commands.commands().spawn(observer);
+    }
+
     fn describe(&self) -> String {
         format!("{}", pretty_type_name::<T>())
     }
@@ -406,6 +432,15 @@ impl<P: Num + Display + Debug + Copy + Clone + Send + Sync + 'static> ValueSourc
 
     fn value(&self, _: &AttributesRef) -> Result<Self::Output, AttributeError> {
         Ok(self.0)
+    }
+
+    fn insert_dependency(
+        &self,
+        _target: Entity,
+        _entity_commands: &mut EntityCommands,
+        _func: fn(Entity, Commands),
+    ) {
+        // Empty implementation
     }
 
     fn describe(&self) -> String {
@@ -552,25 +587,23 @@ pub fn on_add_attribute<T: Attribute>(trigger: On<Insert, T>, mut commands: Comm
     });
 }
 
+#[derive(EntityEvent)]
+pub struct AttributeDependencyChanged<T> {
+    pub entity: Entity,
+    phantom_data: PhantomData<T>,
+}
+
 pub fn on_change_notify_attribute_dependencies<T: Attribute>(
-    query: Query<(&T, &AttributeDependencies<T>), Changed<T>>,
+    query: Query<&AttributeDependents<T>, Changed<T>>,
     mut commands: Commands,
 ) {
-    for (attribute, dependencies) in query.iter() {
-        let unique_entities: HashSet<Entity> = dependencies.iter().collect();
+    for dependents in query.iter() {
+        let unique_entities: HashSet<Entity> = dependents.iter().collect();
         let notify_targets: Vec<Entity> = unique_entities.into_iter().collect();
 
-        /*debug!(
-            "Attribute<{}> changed. Notify: {:?} ",
-            pretty_type_name::<T>(),
-            notify_targets
-        );*/
-
         notify_targets.iter().for_each(|target| {
-            commands.trigger(NotifyAttributeDependencyChanged::<T> {
+            commands.trigger(AttributeDependencyChanged::<T> {
                 entity: *target,
-                base_value: attribute.base_value(),
-                current_value: attribute.current_value(),
                 phantom_data: Default::default(),
             });
         });
@@ -582,10 +615,6 @@ pub fn on_change_notify_attribute_parents<T: Attribute>(
     mut commands: Commands,
 ) {
     for entity in query.iter() {
-        /*debug!(
-            "Attribute<{}> changed. Notify parent chain.",
-            pretty_type_name::<T>(),
-        );*/
         commands.trigger(MarkNodeDirty::<T> {
             entity,
             phantom_data: Default::default(),

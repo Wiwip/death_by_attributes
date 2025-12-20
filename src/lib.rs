@@ -1,5 +1,5 @@
 use crate::systems::{
-    apply_periodic_effect, observe_dirty_node_notifications, update_attribute, update_effect_system,
+    apply_periodic_effect, mark_node_dirty_observer, update_attribute, update_effect_system,
 };
 use bevy::prelude::*;
 use std::any::TypeId;
@@ -27,17 +27,13 @@ mod trigger;
 use crate::ability::{Abilities, Ability, AbilityCooldown, AbilityOf, AbilityPlugin};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::attributes::{
-    Attribute, ReflectAccessAttribute, apply_derived_clamp_attributes, clamp_attributes_observer,
+    Attribute, ReflectAccessAttribute, apply_derived_clamp_attributes, clamp_base_value_observer,
     on_add_attribute, on_change_notify_attribute_dependencies, on_change_notify_attribute_parents,
 };
 use crate::condition::ConditionPlugin;
 use crate::effect::{EffectIntensity, EffectsPlugin};
 use crate::inspector::pretty_type_name;
-use crate::prelude::{
-    AppliedEffects, ApplyAttributeModifierEvent, AttributeCalculatorCached, AttributeModifier,
-    Effect, EffectDuration, EffectSource, EffectSources, EffectTarget, EffectTicker, Stacks,
-    apply_modifier_events,
-};
+use crate::prelude::{AppliedEffects, ApplyAttributeModifierMessage, AttributeCalculatorCached, AttributeModifier, Effect, EffectDuration, EffectSource, EffectSources, EffectTarget, EffectTicker, Stacks, apply_modifier_events, GlobalEffectPlugin};
 use crate::schedule::EffectsSet;
 use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
 
@@ -59,6 +55,7 @@ pub mod prelude {
 use crate::graph::NodeType;
 use crate::modifier::Who;
 use crate::registry::RegistryPlugin;
+
 pub use num_traits;
 
 pub struct AttributesPlugin;
@@ -69,6 +66,7 @@ impl Plugin for AttributesPlugin {
             AbilityPlugin,
             ConditionPlugin,
             EffectsPlugin,
+            GlobalEffectPlugin,
             RegistryPlugin,
         ))
         .add_plugins((init_attribute::<EffectIntensity>, init_attribute::<Stacks>))
@@ -107,7 +105,7 @@ pub fn init_attribute<T: Attribute>(app: &mut App) {
     app.register_type::<AttributeModifier<T>>();
     app.register_type::<AttributeCalculatorCached<T>>();
     app.register_type_data::<T, ReflectAccessAttribute>();
-    app.add_message::<ApplyAttributeModifierEvent<T>>();
+    app.add_message::<ApplyAttributeModifierMessage<T>>();
 
     app.add_systems(
         Update,
@@ -139,8 +137,8 @@ pub fn init_attribute<T: Attribute>(app: &mut App) {
         on_change_notify_attribute_parents::<T>.in_set(EffectsSet::Notify),
     );
 
-    app.add_observer(clamp_attributes_observer::<T>);
-    app.add_observer(observe_dirty_node_notifications::<T>);
+    app.add_observer(clamp_base_value_observer::<T>);
+    app.add_observer(mark_node_dirty_observer::<T>);
     app.add_observer(on_add_attribute::<T>);
     app.add_observer(update_attribute::<T>);
 
@@ -209,15 +207,8 @@ impl<T> Default for Dirty<T> {
     }
 }
 
-#[derive(EntityEvent, Clone)]
-#[entity_event(propagate = &'static EffectTarget, auto_propagate)]
-pub struct AttributeValueChanged<T> {
-    entity: Entity,
-    _marker: PhantomData<T>,
-}
-
 #[derive(EntityEvent, Debug)]
-pub struct OnBaseValueChange<T: Attribute> {
+pub struct BaseValueChanged<T: Attribute> {
     pub phantom_data: PhantomData<T>,
     pub old: T::Property,
     pub new: T::Property,

@@ -1,7 +1,7 @@
 use crate::Abilities;
 use crate::ability::{AbilityOf, GrantAbilityCommand};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
-use crate::attributes::{Attribute, Clamp, DerivedClamp, derived_clamp_attributes_observer};
+use crate::attributes::{Attribute, Clamp, DerivedClamp, derived_clamp_base_value_observer};
 use crate::condition::convert_bounds;
 use crate::effect::EffectTargeting;
 use crate::graph::NodeType;
@@ -146,7 +146,7 @@ impl ActorBuilder {
 
         self.builder_actions.push(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
-                let mut observer = Observer::new(derived_clamp_attributes_observer::<S, T>);
+                let mut observer = Observer::new(derived_clamp_base_value_observer::<S, T>);
                 observer.watch_entity(entity_commands.id());
 
                 entity_commands.commands().spawn((

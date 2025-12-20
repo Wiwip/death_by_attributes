@@ -4,6 +4,7 @@ use bevy::prelude::*;
 use bevy::window::PresentMode;
 use bevy_egui::EguiPlugin;
 use bevy_inspector_egui::DefaultInspectorConfigPlugin;
+use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use petgraph::prelude::Dfs;
 use petgraph::visit::{DfsEvent, depth_first_search};
 use root_attribute::ability::{AbilityBuilder, AbilityExecute, TargetData, TryActivateAbility};
@@ -11,9 +12,9 @@ use root_attribute::actors::ActorBuilder;
 use root_attribute::assets::{AbilityDef, ActorDef, EffectDef};
 use root_attribute::attributes::Attribute;
 use root_attribute::attributes::ReflectAccessAttribute;
-use root_attribute::condition::{AttributeCondition, ChanceCondition};
+use root_attribute::condition::AttributeCondition;
 use root_attribute::context::EffectContext;
-use root_attribute::effect::{EffectStackingPolicy};
+use root_attribute::effect::EffectStackingPolicy;
 use root_attribute::graph::QueryGraphAdapter;
 use root_attribute::inspector::ActorInspectorPlugin;
 use root_attribute::inspector::debug_overlay::DebugOverlayMarker;
@@ -69,7 +70,7 @@ fn main() {
         ))
         .add_plugins(EguiPlugin::default())
         .add_plugins(DefaultInspectorConfigPlugin)
-        //.add_plugins(WorldInspectorPlugin::default())
+        .add_plugins(WorldInspectorPlugin::default())
         .add_plugins(ActorInspectorPlugin)
         .add_systems(
             Startup,
@@ -114,23 +115,26 @@ struct EffectsDatabase {
     hp_regen: Handle<EffectDef>,
 }
 
-fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands) {
+fn setup_effects(
+    mut commands: Commands,
+    mut ctx: EffectContext,
+) {
     // Attack Power effect
-    let ap_buff = effects.add(
+    let ap_buff = ctx.add_effect(
         Effect::permanent()
             .name("AttackPower Buff".into())
-            .modify::<AttackPower>(Health::value(), ModOp::Add, Who::Target, 0.01)
-            .modify::<Intelligence>(Health::value(), ModOp::Add, Who::Target, 0.25)
+            .modify::<AttackPower>(Health::value(), ModOp::Add, Who::Target) //, 0.01)
+            .modify::<Intelligence>(Health::value(), ModOp::Add, Who::Target) //, 0.25)
             .build(),
     );
 
     // Magic Power effect
-    let mp_buff = effects.add(
+    let mp_buff = ctx.add_effect(
         Effect::permanent()
             .name("MagicPower Buff".into())
-            .modify::<MagicPower>(Intelligence::value(), ModOp::Add, Who::Target, 1.0)
-            .modify::<MagicPower>(5u32, ModOp::Add, Who::Target, 1.0)
-            .activate_while(AttributeCondition::<Health>::new(..=100, Who::Source))
+            .modify::<MagicPower>(Intelligence::value(), ModOp::Add, Who::Target)
+            .modify::<MagicPower>(5u32, ModOp::Add, Who::Target)
+            .activate_while(AttributeCondition::<Health>::new(..=500, Who::Source))
             .with_stacking_policy(EffectStackingPolicy::Add {
                 count: 1,
                 max_stack: 10,
@@ -139,25 +143,32 @@ fn setup_effects(mut effects: ResMut<Assets<EffectDef>>, mut commands: Commands)
     );
 
     // Effect 1 - Passive Max Health Boost
-    let hp_buff = effects.add(
+    let hp_buff = ctx.add_effect(
         Effect::permanent()
             .name("MaxHealth Increase".into())
-            .modify::<MaxHealth>(1u32, ModOp::Increase, Who::Target, 1.0)
-            .modify::<ManaPool>(Health::value(), ModOp::Add, Who::Target, 0.1)
+            .modify::<MaxHealth>(1u32, ModOp::Inc, Who::Target)
+            .modify::<ManaPool>(Health::value(), ModOp::Add, Who::Target)
             .with_stacking_policy(EffectStackingPolicy::RefreshDuration)
             .build(),
     );
 
     // Effect 2 - Periodic Health Regen
-    let regen = effects.add(
+    let regen = ctx.add_effect(
         Effect::permanent_ticking(1.0)
-            .name("Health Regen".into())
-            .modify::<Health>(3u32, ModOp::Add, Who::Target, 1.0)
-            .modify::<Health>(HealthRegen::value(), ModOp::Add, Who::Target, 1.0)
-            .modify::<Mana>(ManaRegen::value(), ModOp::Add, Who::Target, 1.0)
-            .activate_while(ChanceCondition(0.10))
+            .name("Regen".into())
+            .modify::<Health>(HealthRegen::value(), ModOp::Add, Who::Target)
+            .modify::<Mana>(ManaRegen::value(), ModOp::Add, Who::Target)
             .build(),
     );
+
+    let global_effect = ctx.add_effect(
+        Effect::permanent()
+            .name("Global Armour".into())
+            .modify::<Armour>(10.0f32, ModOp::Add, Who::Target)
+            .build(),
+    );
+
+    ctx.add_global_effect(global_effect);
 
     commands.insert_resource(EffectsDatabase {
         ap_buff,
@@ -211,44 +222,37 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
     });
 }
 
-fn setup_actor(
-    mut ctx: EffectContext,
-    mut actor_assets: ResMut<Assets<ActorDef>>,
-    efx: Res<EffectsDatabase>,
-    abilities: Res<AbilityDatabase>,
-) {
-    let actor_template = actor_assets.add(
-        ActorBuilder::new()
-            .with_name("=== Player ===".into())
-            .with::<Strength>(12.0)
-            .with::<Agility>(7.0)
-            .with::<Intelligence>(1.0)
-            .with::<Health>(85.0)
-            .clamp_from::<MaxHealth, Health>(..=1.0)
-            .with::<MaxHealth>(200.0)
-            .with::<HealthRegen>(2.0)
-            .with::<Mana>(100.0)
-            .clamp_from::<ManaPool, Mana>(..=1.0)
-            .with::<ManaPool>(100.0)
-            .with::<ManaRegen>(1.0)
-            .with::<MagicPower>(1.0)
-            .with::<AttackPower>(10.0)
-            .with::<Armour>(0.10)
-            .insert((Player, DebugOverlayMarker))
-            .grant_ability(&abilities.fireball)
-            .grant_ability(&abilities.frostball)
-            .build()
-    );
+fn setup_actor(mut ctx: EffectContext, efx: Res<EffectsDatabase>, abilities: Res<AbilityDatabase>) {
+    let actor_template = ActorBuilder::new()
+        .with_name("=== Player ===".into())
+        .with::<Strength>(12.0)
+        .with::<Agility>(7.0)
+        .with::<Intelligence>(1.0)
+        .with::<Health>(85.0)
+        .clamp_from::<MaxHealth, Health>(..=1.0)
+        .with::<MaxHealth>(500.0)
+        .with::<HealthRegen>(2.0)
+        .with::<Mana>(100.0)
+        .clamp_from::<ManaPool, Mana>(..=1.0)
+        .with::<ManaPool>(100.0)
+        .with::<ManaRegen>(1.0)
+        .with::<MagicPower>(1.0)
+        .with::<AttackPower>(10.0)
+        .with::<Armour>(0.10)
+        .insert((Player, DebugOverlayMarker))
+        .grant_ability(&abilities.fireball)
+        .grant_ability(&abilities.frostball)
+        .build();
 
-    let player_entity = ctx.spawn_actor(&actor_template).id();
+    let player_entity = ctx.add_spawn_actor(actor_template).id();
 
     ctx.apply_effect_to_self(player_entity, &efx.ap_buff);
-    ctx.apply_effect_to_self(player_entity, &efx.hp_buff);
+    //ctx.apply_effect_to_self(player_entity, &efx.hp_buff);
     ctx.apply_effect_to_self(player_entity, &efx.hp_regen);
 
     // Should have two stacks
-    ctx.apply_effect_to_self(player_entity, &efx.mp_buff);
-    ctx.apply_effect_to_self(player_entity, &efx.mp_buff);
+    //ctx.apply_effect_to_self(player_entity, &efx.mp_buff);
+    //ctx.apply_effect_to_self(player_entity, &efx.mp_buff);
 }
 
 #[derive(Component, Copy, Clone)]

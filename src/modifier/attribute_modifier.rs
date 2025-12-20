@@ -6,7 +6,8 @@ use crate::math::AbsDiff;
 use crate::modifier::calculator::{AttributeCalculator, ModOp};
 use crate::modifier::{Modifier, ModifierMarker};
 use crate::modifier::{ReflectAccessModifier, Who};
-use crate::prelude::{ApplyAttributeModifierEvent, EffectSource, EffectTarget};
+use crate::prelude::{ApplyAttributeModifierMessage, EffectSource, EffectTarget};
+use crate::systems::MarkNodeDirty;
 use crate::{AttributesMut, AttributesRef, Spawnable};
 use bevy::prelude::*;
 use std::any::type_name;
@@ -21,19 +22,17 @@ pub struct AttributeModifier<T: Attribute> {
     pub value_source: Value<T::Property>,
     pub who: Who,
     pub operation: ModOp,
-    pub scaling: f64,
 }
 
 impl<T> AttributeModifier<T>
 where
     T: Attribute + 'static,
 {
-    pub fn new(value: Value<T::Property>, modifier: ModOp, who: Who, scaling: f64) -> Self {
+    pub fn new(value: Value<T::Property>, modifier: ModOp, who: Who) -> Self {
         Self {
             value_source: value,
             who,
             operation: modifier,
-            scaling,
         }
     }
 
@@ -47,19 +46,12 @@ where
     T: Attribute,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let scaling = if self.scaling.fract() == 0.0 {
-            "".to_string()
-        } else {
-            format!("[{:.}%]", self.scaling * 100.0)
-        };
-
         write!(
             f,
-            "Mod<{}>({}{}{}, {})",
+            "Mod<{}>({}{}) {}",
             pretty_type_name::<T>(),
             self.operation,
             self.value_source,
-            scaling,
             self.who,
         )
     }
@@ -73,7 +65,10 @@ impl<T: Attribute> Modifier for AttributeModifier<T> {
             Some(attribute) => {
                 let entity = actor_entity.as_readonly();
 
-                let calculator = AttributeCalculator::<T>::convert(self, &entity);
+                let Ok(calculator) = AttributeCalculator::<T>::convert(self, &entity) else {
+                    warn!("Could not convert modifier {} to calculator.", self);
+                    return false;
+                };
                 let new_val = calculator.eval(attribute.base_value());
                 new_val
             }
@@ -93,7 +88,7 @@ impl<T: Attribute> Modifier for AttributeModifier<T> {
     }
 
     fn apply_delayed(&self, target: Entity, commands: &mut Commands) {
-        commands.write_message(ApplyAttributeModifierEvent::<T> {
+        commands.write_message(ApplyAttributeModifierMessage::<T> {
             target,
             modifier: self.clone(),
             attribute: BoxAttributeAccessor::new(AttributeExtractor::<T>::new()),
@@ -103,24 +98,33 @@ impl<T: Attribute> Modifier for AttributeModifier<T> {
 
 impl<T: Attribute> Spawnable for AttributeModifier<T> {
     fn spawn(&self, commands: &mut Commands, actor_entity: AttributesRef) -> Entity {
-        commands
-            .spawn((
-                NodeType::Modifier,
-                EffectSource(actor_entity.id()),
-                EffectTarget(actor_entity.id()),
-                AttributeModifier::<T> {
-                    value_source: self.value_source.clone(),
-                    who: self.who,
-                    operation: self.operation,
-                    scaling: self.scaling,
-                },
-                Name::new(format!("{}", self)),
-            ))
-            .id()
+        let mut entity_commands = commands.spawn((
+            NodeType::Modifier,
+            EffectSource(actor_entity.id()),
+            EffectTarget(actor_entity.id()),
+            AttributeModifier::<T> {
+                value_source: self.value_source.clone(),
+                who: self.who,
+                operation: self.operation,
+            },
+            Name::new(format!("{}", self)),
+        ));
+
+        // This is a roundabout way to ensure that this attribute is marked as dirty when the dependency changes.
+        let func = |entity: Entity, mut commands: Commands| {
+            commands.trigger(MarkNodeDirty::<T> {
+                entity,
+                phantom_data: Default::default(),
+            });
+        };
+        // This is fine because modifiers with no dependencies have an empty implementation.
+        self.value_source
+            .insert_dependency(actor_entity.id(), &mut entity_commands, func);
+
+        entity_commands.id()
     }
 
     fn who(&self) -> Who {
         self.who
     }
-
 }

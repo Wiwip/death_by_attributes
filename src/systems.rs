@@ -6,14 +6,14 @@ use crate::effect::Stacks;
 use crate::graph::{NodeType, QueryGraphAdapter};
 use crate::modifier::Who;
 use crate::prelude::*;
-use crate::{AttributeValueChanged, AttributesRef, CurrentValueChanged, Dirty};
+use crate::{AttributesRef, CurrentValueChanged, Dirty};
 use bevy::prelude::*;
 use petgraph::visit::IntoNeighbors;
 use std::any::type_name;
 use std::marker::PhantomData;
 
 #[derive(EntityEvent)]
-#[entity_event(propagate=&'static EffectTarget)]
+#[entity_event(propagate=&'static EffectTarget, auto_propagate)]
 pub struct MarkNodeDirty<T: Attribute> {
     pub entity: Entity,
     pub phantom_data: PhantomData<T>,
@@ -23,7 +23,7 @@ pub struct MarkNodeDirty<T: Attribute> {
 /// the event upward through using the [`EffectTarget`] chain.
 ///
 /// Stops when it encounters a dirty node indicating that all later nodes are already dirty.
-pub fn observe_dirty_node_notifications<T: Attribute>(
+pub fn mark_node_dirty_observer<T: Attribute>(
     mut trigger: On<MarkNodeDirty<T>>,
     dirty_nodes: Query<&Dirty<T>>,
     mut commands: Commands,
@@ -37,15 +37,6 @@ pub fn observe_dirty_node_notifications<T: Attribute>(
         .try_insert(Dirty::<T>::default());
 }
 
-#[derive(EntityEvent)]
-pub struct NotifyAttributeDependencyChanged<T: Attribute> {
-    pub entity: Entity,
-    #[allow(dead_code)]
-    pub base_value: T::Property,
-    #[allow(dead_code)]
-    pub current_value: T::Property,
-    pub phantom_data: PhantomData<T>,
-}
 
 /// Navigates the tree descendants to update the tree attribute values
 /// Effects that have a periodic timer application must be ignored in the current value calculations
@@ -142,7 +133,7 @@ fn update_effect_tree_attributes<T: Attribute>(
         }
         NodeType::Modifier => {
             if let Ok(modifier) = modifiers.get(current_entity) {
-                AttributeCalculator::convert(modifier, &actor_ref)
+                AttributeCalculator::convert(modifier, &actor_ref).unwrap_or_default()
             } else {
                 // This happens when we are looking for component A, but the modifier applies to component B
                 AttributeCalculator::default()
@@ -180,11 +171,6 @@ pub fn update_attribute<T: Attribute>(
 
         let should_notify_observers = attribute.update_attribute(&trigger.event().calculator);
         if should_notify_observers {
-            commands.trigger(AttributeValueChanged::<T> {
-                entity: trigger.event_target(),
-                _marker: Default::default(),
-            });
-
             commands.trigger(CurrentValueChanged::<T> {
                 entity: trigger.event_target(),
                 phantom_data: Default::default(),
@@ -207,7 +193,7 @@ pub fn apply_periodic_effect<T: Attribute>(
         &EffectSource,
     )>,
     modifiers: Query<&AttributeModifier<T>>,
-    mut event_writer: MessageWriter<ApplyAttributeModifierEvent<T>>,
+    mut event_writer: MessageWriter<ApplyAttributeModifierMessage<T>>,
     effect_assets: Res<Assets<EffectDef>>,
 ) {
     for (effect_ref, effect, timer, effect_modifiers, stacks, target, source) in effects.iter() {
@@ -246,29 +232,29 @@ pub fn apply_periodic_effect<T: Attribute>(
             };
 
             // Apply the stack count to the modifier
-            let stack_count = stacks.current_value();
+            let _stack_count = stacks.current_value();
 
             // Clone the modifier so we can apply the stack count to it.
-            let mut applied_modifier = attribute_modifier.clone();
-            applied_modifier.scaling *= stack_count as f64;
+            let applied_modifier = attribute_modifier.clone();
+            //applied_modifier.scaling *= stack_count as f64;
 
             match attribute_modifier.who {
                 Who::Target => {
-                    event_writer.write(ApplyAttributeModifierEvent {
+                    event_writer.write(ApplyAttributeModifierMessage {
                         target: target.0,
                         modifier: applied_modifier,
                         attribute: attribute_modifier.as_accessor(),
                     });
                 }
                 Who::Source => {
-                    event_writer.write(ApplyAttributeModifierEvent {
+                    event_writer.write(ApplyAttributeModifierMessage {
                         target: source.0,
                         modifier: applied_modifier,
                         attribute: attribute_modifier.as_accessor(),
                     });
                 }
                 Who::Effect => {
-                    event_writer.write(ApplyAttributeModifierEvent {
+                    event_writer.write(ApplyAttributeModifierMessage {
                         target: effect_ref.id(),
                         modifier: applied_modifier,
                         attribute: attribute_modifier.as_accessor(),

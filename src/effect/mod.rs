@@ -1,5 +1,6 @@
 mod application;
 mod builder;
+pub mod global_effect;
 mod stacks;
 mod targeting;
 mod timing;
@@ -18,6 +19,7 @@ use crate::prelude::Attribute;
 use crate::schedule::EffectsSet;
 pub use application::{ApplyEffectEvent, EffectApplicationPolicy};
 pub use builder::EffectBuilder;
+pub use global_effect::{GlobalEffect, GlobalEffectPlugin};
 pub use stacks::{EffectIntensity, EffectStackingPolicy, Stacks};
 pub use targeting::EffectTargeting;
 pub use timing::{EffectDuration, EffectTicker};
@@ -83,7 +85,7 @@ impl Effect {
 
 /// What are the attributes the modifier depends on?
 #[derive(Component, Reflect, Debug)]
-#[relationship(relationship_target = AttributeDependencies<T>)]
+#[relationship(relationship_target = AttributeDependents<T>)]
 pub struct AttributeDependency<T: Attribute + 'static> {
     #[relationship]
     pub source: Entity,
@@ -100,25 +102,26 @@ impl<T: Attribute> AttributeDependency<T> {
 }
 
 /// Usually on actors. Who depends on this entity and for what attributes?
+/// Serves to notify derived modifiers that the attribute has changed.
 #[derive(Component, Reflect, Debug)]
-#[relationship_target(relationship = AttributeDependency<T>, linked_spawn)]
-pub struct AttributeDependencies<T: Attribute + 'static> {
+#[relationship_target(relationship = AttributeDependency<T>)]
+pub struct AttributeDependents<T: Attribute + 'static> {
     #[relationship]
     sources: Vec<Entity>,
     marker: PhantomData<T>,
 }
 
-/// Who created this effect?
+/// The source of this effect.
 #[derive(Component, Reflect, Debug)]
 #[relationship(relationship_target = EffectSources)]
 pub struct EffectSource(pub Entity);
 
-/// All effects originating from this entity
+/// All effects originating from this entity.
 #[derive(Component, Reflect, Debug)]
 #[relationship_target(relationship = EffectSource, linked_spawn)]
 pub struct EffectSources(Vec<Entity>);
 
-/// All effects targeting this entity
+/// The target entity of this effect.
 #[derive(Component, Reflect, Debug)]
 #[relationship(relationship_target = AppliedEffects)]
 pub struct EffectTarget(pub Entity);

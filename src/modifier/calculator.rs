@@ -1,6 +1,6 @@
-use crate::AttributesRef;
 use crate::math::SaturatingAttributes;
 use crate::prelude::{Attribute, AttributeModifier};
+use crate::{AttributeError, AttributesRef};
 use bevy::prelude::*;
 use num_traits::{AsPrimitive, Bounded, FromPrimitive, Zero};
 use serde::Serialize;
@@ -11,9 +11,8 @@ pub enum ModOp {
     Set,
     Add,
     Sub,
-    Increase,
-    More,
-    //Less(f64),
+    Inc,
+    Mul,
 }
 
 impl Display for ModOp {
@@ -22,8 +21,8 @@ impl Display for ModOp {
             ModOp::Set => write!(f, "="),
             ModOp::Add => write!(f, "+"),
             ModOp::Sub => write!(f, "-"),
-            ModOp::Increase => write!(f, "+*"),
-            ModOp::More => write!(f, "*"),
+            ModOp::Inc => write!(f, "+*"),
+            ModOp::Mul => write!(f, "*"),
         }
     }
 }
@@ -48,7 +47,7 @@ pub struct AttributeCalculator<T: Attribute> {
     pub(crate) additive: T::Property,
     pub(crate) subtractive: T::Property,
     pub(crate) increase: f64,
-    pub(crate) more: f64,
+    pub(crate) multiplier: f64,
 }
 
 impl<T: Attribute> AttributeCalculator<T> {
@@ -57,21 +56,17 @@ impl<T: Attribute> AttributeCalculator<T> {
             return set;
         }
 
-        // Step 1 - Additions
+        // Additions/Substraction
         let addition_result: T::Property = base_value.saturating_add(self.additive);
-
-        // Step 2 - Substraction
         let subtraction_result: f64 = addition_result.saturating_sub(self.subtractive).as_();
 
-        // Step 3 - Additive Multiplication
-        // Clamp self.increase to prevent negative increase to attributes
-        let clamped_increase = self.increase.max(0.0);
-        let add_multi_result = subtraction_result * (1.0 + clamped_increase);
+        // Increase and Decrease
+        let add_multi_result = subtraction_result * (1.0 + self.increase);
 
-        // Step 4 - More multipliers
-        let result = add_multi_result * self.more;
+        // Apply multipliers
+        let result = add_multi_result * self.multiplier;
 
-        // Step 5 - Clamp the result to property's min/max values
+        // Clamp the result to property's min/max values
         let min = T::Property::min_value();
         let max = T::Property::max_value();
 
@@ -91,17 +86,17 @@ impl<T: Attribute> AttributeCalculator<T> {
         let subtractive = self.subtractive + other.subtractive;
 
         // Combine increased values (they stack additively)
-        let increased = self.increase + other.increase;
+        let increase = self.increase + other.increase;
 
         // Combine more values (they stack multiplicatively)
-        let more = self.more * other.more;
+        let multiplier = self.multiplier * other.multiplier;
 
         AttributeCalculator::<T> {
             set,
             additive,
             subtractive,
-            increase: increased,
-            more,
+            increase,
+            multiplier,
         }
     }
 
@@ -115,32 +110,37 @@ impl<T: Attribute> AttributeCalculator<T> {
         self.additive += other.additive;
         self.subtractive += other.subtractive;
         self.increase += other.increase;
-        self.more *= other.more;
+        self.multiplier *= other.multiplier;
     }
 
-    pub fn convert(modifier: &AttributeModifier<T>, attributes_ref: &AttributesRef) -> Self {
-        match modifier.operation {
+    pub fn convert(
+        modifier: &AttributeModifier<T>,
+        attributes_ref: &AttributesRef,
+    ) -> Result<Self, AttributeError>
+    {
+        let calculator = match modifier.operation {
             ModOp::Set => Self {
-                set: Some(modifier.value_source.value(attributes_ref).unwrap()),
+                set: Some(modifier.value_source.value(attributes_ref)?),
                 ..default()
             },
             ModOp::Add => Self {
-                additive: modifier.value_source.value(attributes_ref).unwrap(),
+                additive: modifier.value_source.value(attributes_ref)?,
                 ..default()
             },
             ModOp::Sub => Self {
-                subtractive: modifier.value_source.value(attributes_ref).unwrap(),
+                subtractive: modifier.value_source.value(attributes_ref)?,
                 ..default()
             },
-            ModOp::Increase => Self {
-                increase: modifier.value_source.value(attributes_ref).unwrap().as_(),
+            ModOp::Inc => Self {
+                increase: modifier.value_source.value(attributes_ref)?.as_(),
                 ..default()
             },
-            ModOp::More => Self {
-                more: modifier.value_source.value(attributes_ref).unwrap().as_(),
+            ModOp::Mul => Self {
+                multiplier: modifier.value_source.value(attributes_ref)?.as_(),
                 ..default()
             },
-        }
+        };
+        Ok(calculator)
     }
 }
 
@@ -151,7 +151,7 @@ impl<T: Attribute> Default for AttributeCalculator<T> {
             additive: T::Property::zero(),
             subtractive: T::Property::zero(),
             increase: 0.0,
-            more: 1.0,
+            multiplier: 1.0,
         }
     }
 }

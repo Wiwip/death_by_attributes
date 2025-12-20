@@ -65,16 +65,16 @@ impl EffectBuilder {
     ///
     /// // A simple effect that increases the source's health by 100.
     /// let effect = EffectBuilder::new(EffectApplicationPolicy::Instant)
-    ///     .modify::<Health>(100u32, ModOp::Add, Who::Source, 1.0)
+    ///     .modify::<Health>(100u32, ModOp::Add, Who::Source)
     ///     .build();
     ///
     /// let damage = EffectBuilder::instant()
-    ///     .modify::<Health>(Damage::value(), ModOp::Sub, Who::Target, 1.0)
+    ///     .modify::<Health>(Damage::value(), ModOp::Sub, Who::Target)
     ///     .build();
     ///
     /// // Regen 2 health every 1.0 seconds for 12.0 seconds.
     /// let regen = EffectBuilder::every_second_for_duration(1.0, 12.0)
-    ///     .modify::<Health>(2u32, ModOp::Add, Who::Source, 1.0)
+    ///     .modify::<Health>(2u32, ModOp::Add, Who::Source)
     ///     .build();
     /// ```
     pub fn modify<T: Attribute>(
@@ -82,7 +82,6 @@ impl EffectBuilder {
         value: impl IntoValue<Out = T::Property> + 'static,
         modifier: ModOp,
         who: Who,
-        scaling: f64,
     ) -> Self {
         self.def
             .modifiers
@@ -90,7 +89,6 @@ impl EffectBuilder {
                 value.into_value(),
                 modifier,
                 who,
-                scaling,
             )));
         self
     }
@@ -104,9 +102,9 @@ impl EffectBuilder {
     /// attribute!(Health, f32);
     /// attribute!(Damage, f32);
     ///
-    /// // A damage over time effect that has a 10% chance of applying.
+    /// // A damage over time effect that has a 10% chance of applying every tick.
     /// EffectBuilder::every_second_for_duration(1.0, 12.0)
-    ///     .modify::<Health>(Damage::value(), ModOp::Add, Who::Target, 1.0)
+    ///     .modify::<Health>(Damage::value(), ModOp::Add, Who::Target)
     ///     .attach_if(ChanceCondition(0.10))
     ///     .build()
     /// ```

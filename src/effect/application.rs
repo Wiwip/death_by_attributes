@@ -173,10 +173,12 @@ impl ApplyEffectEvent {
                 Who::Target => {
                     let (_, target) = actors.get_mut(self.targeting.target()).unwrap();
                     modifier.apply_delayed(target.id(), commands);
+                    //modifier.apply_immediate(&mut target);
                 }
                 Who::Source => {
                     let (_, source) = actors.get_mut(self.targeting.source()).unwrap();
                     modifier.apply_delayed(source.id(), commands);
+                    //modifier.apply_immediate(&mut source);
                 }
                 Who::Effect => {
                     todo!()
@@ -337,22 +339,20 @@ pub(crate) fn apply_effect_event_observer(
     Ok(())
 }
 
+#[cfg(test)]
 mod test {
-    use bevy::ecs::system::RunSystemOnce;
     use super::*;
-    use crate::ability::AbilityBuilder;
-    use crate::actors::{Actor, ActorBuilder};
-    use crate::assets::{AbilityDef, ActorDef};
+    use crate::actors::ActorBuilder;
+    use crate::assets::{ActorDef};
     use crate::condition::AttributeCondition;
     use crate::context::EffectContext;
     use crate::init_attribute;
     use crate::prelude::*;
+    use bevy::ecs::system::RunSystemOnce;
 
     attribute!(TestA, f32);
     attribute!(TestB, f64);
-
-    #[derive(Component, Copy, Clone, Debug, PartialEq)]
-    struct ConditionTag;
+    attribute!(TestInt, u32);
 
     fn prepare_actor(
         mut actor_assets: ResMut<Assets<ActorDef>>,
@@ -363,12 +363,12 @@ mod test {
             ActorBuilder::new()
                 .with_name("TestActor".into())
                 .with::<TestA>(100.0)
-                .with::<TestB>(1.0)
-                .grant_ability(&registry.ability(TEST_ABILITY_TOKEN))
+                .with::<TestB>(10.0)
+                .with::<TestInt>(50)
                 .with_effect(&registry.effect(CONDITION_EFFECT))
-                .build()
+                .build(),
         );
-        ctx.spawn_actor(&actor_template);
+        ctx.spawn_actor(actor_template);
     }
 
     fn prepare_effects(mut registry: RegistryMut) {
@@ -376,8 +376,8 @@ mod test {
             TEST_EFFECT,
             Effect::permanent()
                 .name("Increase Effect".into())
-                .modify::<TestA>(200.0_f32, ModOp::Add, Who::Target, 1.0)
-                .build()
+                .modify::<TestA>(200.0_f32, ModOp::Add, Who::Target)
+                .build(),
         );
 
         registry.add_effect(
@@ -385,59 +385,51 @@ mod test {
             Effect::permanent()
                 .name("Condition Effect".into())
                 .activate_while(AttributeCondition::<TestA>::target(150.0..))
-                .insert(ConditionTag)
-                .build()
+                .build(),
         );
     }
 
-    pub const TEST_EFFECT: EffectToken = EffectToken::new_static("test.test");
-    pub const CONDITION_EFFECT: EffectToken = EffectToken::new_static("test.condition");
-
-    fn prepare_abilities(mut abilities: RegistryMut) {
-        abilities.add_ability(TEST_ABILITY_TOKEN, fireball_ability());
-    }
-
-    pub const TEST_ABILITY_TOKEN: AbilityToken = AbilityToken::new_static("test.test");
-
-    pub fn fireball_ability() -> AbilityDef {
-        AbilityBuilder::new()
-            .with_name("Test Ability".into())
-            .with_cooldown(TestB::value())
-            .with_cost::<TestB>(3.0)
-            .build()
-    }
+    const TEST_EFFECT: EffectToken = EffectToken::new_static("test.test");
+    const CONDITION_EFFECT: EffectToken = EffectToken::new_static("test.condition");
 
     #[test]
-    fn test_attribute_condition() {
+    fn test_instant_effect_application() {
         let mut app = App::new();
         app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
-        app.add_plugins((init_attribute::<TestA>, init_attribute::<TestB>));
+        app.add_plugins(init_attribute::<TestInt>);
 
-        app.add_systems(
-            Startup,
-            (prepare_effects, prepare_abilities, prepare_actor).chain(),
-        );
+        app.add_systems(Startup, (prepare_effects, prepare_actor).chain());
 
         app.update();
 
-        let mut query = app.world_mut().query::<(Entity, &Actor, &TestA, &TestB)>();
-        let actor_id = query.single(app.world()).unwrap().0;
-
-        // Check that the effect is inactive
-        let mut query = app.world_mut().query::<(Entity, &Effect, &ConditionTag, Option<&EffectInactive>)>();
-        let opt_inactive = query.single(app.world()).unwrap().3;
-        assert!(opt_inactive.is_some());
-
-        app.world_mut().run_system_once(move |mut ctx: EffectContext, registry: Registry|{
-            ctx.apply_effect_to_self(actor_id, &registry.effect(TEST_EFFECT));
-        }).unwrap();
+        // Find the attribute's initial value
+        let mut query = app.world_mut().query::<(Entity, &TestInt)>();
+        let (actor_entity, test_value) = query.single(app.world()).unwrap();
+        let init_value = test_value.current_value();
 
         app.update();
+
+        let modifier_value = 10;
+        app.world_mut()
+            .run_system_once(move |mut ctx: EffectContext| {
+                let effect = EffectBuilder::instant()
+                    .modify::<TestInt>(modifier_value, ModOp::Add, Who::Target)
+                    .build();
+
+                ctx.apply_dynamic_effect_to_self(actor_entity, effect);
+            })
+            .unwrap();
+
+        let mut query = app.world_mut().query::<&TestInt>();
+        let test_c = query.single(app.world()).unwrap();
+        // The attribute shouldn't change till we update
+        assert_eq!(test_c.current_value(), init_value);
+
         app.update();
 
-        // Check that the effect is active
-        let mut query = app.world_mut().query::<(Entity, &Effect, &ConditionTag, Option<&EffectInactive>)>();
-        let opt_inactive = query.single(app.world()).unwrap().3;
-        assert!(opt_inactive.is_none());
+        let mut query = app.world_mut().query::<&TestInt>();
+        let test_c = query.single(app.world()).unwrap();
+        // The new attribute value must be present
+        assert_eq!(test_c.current_value(), init_value + modifier_value);
     }
 }
