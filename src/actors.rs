@@ -132,7 +132,7 @@ impl ActorBuilder {
         self.builder_actions.push_back(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
                 let limits = convert_bounds::<f64, T>(limits.clone());
-                
+
                 entity_commands.insert(Clamp::<T> {
                     value: T::value().into_value(),
                     limits,
@@ -165,7 +165,6 @@ impl ActorBuilder {
                 observer.watch_entity(parent_actor);
 
                 entity_commands.insert(Clamp::<T>::new(S::value(), bounds));
-                println!("Clamp inserted!");
 
                 entity_commands.commands().spawn((
                     observer,
