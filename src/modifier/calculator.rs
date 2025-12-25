@@ -116,27 +116,26 @@ impl<T: Attribute> AttributeCalculator<T> {
     pub fn convert(
         modifier: &AttributeModifier<T>,
         attributes_ref: &AttributesRef,
-    ) -> Result<Self, AttributeError>
-    {
+    ) -> Result<Self, AttributeError> {
         let calculator = match modifier.operation {
             ModOp::Set => Self {
-                set: Some(modifier.value_source.value(attributes_ref)?),
+                set: Some(modifier.value_source.current_value(attributes_ref)?),
                 ..default()
             },
             ModOp::Add => Self {
-                additive: modifier.value_source.value(attributes_ref)?,
+                additive: modifier.value_source.current_value(attributes_ref)?,
                 ..default()
             },
             ModOp::Sub => Self {
-                subtractive: modifier.value_source.value(attributes_ref)?,
+                subtractive: modifier.value_source.current_value(attributes_ref)?,
                 ..default()
             },
             ModOp::Inc => Self {
-                increase: modifier.value_source.value(attributes_ref)?.as_(),
+                increase: modifier.value_source.current_value(attributes_ref)?.as_(),
                 ..default()
             },
             ModOp::Mul => Self {
-                multiplier: modifier.value_source.value(attributes_ref)?.as_(),
+                multiplier: modifier.value_source.current_value(attributes_ref)?.as_(),
                 ..default()
             },
         };

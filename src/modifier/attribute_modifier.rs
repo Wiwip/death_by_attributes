@@ -1,12 +1,12 @@
-use crate::attributes::Value;
-use crate::attributes::{Attribute, AttributeExtractor, BoxAttributeAccessor};
+use crate::effect::{EffectSource, EffectTarget};
 use crate::graph::NodeType;
 use crate::inspector::pretty_type_name;
 use crate::math::AbsDiff;
 use crate::modifier::calculator::{AttributeCalculator, ModOp};
+use crate::modifier::events::ApplyAttributeModifierMessage;
 use crate::modifier::{Modifier, ModifierMarker};
 use crate::modifier::{ReflectAccessModifier, Who};
-use crate::prelude::{ApplyAttributeModifierMessage, EffectSource, EffectTarget};
+use crate::prelude::*;
 use crate::systems::MarkNodeDirty;
 use crate::{AttributesMut, AttributesRef, Spawnable};
 use bevy::prelude::*;
@@ -34,10 +34,6 @@ where
             who,
             operation: modifier,
         }
-    }
-
-    pub fn as_accessor(&self) -> BoxAttributeAccessor<T::Property> {
-        BoxAttributeAccessor::new(AttributeExtractor::<T>::new())
     }
 }
 
@@ -91,7 +87,6 @@ impl<T: Attribute> Modifier for AttributeModifier<T> {
         commands.write_message(ApplyAttributeModifierMessage::<T> {
             target,
             modifier: self.clone(),
-            attribute: BoxAttributeAccessor::new(AttributeExtractor::<T>::new()),
         });
     }
 }

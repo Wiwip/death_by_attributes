@@ -1,10 +1,9 @@
-use crate::condition::{convert_bounds, multiply_bounds};
-use crate::effect::AttributeDependents;
+use crate::effect::{AttributeDependency, AttributeDependents};
 use crate::inspector::pretty_type_name;
 use crate::math::{AbsDiff, SaturatingAttributes};
-use crate::prelude::*;
+use crate::modifier::{AttributeCalculator, AttributeCalculatorCached};
 use crate::systems::MarkNodeDirty;
-use crate::{AttributeError, AttributesMut, AttributesRef, CurrentValueChanged};
+use crate::{AttributeError, AttributesRef};
 use bevy::ecs::component::Mutable;
 use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
@@ -15,14 +14,13 @@ pub use num_traits::{
 };
 use serde::Serialize;
 use std::any::TypeId;
-use std::collections::{Bound, HashSet};
+use std::collections::HashSet;
 use std::fmt::Display;
 use std::fmt::{Debug, Formatter};
 use std::hash::Hasher;
 use std::hash::{DefaultHasher, Hash};
 use std::iter::Sum;
 use std::marker::PhantomData;
-use std::ops::RangeBounds;
 use std::sync::Arc;
 
 pub trait Attribute
@@ -182,7 +180,6 @@ impl<T: Attribute> AttributeQueryDataItem<'_, '_, T> {
     }
 }
 
-
 #[reflect_trait] // Generates a `ReflectMyTrait` type
 pub trait AccessAttribute {
     fn access_base_value(&self) -> f64;
@@ -208,7 +205,7 @@ where
 pub trait ValueSource: Send + Sync + 'static {
     type Output: Num;
 
-    fn value(&self, entity: &AttributesRef) -> Result<Self::Output, AttributeError>;
+    fn current_value(&self, entity: &AttributesRef) -> Result<Self::Output, AttributeError>;
     fn insert_dependency(
         &self,
         target: Entity,
@@ -263,7 +260,7 @@ pub struct AttributeValue<T: Attribute> {
 impl<T: Attribute> ValueSource for AttributeValue<T> {
     type Output = T::Property;
 
-    fn value(&self, entity: &AttributesRef) -> Result<Self::Output, AttributeError> {
+    fn current_value(&self, entity: &AttributesRef) -> Result<Self::Output, AttributeError> {
         Ok(entity
             .get::<T>()
             .ok_or(AttributeError::AttributeNotPresent(TypeId::of::<T>()))?
@@ -313,7 +310,7 @@ pub struct Lit<P: Num>(pub P);
 impl<P: Num + Display + Debug + Copy + Clone + Send + Sync + 'static> ValueSource for Lit<P> {
     type Output = P;
 
-    fn value(&self, _: &AttributesRef) -> Result<Self::Output, AttributeError> {
+    fn current_value(&self, _: &AttributesRef) -> Result<Self::Output, AttributeError> {
         Ok(self.0)
     }
 
@@ -360,108 +357,6 @@ impl_into_value!(usize);
 
 impl_into_value!(f32);
 impl_into_value!(f64);
-
-pub trait AttributeAccessor: Send + Sync + 'static {
-    type Output: Num + PartialOrd + Copy + Clone + Display + Debug + Send + Sync;
-
-    fn current_value(&self, entity: &AttributesRef) -> Result<Self::Output, AttributeError>;
-    fn set_current_value(
-        &self,
-        value: Self::Output,
-        entity: &mut AttributesMut,
-    ) -> Result<(), AttributeError>;
-    fn base_value(&self, entity: &AttributesRef) -> Result<Self::Output, AttributeError>;
-    fn set_base_value(
-        &self,
-        value: Self::Output,
-        entity: &mut AttributesMut,
-    ) -> Result<(), AttributeError>;
-    fn name(&self) -> &str;
-    fn attribute_type_id(&self) -> AttributeTypeId;
-}
-
-#[derive(TypePath, Deref, DerefMut)]
-pub struct BoxAttributeAccessor<P: Num>(pub Box<dyn AttributeAccessor<Output = P>>);
-
-impl<P: Num> BoxAttributeAccessor<P> {
-    pub fn new<T: Attribute<Property = P>>(evaluator: AttributeExtractor<T>) -> Self {
-        Self(Box::new(evaluator))
-    }
-}
-
-impl<P> Debug for BoxAttributeAccessor<P>
-where
-    P: Num + PartialOrd + Copy + Clone + Display + Debug + Send + Sync + 'static,
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("BoxAttributeAccessor")
-            .field("name", &self.0.name())
-            .field("attribute_type_id", &self.0.attribute_type_id())
-            .finish()
-    }
-}
-
-pub struct AttributeExtractor<A: Attribute> {
-    phantom_data: PhantomData<A>,
-}
-
-impl<A: Attribute> AttributeExtractor<A> {
-    pub fn new() -> Self {
-        Self {
-            phantom_data: PhantomData,
-        }
-    }
-}
-
-impl<T: Attribute> AttributeAccessor for AttributeExtractor<T> {
-    type Output = T::Property;
-
-    fn current_value(&self, entity: &AttributesRef) -> Result<T::Property, AttributeError> {
-        Ok(entity
-            .get::<T>()
-            .ok_or(AttributeError::AttributeNotPresent(TypeId::of::<T>()))?
-            .current_value())
-    }
-
-    fn set_current_value(
-        &self,
-        value: T::Property,
-        entity: &mut AttributesMut,
-    ) -> Result<(), AttributeError> {
-        entity
-            .get_mut::<T>()
-            .ok_or(AttributeError::AttributeNotPresent(TypeId::of::<T>()))?
-            .set_current_value(value);
-        Ok(())
-    }
-
-    fn base_value(&self, entity: &AttributesRef) -> Result<T::Property, AttributeError> {
-        Ok(entity
-            .get::<T>()
-            .ok_or(AttributeError::AttributeNotPresent(TypeId::of::<T>()))?
-            .base_value())
-    }
-
-    fn set_base_value(
-        &self,
-        value: T::Property,
-        entity: &mut AttributesMut,
-    ) -> Result<(), AttributeError> {
-        entity
-            .get_mut::<T>()
-            .ok_or(AttributeError::AttributeNotPresent(TypeId::of::<T>()))?
-            .set_base_value(value);
-        Ok(())
-    }
-
-    fn name(&self) -> &'static str {
-        T::type_path()
-    }
-
-    fn attribute_type_id(&self) -> AttributeTypeId {
-        T::attribute_type_id()
-    }
-}
 
 pub fn on_add_attribute<T: Attribute>(trigger: On<Insert, T>, mut commands: Commands) {
     commands.trigger(MarkNodeDirty::<T> {

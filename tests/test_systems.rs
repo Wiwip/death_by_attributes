@@ -3,22 +3,21 @@ use bevy::prelude::*;
 use root_attribute::actors::ActorBuilder;
 use root_attribute::assets::ActorDef;
 use root_attribute::context::EffectContext;
-use root_attribute::init_attribute;
+use root_attribute::effect::{Effect, EffectApplicationPolicy, EffectBuilder};
+use root_attribute::modifier::{ModOp, Who};
 use root_attribute::prelude::*;
+use root_attribute::{attribute, init_attribute, AttributesPlugin};
 
 attribute!(TestA, u32);
 
-fn prepare_actor(
-    mut actor_assets: ResMut<Assets<ActorDef>>,
-    mut ctx: EffectContext,
-) {
+fn prepare_actor(mut actor_assets: ResMut<Assets<ActorDef>>, mut ctx: EffectContext) {
     let actor_template = actor_assets.add(
         ActorBuilder::new()
             .name("TestActor".into())
             .with::<TestA>(0)
             .build(),
     );
-    ctx.spawn_actor(actor_template);
+    ctx.spawn_actor(&actor_template);
 }
 
 /// Creates an actor with attribute TestA(u32) with a base value of 0.

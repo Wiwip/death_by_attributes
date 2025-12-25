@@ -8,19 +8,19 @@ mod timing;
 use crate::assets::EffectDef;
 use crate::effect::application::apply_effect_event_observer;
 use crate::effect::stacks::{NotifyAddStackEvent, read_add_stack_event};
+use crate::effect::timing::{tick_effect_durations, tick_effect_tickers};
+use crate::prelude::Attribute;
+use crate::schedule::EffectsSet;
 use bevy::app::{App, Plugin};
 use bevy::asset::Handle;
 use bevy::ecs::query::QueryData;
 use bevy::prelude::{Component, Deref, Entity, Event, IntoScheduleConfigs, Reflect, Update};
 use std::marker::PhantomData;
 
-use crate::effect::timing::{tick_effect_durations, tick_effect_tickers};
-use crate::prelude::Attribute;
-use crate::schedule::EffectsSet;
+pub use crate::effect::builder::EffectBuilder;
 pub use application::{ApplyEffectEvent, EffectApplicationPolicy};
-pub use builder::EffectBuilder;
-pub use global_effect::{GlobalEffect, GlobalEffectPlugin};
-pub use stacks::{EffectIntensity, EffectStackingPolicy, Stacks};
+pub use global_effect::GlobalEffects;
+pub use stacks::{EffectStackingPolicy, Stacks};
 pub use targeting::EffectTargeting;
 pub use timing::{EffectDuration, EffectTicker};
 

@@ -2,20 +2,17 @@ mod attribute_modifier;
 mod calculator;
 mod events;
 
-use crate::attributes::Attribute;
 use crate::condition::GameplayContext;
 use crate::inspector::pretty_type_name;
-use crate::prelude::{AttributeModifier};
+use crate::prelude::*;
 use crate::{AttributesMut, AttributesRef, Spawnable};
-use bevy::prelude::{Commands, Component, Entity, EntityCommands, Reflect, reflect_trait};
+use bevy::prelude::{reflect_trait, Commands, Component, Entity, EntityCommands, Reflect};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter};
 
-pub mod prelude {
-    pub use super::attribute_modifier::AttributeModifier;
-    pub use super::calculator::{ModOp, AttributeCalculator, AttributeCalculatorCached};
-    pub use super::events::{ApplyAttributeModifierMessage, apply_modifier_events};
-}
+pub use attribute_modifier::AttributeModifier;
+pub use calculator::{AttributeCalculator, AttributeCalculatorCached, ModOp};
+pub use events::{apply_modifier_events, ApplyAttributeModifierMessage};
 
 pub type ModifierFn = dyn Fn(&mut EntityCommands, Entity) + Send + Sync;
 

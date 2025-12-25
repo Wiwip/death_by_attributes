@@ -1,24 +1,23 @@
-use std::collections::VecDeque;
 use crate::ability::{AbilityOf, GrantAbilityCommand};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
-use crate::attribute_clamp::{Clamp, observe_current_value_change_for_clamp_bounds};
-use crate::attributes::{Attribute, AttributeValue, IntoValue, Lit};
-use crate::condition::{convert_bounds, multiply_bounds};
-use crate::effect::EffectTargeting;
+use crate::attribute_clamp::{observe_current_value_change_for_clamp_bounds, Clamp};
+use crate::condition::convert_bounds;
+use crate::effect::{ApplyEffectEvent, EffectTargeting};
 use crate::graph::NodeType;
 use crate::inspector::pretty_type_name;
+use crate::modifier::AttributeCalculatorCached;
 use crate::mutator::EntityActions;
-use crate::prelude::{ApplyEffectEvent, AttributeCalculatorCached, Value};
-use crate::{Abilities, CurrentValueChanged};
+use crate::prelude::*;
+use crate::{CurrentValueChanged, GrantedAbilities};
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use num_traits::{AsPrimitive, Num, Zero};
+use std::collections::VecDeque;
 use std::ops::RangeBounds;
-use std::sync::Arc;
 
 #[allow(dead_code)]
 #[derive(Component, Clone, Debug)]
-#[require(Abilities)]
+#[require(GrantedAbilities)]
 pub struct Actor(Handle<ActorDef>);
 
 pub struct SpawnActorCommand {
@@ -72,8 +71,6 @@ impl EntityCommand for SpawnActorCommand {
                         handle: effect.clone(),
                     });
                 }
-
-
 
                 // Queue the commands for deferred application
                 world.commands().append(&mut queue);
@@ -175,12 +172,14 @@ impl ActorBuilder {
                     )),
                 ));
 
-                entity_commands.commands().trigger(CurrentValueChanged::<S>{
-                    phantom_data: Default::default(),
-                    old: S::Property::zero(),
-                    new: S::Property::zero(),
-                    entity: parent_actor,
-                })
+                entity_commands
+                    .commands()
+                    .trigger(CurrentValueChanged::<S> {
+                        phantom_data: Default::default(),
+                        old: S::Property::zero(),
+                        new: S::Property::zero(),
+                        entity: parent_actor,
+                    })
             },
         ));
 

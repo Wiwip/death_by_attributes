@@ -9,15 +9,15 @@ use petgraph::prelude::Dfs;
 use petgraph::visit::{DfsEvent, depth_first_search};
 use root_attribute::ability::{AbilityBuilder, AbilityExecute, TargetData, TryActivateAbility};
 use root_attribute::actors::ActorBuilder;
-use root_attribute::assets::{AbilityDef, ActorDef, EffectDef};
-use root_attribute::attributes::Attribute;
+use root_attribute::assets::{AbilityDef, EffectDef};
 use root_attribute::attributes::ReflectAccessAttribute;
 use root_attribute::condition::AttributeCondition;
 use root_attribute::context::EffectContext;
-use root_attribute::effect::EffectStackingPolicy;
+use root_attribute::effect::{Effect, EffectStackingPolicy};
 use root_attribute::graph::QueryGraphAdapter;
 use root_attribute::inspector::ActorInspectorPlugin;
 use root_attribute::inspector::debug_overlay::DebugOverlayMarker;
+use root_attribute::modifier::{ModOp, Who};
 use root_attribute::prelude::*;
 use root_attribute::{AttributesPlugin, attribute, init_attribute};
 use std::fmt::Debug;
@@ -247,12 +247,12 @@ fn setup_actor(mut ctx: EffectContext, efx: Res<EffectsDatabase>, abilities: Res
     let player_entity = ctx.add_spawn_actor(actor_template).id();
 
     ctx.apply_effect_to_self(player_entity, &efx.ap_buff);
-    //ctx.apply_effect_to_self(player_entity, &efx.hp_buff);
+    ctx.apply_effect_to_self(player_entity, &efx.hp_buff);
     ctx.apply_effect_to_self(player_entity, &efx.hp_regen);
 
     // Should have two stacks
-    //ctx.apply_effect_to_self(player_entity, &efx.mp_buff);
-    //ctx.apply_effect_to_self(player_entity, &efx.mp_buff);
+    ctx.apply_effect_to_self(player_entity, &efx.mp_buff);
+    ctx.apply_effect_to_self(player_entity, &efx.mp_buff);
 }
 
 #[derive(Component, Copy, Clone)]

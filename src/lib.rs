@@ -1,6 +1,3 @@
-use crate::systems::{
-    apply_periodic_effect, mark_node_dirty_observer, update_attribute, update_effect_system,
-};
 use bevy::prelude::*;
 use std::any::TypeId;
 use std::error::Error;
@@ -18,51 +15,48 @@ pub mod effect;
 pub mod graph;
 pub mod inspector;
 pub mod math;
-mod modifier;
+pub mod modifier;
 pub mod mutator;
-mod registry;
+pub mod registry;
 mod schedule;
 mod systems;
 mod trigger;
 
-use crate::ability::{Abilities, Ability, AbilityCooldown, AbilityOf, AbilityPlugin};
+use crate::ability::{Ability, AbilityCooldown, AbilityOf, AbilityPlugin, GrantedAbilities};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
+use crate::attribute_clamp::apply_clamps;
 use crate::attributes::{
-    Attribute, ReflectAccessAttribute, on_add_attribute, on_change_notify_attribute_dependencies,
-    on_change_notify_attribute_parents,
+    on_add_attribute, on_change_notify_attribute_dependencies, on_change_notify_attribute_parents,
+    ReflectAccessAttribute,
 };
 use crate::condition::ConditionPlugin;
-use crate::effect::{EffectIntensity, EffectsPlugin};
-use crate::inspector::pretty_type_name;
-use crate::prelude::{
-    AppliedEffects, ApplyAttributeModifierMessage, AttributeCalculatorCached, AttributeModifier,
-    Effect, EffectDuration, EffectSource, EffectSources, EffectTarget, EffectTicker,
-    GlobalEffectPlugin, Stacks, apply_modifier_events,
+use crate::effect::global_effect::GlobalEffectPlugin;
+use crate::effect::{
+    AppliedEffects, Effect, EffectDuration, EffectSource, EffectSources, EffectTarget,
+    EffectTicker, EffectsPlugin, Stacks,
 };
+use crate::graph::NodeType;
+use crate::inspector::pretty_type_name;
+use crate::modifier::{
+    apply_modifier_events, ApplyAttributeModifierMessage, AttributeCalculatorCached, Who,
+};
+use crate::prelude::*;
+use crate::registry::RegistryPlugin;
 use crate::schedule::EffectsSet;
+use crate::systems::{
+    apply_periodic_effect, mark_node_dirty_observer, update_attribute, update_effect_system,
+};
 use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
 
 pub mod prelude {
     pub use crate::attributes::{
-        AccessAttribute, Attribute, AttributeTypeId, ReflectAccessAttribute, Value,
+        AccessAttribute, Attribute, AttributeTypeId, IntoValue, ReflectAccessAttribute, Value,
     };
-    pub use crate::condition::{ChanceCondition, Condition};
-    pub use crate::effect::*;
-    pub use crate::modifier::prelude::*;
-    pub use crate::modifier::*;
-    pub use crate::registry::{
-        Registry, RegistryMut, ability_registry::AbilityToken, effect_registry::EffectToken,
-    };
-    pub use crate::schedule::EffectsSet;
-    pub use crate::{AttributesPlugin, attribute};
+    pub use crate::condition::{Condition, ConditionExt};
+    pub use crate::modifier::{AccessModifier, AttributeModifier, Modifier};
 }
 
-use crate::graph::NodeType;
-use crate::modifier::Who;
-use crate::registry::RegistryPlugin;
-
 pub use num_traits;
-use crate::attribute_clamp::apply_clamps;
 
 pub struct AttributesPlugin;
 
@@ -75,7 +69,7 @@ impl Plugin for AttributesPlugin {
             GlobalEffectPlugin,
             RegistryPlugin,
         ))
-        .add_plugins((init_attribute::<EffectIntensity>, init_attribute::<Stacks>))
+        .add_plugins(init_attribute::<Stacks>)
         .init_schedule(PreUpdate)
         .init_schedule(PostUpdate)
         .init_asset::<ActorDef>()
@@ -125,11 +119,7 @@ pub fn init_attribute<T: Attribute>(app: &mut App) {
 
     app.add_systems(
         Update,
-        (
-            update_effect_system::<T>,
-            //apply_derived_clamp_attributes::<T>,
-            apply_clamps::<T>,
-        )
+        (update_effect_system::<T>, apply_clamps::<T>)
             .chain()
             .in_set(EffectsSet::UpdateCurrentValues),
     );
@@ -142,7 +132,6 @@ pub fn init_attribute<T: Attribute>(app: &mut App) {
         ),
     );
 
-    //app.add_observer(clamp_base_value_observer::<T>);
     app.add_observer(mark_node_dirty_observer::<T>);
     app.add_observer(on_add_attribute::<T>);
     app.add_observer(update_attribute::<T>);
@@ -167,7 +156,7 @@ pub type AttributesMut<'w> = EntityMutExcept<
         AppliedEffects,
         EffectSources,
         Ability,
-        Abilities,
+        GrantedAbilities,
         AbilityOf,
         AbilityCooldown,
     ),
@@ -187,7 +176,7 @@ pub type AttributesRef<'w> = EntityRefExcept<
         AppliedEffects,
         EffectSources,
         Ability,
-        Abilities,
+        GrantedAbilities,
         AbilityOf,
         AbilityCooldown,
     ),

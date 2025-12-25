@@ -20,7 +20,6 @@ impl Plugin for RegistryPlugin {
 pub struct Registry<'w> {
     ability_registry: Res<'w, AbilityRegistry>,
     //ability_assets: Res<'w, Assets<AbilityDef>>,
-
     effect_registry: Res<'w, EffectRegistry>,
     //effect_assets: Res<'w, Assets<EffectDef>>,
 }
@@ -29,12 +28,11 @@ impl Registry<'_> {
     pub fn effect(&self, name: EffectToken) -> Handle<EffectDef> {
         self.effect_registry.get(name).clone()
     }
-    
+
     pub fn ability(&self, name: AbilityToken) -> Handle<AbilityDef> {
         self.ability_registry.get(name).clone()
     }
 }
-
 
 #[derive(SystemParam)]
 pub struct RegistryMut<'w> {

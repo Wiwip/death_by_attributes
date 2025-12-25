@@ -1,8 +1,9 @@
 use crate::ReflectAccessAttribute;
 use crate::assets::EffectDef;
 use crate::attribute;
+use crate::effect::Effect;
 use crate::effect::timing::EffectDuration;
-use crate::prelude::{Attribute, Effect};
+use crate::prelude::Attribute;
 use bevy::prelude::*;
 use num_traits::AsPrimitive;
 

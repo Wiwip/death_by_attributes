@@ -1,59 +1,15 @@
-use crate::ability::{Ability, AbilityCooldown};
+use crate::ability::AbilityCooldown;
 use crate::assets::AbilityDef;
 use crate::attributes::{Attribute, IntoValue, Lit, Value};
 use crate::condition::{AttributeCondition, BoxCondition};
 use crate::inspector::pretty_type_name;
-use crate::modifier::{Modifier, Who};
+use crate::modifier::{AttributeCalculatorCached, ModOp, Modifier, Who};
 use crate::mutator::EntityActions;
-use crate::prelude::{AttributeCalculatorCached, AttributeModifier, ModOp};
-use bevy::asset::{Assets, Handle};
+use crate::prelude::AttributeModifier;
 use bevy::ecs::system::IntoObserverSystem;
-use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use num_traits::{AsPrimitive, Num};
 use std::sync::Arc;
-
-pub struct GrantAbilityCommand {
-    pub parent: Entity,
-    pub handle: Handle<AbilityDef>,
-}
-
-impl EntityCommand for GrantAbilityCommand {
-    fn apply(self, mut entity: EntityWorldMut) -> () {
-        let ability_def = {
-            // Create a temporary scope to borrow the world
-            let world = entity.world();
-            let actor_assets = world.resource::<Assets<AbilityDef>>();
-            actor_assets.get(&self.handle).unwrap()
-        }; // World borrow ends here
-
-        let mut queue = {
-            let mut queue = CommandQueue::default();
-            let mut commands = Commands::new(&mut queue, entity.world());
-
-            // Apply mutators
-            for mutator in &ability_def.mutators {
-                let mut entity_commands = commands.entity(entity.id());
-                mutator.apply(&mut entity_commands);
-            }
-
-            for observer in &ability_def.observers {
-                let mut entity_commands = commands.entity(self.parent);
-                observer.apply(&mut entity_commands);
-            }
-
-            queue
-        };
-
-        entity.insert((Ability(self.handle), Name::new(ability_def.name.clone())));
-
-        // Apply the commands
-        entity.world_scope(|world| {
-            world.commands().append(&mut queue);
-            world.flush();
-        });
-    }
-}
 
 pub struct AbilityBuilder {
     name: String,

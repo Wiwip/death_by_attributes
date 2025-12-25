@@ -51,7 +51,7 @@ pub fn observe_current_value_change_for_clamp_bounds<S: Attribute, T: Attribute>
             return;
         };
 
-        let Ok(value_source) = clamp.value.value(&attribute_ref) else {
+        let Ok(value_source) = clamp.value.current_value(&attribute_ref) else {
             warn!(
                 "Error getting attribute value for clamp: {}.",
                 trigger.entity

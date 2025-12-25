@@ -3,9 +3,9 @@ use crate::attributes::{Attribute, IntoValue};
 use crate::condition::{AttributeCondition, BoxCondition};
 use crate::effect::application::EffectApplicationPolicy;
 use crate::effect::EffectStackingPolicy;
-use crate::modifier::Who;
+use crate::modifier::{ModOp, Who};
 use crate::mutator::EntityActions;
-use crate::prelude::{AttributeModifier, ModOp};
+use crate::prelude::*;
 use bevy::ecs::system::IntoObserverSystem;
 use bevy::prelude::{Bundle, Entity, EntityCommands, EntityEvent, Name};
 use std::ops::RangeBounds;
@@ -114,7 +114,6 @@ impl EffectBuilder {
             .push(BoxCondition::new(condition));
         self
     }
-
 
     pub fn activate_while(mut self, condition: impl crate::condition::Condition + 'static) -> Self {
         self.def

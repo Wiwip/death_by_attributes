@@ -3,10 +3,9 @@ use crate::assets::EffectDef;
 use crate::condition::GameplayContext;
 use crate::effect::stacks::NotifyAddStackEvent;
 use crate::effect::timing::{EffectDuration, EffectTicker};
-use crate::effect::{AppliedEffects, Effect, EffectStackingPolicy, EffectTargeting};
+use crate::effect::{AppliedEffects, Effect, EffectSource, EffectStackingPolicy, EffectTarget, EffectTargeting};
 use crate::graph::NodeType;
 use crate::modifier::{Modifier, Who};
-use crate::prelude::{EffectSource, EffectTarget};
 use bevy::asset::{Assets, Handle};
 use bevy::log::debug;
 use bevy::prelude::*;
@@ -173,12 +172,10 @@ impl ApplyEffectEvent {
                 Who::Target => {
                     let (_, target) = actors.get_mut(self.targeting.target()).unwrap();
                     modifier.apply_delayed(target.id(), commands);
-                    //modifier.apply_immediate(&mut target);
                 }
                 Who::Source => {
                     let (_, source) = actors.get_mut(self.targeting.source()).unwrap();
                     modifier.apply_delayed(source.id(), commands);
-                    //modifier.apply_immediate(&mut source);
                 }
                 Who::Effect => {
                     todo!()
@@ -343,12 +340,16 @@ pub(crate) fn apply_effect_event_observer(
 mod test {
     use super::*;
     use crate::actors::ActorBuilder;
-    use crate::assets::{ActorDef};
+    use crate::assets::ActorDef;
     use crate::condition::AttributeCondition;
     use crate::context::EffectContext;
-    use crate::init_attribute;
+    use crate::{attribute, init_attribute, AttributesPlugin};
     use crate::prelude::*;
     use bevy::ecs::system::RunSystemOnce;
+    use crate::effect::builder::EffectBuilder;
+    use crate::modifier::ModOp;
+    use crate::registry::{Registry, RegistryMut};
+    use crate::registry::effect_registry::EffectToken;
 
     attribute!(TestA, f32);
     attribute!(TestB, f64);
@@ -368,7 +369,7 @@ mod test {
                 .with_effect(&registry.effect(CONDITION_EFFECT))
                 .build(),
         );
-        ctx.spawn_actor(actor_template);
+        ctx.spawn_actor(&actor_template);
     }
 
     fn prepare_effects(mut registry: RegistryMut) {

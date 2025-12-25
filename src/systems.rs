@@ -2,13 +2,13 @@ use crate::actors::Actor;
 use crate::assets::EffectDef;
 use crate::attributes::{Attribute, AttributeQueryData, AttributeQueryDataReadOnly};
 use crate::condition::GameplayContext;
-use crate::effect::Stacks;
+use crate::effect::{AppliedEffects, Effect, EffectSource, EffectStatusParam, EffectTarget, EffectTicker, Stacks};
 use crate::graph::{NodeType, QueryGraphAdapter};
-use crate::modifier::Who;
+use crate::modifier::{ApplyAttributeModifierMessage, AttributeCalculator, Who};
 use crate::prelude::*;
 use crate::{AttributesRef, CurrentValueChanged, Dirty};
 use bevy::prelude::*;
-use petgraph::visit::IntoNeighbors;
+use petgraph::visit::{IntoNeighbors};
 use std::any::type_name;
 use std::marker::PhantomData;
 
@@ -36,7 +36,6 @@ pub fn mark_node_dirty_observer<T: Attribute>(
         .entity(trigger.entity)
         .try_insert(Dirty::<T>::default());
 }
-
 
 /// Navigates the tree descendants to update the tree attribute values
 /// Effects that have a periodic timer application must be ignored in the current value calculations
@@ -243,21 +242,18 @@ pub fn apply_periodic_effect<T: Attribute>(
                     event_writer.write(ApplyAttributeModifierMessage {
                         target: target.0,
                         modifier: applied_modifier,
-                        attribute: attribute_modifier.as_accessor(),
                     });
                 }
                 Who::Source => {
                     event_writer.write(ApplyAttributeModifierMessage {
                         target: source.0,
                         modifier: applied_modifier,
-                        attribute: attribute_modifier.as_accessor(),
                     });
                 }
                 Who::Effect => {
                     event_writer.write(ApplyAttributeModifierMessage {
                         target: effect_ref.id(),
                         modifier: applied_modifier,
-                        attribute: attribute_modifier.as_accessor(),
                     });
                 }
             }

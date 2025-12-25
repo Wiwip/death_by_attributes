@@ -1,9 +1,10 @@
-use std::any::type_name;
 use crate::actors::{Actor, ActorBuilder};
 use crate::assets::EffectDef;
 use crate::context::EffectContext;
 use bevy::prelude::*;
 
+/// A plugin that manages global effects within the game.
+/// Its purpose is to add effects that are applied to any spawned actor.
 pub struct GlobalEffectPlugin;
 
 impl Plugin for GlobalEffectPlugin {
@@ -27,9 +28,7 @@ pub struct GlobalEffect;
 pub fn spawn_global_actor(mut commands: Commands, mut ctx: EffectContext) {
     let global_actor = commands.spawn(GlobalActor).id();
 
-    let actor = ActorBuilder::new()
-        .name("Global Effect Actor")
-        .build();
+    let actor = ActorBuilder::new().name("Global Effect Actor").build();
 
     let actor_handle = ctx.add_actor(actor);
     ctx.insert_actor(global_actor, &actor_handle);
@@ -48,10 +47,15 @@ mod test {
     use crate::assets::{AbilityDef, ActorDef};
     use crate::condition::AttributeCondition;
     use crate::context::EffectContext;
-    use crate::init_attribute;
+    use crate::{attribute, init_attribute, AttributesPlugin};
     use crate::prelude::*;
     use bevy::ecs::system::RunSystemOnce;
     use bevy::prelude::*;
+    use crate::effect::{Effect, EffectInactive};
+    use crate::modifier::{ModOp, Who};
+    use crate::registry::{Registry, RegistryMut};
+    use crate::registry::ability_registry::AbilityToken;
+    use crate::registry::effect_registry::EffectToken;
 
     attribute!(TestAttribute, f64);
 
@@ -71,7 +75,7 @@ mod test {
                 .with_effect(&registry.effect(CONDITION_EFFECT))
                 .build(),
         );
-        ctx.spawn_actor(actor_template);
+        ctx.spawn_actor(&actor_template);
     }
 
     fn prepare_effects(mut registry: RegistryMut) {

@@ -1,5 +1,6 @@
 use crate::ability::{
-    Abilities, Ability, AbilityCooldown, AbilityExecute, AbilityOf, TargetData, TryActivateAbility,
+    Ability, AbilityCooldown, AbilityExecute, AbilityOf, GrantedAbilities, TargetData,
+    TryActivateAbility,
 };
 use crate::assets::AbilityDef;
 use crate::condition::{BoxCondition, GameplayContext};
@@ -18,10 +19,11 @@ pub fn tick_ability_cooldown(mut query: Query<&mut AbilityCooldown>, time: Res<T
 ///
 /// Base conditions are:
 /// - Cooldown
+/// - Conditions
 /// - Cost
 pub fn try_activate_ability_observer(
     trigger: On<TryActivateAbility>,
-    actors: Query<(AttributesRef, &Abilities), Without<AbilityCooldown>>,
+    actors: Query<(AttributesRef, &GrantedAbilities), Without<AbilityCooldown>>,
     abilities: Query<(AttributesRef, &Ability, Option<&AbilityCooldown>)>,
     ability_assets: Res<Assets<AbilityDef>>,
     mut commands: Commands,
@@ -47,12 +49,8 @@ pub fn try_activate_ability_observer(
 
         // Handle cooldowns
         let is_finished = match opt_cooldown {
-            None => {
-                true
-            }
-            Some(cd) => {
-                cd.timer.is_finished()
-            }
+            None => true,
+            Some(cd) => cd.timer.is_finished(),
         };
         if !is_finished {
             continue;
@@ -98,7 +96,12 @@ fn can_activate_ability(
     };
     let meet_conditions = conditions.0.eval(&context).unwrap_or(false);
     if !meet_conditions {
-        debug!("Ability({}) conditions[{:?}] not met for: {}.", ability_entity_ref.id(), conditions, ability_def.name);
+        debug!(
+            "Ability({}) conditions[{:?}] not met for: {}.",
+            ability_entity_ref.id(),
+            conditions,
+            ability_def.name
+        );
         return Ok(false);
     }
 
@@ -128,7 +131,7 @@ pub(crate) fn reset_ability_cooldown(
     };
 
     let entity_ref = query.get(parent.0)?;
-    let cd_value = cooldown.value.value(&entity_ref)?;
+    let cd_value = cooldown.value.current_value(&entity_ref)?;
 
     cooldown
         .timer

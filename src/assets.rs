@@ -1,10 +1,9 @@
-use std::collections::VecDeque;
 use crate::condition::BoxCondition;
-use crate::effect::EffectStackingPolicy;
+use crate::effect::{EffectApplicationPolicy, EffectStackingPolicy};
 use crate::modifier::{Modifier, ModifierFn};
 use crate::mutator::EntityActions;
-use crate::prelude::EffectApplicationPolicy;
 use bevy::prelude::*;
+use std::collections::VecDeque;
 
 #[derive(Asset, TypePath)]
 pub struct ActorDef {
@@ -22,10 +21,10 @@ pub struct EffectDef {
 
     pub effect_fn: Vec<Box<ModifierFn>>,
     pub modifiers: Vec<Box<dyn Modifier>>,
-    
+
     pub attach_conditions: Vec<BoxCondition>,
     pub activate_conditions: Vec<BoxCondition>,
-    
+
     pub on_actor_triggers: Vec<EntityActions>,
     pub on_effect_triggers: Vec<EntityActions>,
 }

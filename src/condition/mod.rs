@@ -12,11 +12,12 @@ mod systems;
 use crate::attributes::Attribute;
 use crate::{AttributesMut, AttributesRef};
 
+
 pub use conditions::{
     AbilityCondition, And, AttributeCondition, ChanceCondition, ConditionExt, Not, Or,
     StackCondition, TagCondition,
 };
-use crate::prelude::EffectsSet;
+use crate::schedule::EffectsSet;
 
 pub struct ConditionPlugin;
 
@@ -24,7 +25,10 @@ impl Plugin for ConditionPlugin {
     fn build(&self, app: &mut App) {
         // This system is responsible for checking conditions and
         // activating/deactivating their related effects.
-        app.add_systems(Update, evaluate_effect_conditions.in_set(EffectsSet::Prepare));
+        app.add_systems(
+            Update,
+            evaluate_effect_conditions.in_set(EffectsSet::Prepare),
+        );
         //app.add_systems(Update, evaluate_effect_conditions.in_set(EffectsSet::Notify));
     }
 }

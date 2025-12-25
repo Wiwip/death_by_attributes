@@ -1,9 +1,10 @@
-use crate::prelude::*;
+
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use petgraph::visit::Visitable;
 use petgraph::visit::{GraphBase, IntoNeighbors};
 use std::collections::HashSet;
+use crate::effect::AppliedEffects;
 
 /// Attributes are Components and inserted on Entities.
 /// - Derived attributes could be used

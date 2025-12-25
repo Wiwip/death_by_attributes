@@ -1,6 +1,6 @@
 use crate::ability::Ability;
 use crate::assets::AbilityDef;
-use crate::attributes::{Attribute, AttributeAccessor, AttributeExtractor};
+use crate::attributes::Attribute;
 use crate::condition::{Condition, GameplayContext};
 use crate::effect::Stacks;
 use crate::inspector::pretty_type_name;
@@ -40,7 +40,13 @@ impl<T: Attribute> AttributeCondition<T> {
 
 impl<T: Attribute> std::fmt::Debug for AttributeCondition<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Attribute {} on {:?} in range {:?}", pretty_type_name::<T>(), self.who, self.bounds)
+        write!(
+            f,
+            "Attribute {} on {:?} in range {:?}",
+            pretty_type_name::<T>(),
+            self.who,
+            self.bounds
+        )
     }
 }
 
@@ -48,11 +54,10 @@ impl<T: Attribute> Condition for AttributeCondition<T> {
     fn eval(&self, context: &GameplayContext) -> Result<bool, BevyError> {
         let entity = self.who.resolve_entity(context);
 
-        let extractor = AttributeExtractor::<T>::new();
-        match extractor.current_value(entity) {
-            Ok(value) => Ok(self.bounds.contains(&value)),
-            Err(e) => {
-                error!("Error evaluating attribute condition: {:?}", e);
+        match entity.get::<T>() {
+            Some(value) => Ok(self.bounds.contains(&value.current_value())),
+            None => {
+                error!("Error evaluating attribute condition:{}", self);
                 Ok(false)
             }
         }

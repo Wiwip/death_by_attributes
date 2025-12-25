@@ -1,4 +1,3 @@
-
 pub trait AbsDiff<Rhs = Self> {
     type Output;
     fn abs_diff(self, rhs: Rhs) -> Self::Output;
@@ -60,7 +59,6 @@ impl_abs_diff_for_signed_integers!(i8, i16, i32, i64, i128, isize);
 impl_abs_diff_for_floats!(f32, f64);
 impl_abs_diff_for_unsigned!(u8, u16, u32, u64, u128, usize);
 
-
 pub trait SaturatingAttributes<Rhs = Self> {
     type Output;
     fn saturating_add(self, rhs: Rhs) -> Self::Output;
@@ -121,11 +119,3 @@ macro_rules! impl_saturating_sub_for_unsigned {
 impl_saturating_sub_for_signed_integers!(i8, i16, i32, i64, i128, isize);
 impl_saturating_sub_for_floats!(f32, f64);
 impl_saturating_sub_for_unsigned!(u8, u16, u32, u64, u128, usize);
-
-
-
-
-
-
-
-

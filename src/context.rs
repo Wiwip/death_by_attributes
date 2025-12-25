@@ -1,9 +1,7 @@
 use crate::actors::SpawnActorCommand;
 use crate::assets::{ActorDef, EffectDef};
-use crate::effect::global_effect::GlobalActor;
-use crate::effect::EffectTargeting;
-use crate::prelude::global_effect::GlobalEffects;
-use crate::prelude::ApplyEffectEvent;
+use crate::effect::{ApplyEffectEvent, EffectTargeting};
+use crate::effect::global_effect::{GlobalActor, GlobalEffects};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 
@@ -66,7 +64,7 @@ impl<'s, 'w> EffectContext<'w, 's> {
         self.actors.add(actor)
     }
 
-    pub fn spawn_actor(&mut self, handle: Handle<ActorDef>) -> EntityCommands<'_> {
+    pub fn spawn_actor(&mut self, handle: &Handle<ActorDef>) -> EntityCommands<'_> {
         let mut entity_commands = self.commands.spawn_empty();
         entity_commands.queue(SpawnActorCommand {
             handle: handle.clone(),
@@ -76,7 +74,7 @@ impl<'s, 'w> EffectContext<'w, 's> {
 
     pub fn add_spawn_actor(&mut self, actor: ActorDef) -> EntityCommands<'_> {
         let handle = self.actors.add(actor);
-        self.spawn_actor(handle)
+        self.spawn_actor(&handle)
     }
 
     pub fn insert_actor(&mut self, entity: Entity, handle: &Handle<ActorDef>) {
