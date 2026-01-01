@@ -3,9 +3,11 @@ use crate::assets::EffectDef;
 use crate::condition::GameplayContext;
 use crate::effect::stacks::NotifyAddStackEvent;
 use crate::effect::timing::{EffectDuration, EffectTicker};
-use crate::effect::{AppliedEffects, Effect, EffectSource, EffectStackingPolicy, EffectTarget, EffectTargeting};
+use crate::effect::{
+    AppliedEffects, Effect, EffectSource, EffectStackingPolicy, EffectTarget, EffectTargeting,
+};
 use crate::graph::NodeType;
-use crate::modifier::{Modifier, Who};
+use crate::modifier::{Modifier, ModifierOf, ModifierSource, ModifierTarget, Who};
 use bevy::asset::{Assets, Handle};
 use bevy::log::debug;
 use bevy::prelude::*;
@@ -146,12 +148,12 @@ impl ApplyEffectEvent {
         };
 
         // Determines whether the effect should activate
-        let should_be_activated = effect
+        let should_apply = effect
             .activate_conditions
             .iter()
             .all(|condition| condition.0.eval(&context).unwrap_or(false));
 
-        if !should_be_activated {
+        if !should_apply {
             return Ok(());
         }
 
@@ -167,20 +169,12 @@ impl ApplyEffectEvent {
     ) where
         I: Iterator<Item = &'a Box<dyn Modifier>>,
     {
+        let [(_, source), (_, target)] = actors
+            .get_many([self.targeting.source(), self.targeting.target()])
+            .unwrap();
+
         for modifier in modifiers {
-            match modifier.who() {
-                Who::Target => {
-                    let (_, target) = actors.get_mut(self.targeting.target()).unwrap();
-                    modifier.apply_delayed(target.id(), commands);
-                }
-                Who::Source => {
-                    let (_, source) = actors.get_mut(self.targeting.source()).unwrap();
-                    modifier.apply_delayed(source.id(), commands);
-                }
-                Who::Effect => {
-                    todo!()
-                }
-            }
+            modifier.apply_delayed(source.id(), target.id(), self.entity, commands);
         }
     }
 
@@ -200,7 +194,9 @@ impl ApplyEffectEvent {
             }
             Some(effects_on_actor) => {
                 let effects = effects_on_actor.iter().filter_map(|effect_entity| {
-                    let other_effect = effects.get(effect_entity).unwrap();
+                    let Ok(other_effect) = effects.get(effect_entity) else {
+                        return None;
+                    };
                     if other_effect.0.id() == self.handle.id() {
                         Some(effect_entity)
                     } else {
@@ -277,18 +273,22 @@ impl ApplyEffectEvent {
                 Who::Target => {
                     let (_, target) = actors.get_mut(self.targeting.target()).unwrap();
                     let mod_entity = modifier.spawn(commands, target.as_readonly());
-                    commands
-                        .entity(mod_entity)
-                        .insert(EffectTarget(effect_entity));
+                    commands.entity(mod_entity).insert((
+                        ModifierOf(effect_entity),
+                        ModifierSource(self.targeting.source()),
+                        ModifierTarget(self.targeting.target()),
+                    ));
                 }
                 Who::Source => {
                     let (_, source) = actors.get_mut(self.targeting.source()).unwrap();
                     let mod_entity = modifier.spawn(commands, source.as_readonly());
-                    commands
-                        .entity(mod_entity)
-                        .insert(EffectTarget(effect_entity));
+                    commands.entity(mod_entity).insert((
+                        ModifierOf(effect_entity),
+                        ModifierSource(self.targeting.source()),
+                        ModifierTarget(self.targeting.target()),
+                    ));
                 }
-                Who::Effect => todo!(),
+                Who::Owner => todo!(),
             });
 
         // Spawn effect triggers
@@ -343,13 +343,13 @@ mod test {
     use crate::assets::ActorDef;
     use crate::condition::AttributeCondition;
     use crate::context::EffectContext;
-    use crate::{attribute, init_attribute, AttributesPlugin};
-    use crate::prelude::*;
-    use bevy::ecs::system::RunSystemOnce;
     use crate::effect::builder::EffectBuilder;
     use crate::modifier::ModOp;
-    use crate::registry::{Registry, RegistryMut};
+    use crate::prelude::*;
     use crate::registry::effect_registry::EffectToken;
+    use crate::registry::{Registry, RegistryMut};
+    use crate::{AttributesPlugin, attribute, init_attribute};
+    use bevy::ecs::system::RunSystemOnce;
 
     attribute!(TestA, f32);
     attribute!(TestB, f64);

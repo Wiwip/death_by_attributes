@@ -1,5 +1,6 @@
-use crate::attributes::{AttributeQueryData, IntoValue};
-use crate::condition::{convert_bounds, multiply_bounds};
+use crate::attributes::AttributeQueryData;
+use crate::condition::{convert_bounds, multiply_bounds, GameplayContext};
+use crate::expression::{Expr, Expression};
 use crate::inspector::pretty_type_name;
 use crate::prelude::*;
 use crate::{AttributesRef, CurrentValueChanged};
@@ -11,7 +12,7 @@ use std::ops::RangeBounds;
 
 #[derive(Component, Debug, Clone)]
 pub struct Clamp<T: Attribute> {
-    pub(crate) value: Value<T::Property>,
+    pub(crate) expression: Expr<T::Property>,
     pub(crate) limits: (Bound<T::Property>, Bound<T::Property>),
     pub(crate) bounds: (Bound<T::Property>, Bound<T::Property>),
 }
@@ -22,11 +23,11 @@ where
     f64: AsPrimitive<T::Property>,
 {
     pub fn new(
-        value: impl IntoValue<Out = T::Property>,
+        expression: Expr<T::Property>,
         limits: impl RangeBounds<f64> + Send + Sync + Copy + 'static,
     ) -> Self {
         Self {
-            value: value.into_value(),
+            expression,
             limits: convert_bounds::<f64, T>(limits),
             bounds: (Bound::Unbounded, Bound::Unbounded),
         }
@@ -51,13 +52,19 @@ pub fn observe_current_value_change_for_clamp_bounds<S: Attribute, T: Attribute>
             return;
         };
 
-        let Ok(value_source) = clamp.value.current_value(&attribute_ref) else {
+        let fake_context = GameplayContext {
+            source_actor: &attribute_ref,
+            target_actor: &attribute_ref,
+            owner: &attribute_ref,
+        };
+        let Ok(value_source) = clamp.expression.eval(&fake_context) else {
             warn!(
                 "Error getting attribute value for clamp: {}.",
                 trigger.entity
             );
             return;
         };
+        println!("value_source: {}", value_source);
         value_source
     };
 

@@ -12,12 +12,11 @@ mod systems;
 use crate::attributes::Attribute;
 use crate::{AttributesMut, AttributesRef};
 
-
+use crate::schedule::EffectsSet;
 pub use conditions::{
     AbilityCondition, And, AttributeCondition, ChanceCondition, ConditionExt, Not, Or,
     StackCondition, TagCondition,
 };
-use crate::schedule::EffectsSet;
 
 pub struct ConditionPlugin;
 
@@ -47,14 +46,14 @@ impl BoxCondition {
 }
 
 pub struct GameplayContextMut<'a> {
-    pub target_actor: &'a AttributesMut<'a>,
-    pub source_actor: &'a AttributesMut<'a>,
-    pub owner: &'a AttributesMut<'a>,
+    pub source_actor: &'a mut AttributesMut<'a>,
+    pub target_actor: &'a mut AttributesMut<'a>,
+    pub owner: &'a mut AttributesMut<'a>,
 }
 
 pub struct GameplayContext<'a> {
-    pub target_actor: &'a AttributesRef<'a>,
     pub source_actor: &'a AttributesRef<'a>,
+    pub target_actor: &'a AttributesRef<'a>,
     pub owner: &'a AttributesRef<'a>,
 }
 

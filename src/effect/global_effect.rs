@@ -56,6 +56,7 @@ mod test {
     use crate::registry::{Registry, RegistryMut};
     use crate::registry::ability_registry::AbilityToken;
     use crate::registry::effect_registry::EffectToken;
+    use crate::expression::*;
 
     attribute!(TestAttribute, f64);
 

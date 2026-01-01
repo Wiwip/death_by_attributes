@@ -17,6 +17,7 @@ use std::fmt::Formatter;
 pub use builder::AbilityBuilder;
 pub use command::GrantAbilityCommand;
 pub use system_param::AbilityContext;
+use crate::expression::Expr;
 
 pub struct AbilityPlugin;
 
@@ -44,7 +45,7 @@ pub struct GrantedAbilities(Vec<Entity>);
 #[derive(Component)]
 pub struct Ability(pub(crate) Handle<AbilityDef>);
 
-#[derive(EntityEvent)]
+#[derive(EntityEvent, Debug)]
 pub struct TryActivateAbility {
     #[event_target]
     ability: Entity,
@@ -69,13 +70,13 @@ impl TryActivateAbility {
     }
 }
 
-#[derive(Component, Reflect)]
+#[derive(Component)]
 pub struct AbilityCooldown {
     timer: Timer,
-    #[reflect(ignore)]
-    value: Value<f64>,
+    value: Expr<f64>,
 }
 
+#[derive(Debug)]
 pub enum TargetData {
     SelfCast,
     Target(Entity),
@@ -127,9 +128,12 @@ impl std::fmt::Display for AbilityError {
                 )
             }
             AbilityError::AbilityDoesNotExist(entity) => {
-                write!(f, "{}: The entity is not an ability (e.g. No Ability component).", entity)
+                write!(
+                    f,
+                    "{}: The entity is not an ability (e.g. No Ability component).",
+                    entity
+                )
             }
-
         }
     }
 }

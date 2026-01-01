@@ -145,7 +145,7 @@ mod test {
     pub fn fireball_ability() -> AbilityDef {
         AbilityBuilder::new()
             .with_name("Test Ability".into())
-            .with_cooldown(TestB::value())
+            .with_cooldown(TestB::source_expr())
             .with_cost::<TestB>(3.0)
             .build()
     }

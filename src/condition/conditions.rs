@@ -170,7 +170,7 @@ impl<C: Component> TagCondition<C> {
     }
 
     pub fn effect() -> Self {
-        Self::new(Who::Effect)
+        Self::new(Who::Owner)
     }
 }
 

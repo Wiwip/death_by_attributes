@@ -26,7 +26,7 @@ pub struct SpawnActorCommand {
 
 impl EntityCommand for SpawnActorCommand {
     fn apply(self, mut entity: EntityWorldMut) -> () {
-        debug!("Spawning actor {:?}", self.handle);
+        debug!("Spawning actor {} {:?}", entity.id(), self.handle);
         let actor_entity = entity.id();
 
         entity.world_scope(|world| {
@@ -131,7 +131,7 @@ impl ActorBuilder {
                 let limits = convert_bounds::<f64, T>(limits.clone());
 
                 entity_commands.insert(Clamp::<T> {
-                    value: T::value().into_value(),
+                    expression: T::source_expr(),
                     limits,
                     bounds: limits,
                 });
@@ -159,9 +159,10 @@ impl ActorBuilder {
 
                 let mut observer =
                     Observer::new(observe_current_value_change_for_clamp_bounds::<S, T>);
+                println!("WATCHING: parent_actor {:?}", parent_actor);
                 observer.watch_entity(parent_actor);
 
-                entity_commands.insert(Clamp::<T>::new(S::value(), bounds));
+                entity_commands.insert(Clamp::<T>::new(S::source_expr(), bounds));
 
                 entity_commands.commands().spawn((
                     observer,

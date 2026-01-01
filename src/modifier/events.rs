@@ -5,10 +5,13 @@ use crate::modifier::calculator::AttributeCalculator;
 use crate::prelude::*;
 use crate::systems::MarkNodeDirty;
 use bevy::prelude::*;
+use crate::condition::GameplayContext;
 
 #[derive(Message)]
 pub struct ApplyAttributeModifierMessage<T: Attribute> {
-    pub target: Entity,
+    pub source_entity: Entity,
+    pub target_entity: Entity,
+    pub effect_entity: Entity,
     pub modifier: AttributeModifier<T>,
 }
 
@@ -22,7 +25,7 @@ pub fn apply_modifier_events<T: Attribute>(
         
         if has_changed {
             commands.trigger(MarkNodeDirty::<T> {
-                entity: ev.target,
+                entity: ev.target_entity,
                 phantom_data: Default::default(),
             });
         }
@@ -30,33 +33,40 @@ pub fn apply_modifier_events<T: Attribute>(
 }
 
 pub fn apply_modifier<T: Attribute>(
-    ev: &ApplyAttributeModifierMessage<T>,
+    trigger: &ApplyAttributeModifierMessage<T>,
     attributes: &mut Query<AttributesMut>,
 ) -> Result<bool, BevyError> {
-    let attributes_ref = attributes.get(ev.target)?;
+    let query = [trigger.source_entity, trigger.target_entity];
+    let [source, target] = attributes.get_many(query)?;
 
-    let base_value = attributes_ref
+    let context = GameplayContext {
+        source_actor: &source,
+        target_actor: &target,
+        owner: &source,
+    };
+
+    let base_value = target
         .get::<T>()
         .ok_or(format!(
             "Could not find attribute {} on entity {}.",
             pretty_type_name::<T>(),
-            ev.target
+            trigger.target_entity
         ))?
         .current_value();
 
-    let Ok(calculator) = AttributeCalculator::<T>::convert(&ev.modifier, &attributes_ref) else {
-        return Err(format!("Could not convert modifier {} to calculator.", ev.modifier).into());
+    let Ok(calculator) = AttributeCalculator::<T>::convert(&trigger.modifier, &context) else {
+        return Err(format!("Could not convert modifier {} to calculator.", trigger.modifier).into());
     };
     let new_base_value = calculator.eval(base_value);
 
     let has_changed = new_base_value.are_different(base_value);
     if has_changed {
-        let mut attributes_mut = attributes.get_mut(ev.target)?;
+        let mut attributes_mut = attributes.get_mut(trigger.target_entity)?;
 
         let mut attribute = attributes_mut.get_mut::<T>().ok_or(format!(
             "Could not find attribute {} on entity {}.",
             pretty_type_name::<T>(),
-            ev.target
+            trigger.target_entity
         ))?;
 
         attribute.set_base_value(new_base_value);

@@ -1,7 +1,7 @@
 use crate::actors::Actor;
 use crate::attributes::ReflectAccessAttribute;
 use crate::effect::{AppliedEffects, Effect, Stacks};
-use crate::modifier::{ModifierMarker, ReflectAccessModifier};
+use crate::modifier::{OwnedModifiers, ModifierMarker, ReflectAccessModifier};
 use crate::prelude::*;
 use bevy::ecs::component::{ComponentId, Components};
 use bevy::prelude::*;
@@ -41,7 +41,7 @@ pub fn setup_debug_overlay(mut commands: Commands, asset_server_opt: Option<Res<
 
 pub fn explore_actors_system(
     actors: Query<(EntityRef, Option<&AppliedEffects>), (With<Actor>, With<DebugOverlayMarker>)>,
-    effects: Query<(&Effect, &Stacks, Option<&Name>, Option<&AppliedEffects>)>,
+    effects: Query<(&Effect, &Stacks, Option<&Name>, Option<&OwnedModifiers>)>,
     modifiers: Query<EntityRef, With<ModifierMarker>>,
     type_registry: Res<AppTypeRegistry>,
     world_components: &Components,
@@ -140,7 +140,7 @@ fn list_attributes(
 fn list_effects(
     mut builder: &mut TreeBuilder,
     actor_effects: &AppliedEffects,
-    effect_query: Query<(&Effect, &Stacks, Option<&Name>, Option<&AppliedEffects>)>,
+    effect_query: Query<(&Effect, &Stacks, Option<&Name>, Option<&OwnedModifiers>)>,
     modifier_query: Query<EntityRef, With<ModifierMarker>>,
     type_registry: &AppTypeRegistry,
     world_components: &Components,

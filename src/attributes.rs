@@ -1,7 +1,8 @@
 use crate::effect::{AttributeDependency, AttributeDependents};
+use crate::expression::{AttributeExpr, AttributeExprRef, Expr};
 use crate::inspector::pretty_type_name;
 use crate::math::{AbsDiff, SaturatingAttributes};
-use crate::modifier::{AttributeCalculator, AttributeCalculatorCached};
+use crate::modifier::{AttributeCalculator, AttributeCalculatorCached, Who};
 use crate::systems::MarkNodeDirty;
 use crate::{AttributeError, AttributesRef};
 use bevy::ecs::component::Mutable;
@@ -54,11 +55,14 @@ where
     fn set_base_value(&mut self, value: Self::Property);
     fn current_value(&self) -> Self::Property;
     fn set_current_value(&mut self, value: Self::Property);
-    fn value() -> AttributeValue<Self> {
-        AttributeValue {
-            value: Self::Property::zero(),
-            phantom_data: PhantomData,
-        }
+    fn source_expr() -> Expr<Self::Property> {
+        Expr::<Self::Property>::Expr(AttributeExprRef(Arc::new(AttributeExpr::<Self>::Source)))
+    }
+    fn target_expr() -> Expr<Self::Property> {
+        Expr::<Self::Property>::Expr(AttributeExprRef(Arc::new(AttributeExpr::<Self>::Target)))
+    }
+    fn parent_expr() -> Expr<Self::Property> {
+        Expr::<Self::Property>::Expr(AttributeExprRef(Arc::new(AttributeExpr::<Self>::Parent)))
     }
     fn attribute_type_id() -> AttributeTypeId;
 }
@@ -202,7 +206,7 @@ where
     }
 }
 
-pub trait ValueSource: Send + Sync + 'static {
+/*pub trait ValueSource: Send + Sync + 'static {
     type Output: Num;
 
     fn current_value(&self, entity: &AttributesRef) -> Result<Self::Output, AttributeError>;
@@ -219,13 +223,13 @@ pub trait IntoValue {
     type Out: Num;
 
     fn into_value(self) -> Value<Self::Out>;
-}
+}*/
 
 /// A [Value] refers to an Attribute value.
 /// It can be a literal value, or a reference to an Attribute.
-#[derive(Deref, DerefMut)]
-pub struct Value<P: Num>(pub Arc<dyn ValueSource<Output = P>>);
-
+//#[derive(Deref, DerefMut)]
+//pub struct Value<P: Num>(pub Arc<dyn ValueSource<Output = P>>);
+/*
 impl<P: Num + Display + Debug + Copy + Clone + Send + Sync + 'static> Default for Value<P> {
     fn default() -> Self {
         Value(Arc::new(Lit(P::zero())))
@@ -302,7 +306,8 @@ impl<T: Attribute> IntoValue for AttributeValue<T> {
         }))
     }
 }
-
+*/
+/*
 /// A [Lit] is a static value.
 #[derive(Deref, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Lit<P: Num>(pub P);
@@ -326,37 +331,7 @@ impl<P: Num + Display + Debug + Copy + Clone + Send + Sync + 'static> ValueSourc
     fn describe(&self) -> String {
         format!("{}", self.0)
     }
-}
-
-#[macro_export]
-macro_rules! impl_into_value {
-    ( $x:ty ) => {
-        impl IntoValue for $x {
-            type Out = $x;
-
-            fn into_value(self) -> Value<$x> {
-                Value(Arc::new(Lit(self)))
-            }
-        }
-    };
-}
-
-impl_into_value!(i8);
-impl_into_value!(i16);
-impl_into_value!(i32);
-impl_into_value!(i64);
-impl_into_value!(i128);
-impl_into_value!(isize);
-
-impl_into_value!(u8);
-impl_into_value!(u16);
-impl_into_value!(u32);
-impl_into_value!(u64);
-impl_into_value!(u128);
-impl_into_value!(usize);
-
-impl_into_value!(f32);
-impl_into_value!(f64);
+}*/
 
 pub fn on_add_attribute<T: Attribute>(trigger: On<Insert, T>, mut commands: Commands) {
     commands.trigger(MarkNodeDirty::<T> {

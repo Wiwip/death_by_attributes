@@ -1,4 +1,7 @@
+use crate::ability::TargetData;
+use crate::condition::{GameplayContext, GameplayContextMut};
 use crate::effect::{EffectSource, EffectTarget};
+use crate::expression::Expr;
 use crate::graph::NodeType;
 use crate::inspector::pretty_type_name;
 use crate::math::AbsDiff;
@@ -8,7 +11,7 @@ use crate::modifier::{Modifier, ModifierMarker};
 use crate::modifier::{ReflectAccessModifier, Who};
 use crate::prelude::*;
 use crate::systems::MarkNodeDirty;
-use crate::{AttributesMut, AttributesRef, Spawnable};
+use crate::{AttributesRef, Spawnable};
 use bevy::prelude::*;
 use std::any::type_name;
 use std::fmt::Debug;
@@ -19,7 +22,7 @@ use std::fmt::Display;
 #[require(ModifierMarker)]
 pub struct AttributeModifier<T: Attribute> {
     #[reflect(ignore)]
-    pub value_source: Value<T::Property>,
+    pub expression: Expr<T::Property>,
     pub who: Who,
     pub operation: ModOp,
 }
@@ -28,9 +31,9 @@ impl<T> AttributeModifier<T>
 where
     T: Attribute + 'static,
 {
-    pub fn new(value: Value<T::Property>, modifier: ModOp, who: Who) -> Self {
+    pub fn new(value: Expr<T::Property>, modifier: ModOp, who: Who) -> Self {
         Self {
-            value_source: value,
+            expression: value,
             who,
             operation: modifier,
         }
@@ -47,31 +50,31 @@ where
             "Mod<{}>({}{}) {}",
             pretty_type_name::<T>(),
             self.operation,
-            self.value_source,
+            "_", //self.expression,
             self.who,
         )
     }
 }
 
 impl<T: Attribute> Modifier for AttributeModifier<T> {
-    fn apply_immediate(&self, actor_entity: &mut AttributesMut) -> bool {
-        // Measure the modifier
-        let new_val = match actor_entity.get::<T>() {
-            None => panic!("Could not find attribute {}", type_name::<T>()),
-            Some(attribute) => {
-                let entity = actor_entity.as_readonly();
-
-                let Ok(calculator) = AttributeCalculator::<T>::convert(self, &entity) else {
-                    warn!("Could not convert modifier {} to calculator.", self);
-                    return false;
-                };
-                let new_val = calculator.eval(attribute.base_value());
-                new_val
-            }
+    fn apply_immediate(&self, mut context: &mut GameplayContextMut) -> bool {
+        let immutable_context = GameplayContext {
+            source_actor: &context.source_actor.as_readonly(),
+            target_actor: &context.target_actor.as_readonly(),
+            owner: &context.owner.as_readonly(),
         };
 
+        let Ok(calc) = AttributeCalculator::<T>::convert(self, &immutable_context) else {
+            return false;
+        };
+        let Some(attribute) = context.target_actor.get::<T>() else {
+            return false;
+        };
+        let new_val = calc.eval(attribute.base_value());
+
+        let attributes_mut = self.who.resolve_entity_mut(&mut context);
         // Apply the modifier
-        if let Some(mut attribute) = actor_entity.get_mut::<T>() {
+        if let Some(mut attribute) = attributes_mut.get_mut::<T>() {
             // Ensure that the modifier meaningfully changed the value before we trigger the event.
             let has_changed = new_val.are_different(attribute.current_value());
             if has_changed {
@@ -83,38 +86,27 @@ impl<T: Attribute> Modifier for AttributeModifier<T> {
         }
     }
 
-    fn apply_delayed(&self, target: Entity, commands: &mut Commands) {
+    fn apply_delayed(&self, source: Entity, target: Entity, effect: Entity, commands: &mut Commands) {
         commands.write_message(ApplyAttributeModifierMessage::<T> {
-            target,
+            source_entity: source,
+            target_entity: target,
+            effect_entity: effect,
             modifier: self.clone(),
         });
     }
 }
 
 impl<T: Attribute> Spawnable for AttributeModifier<T> {
-    fn spawn(&self, commands: &mut Commands, actor_entity: AttributesRef) -> Entity {
-        let mut entity_commands = commands.spawn((
+    fn spawn(&self, commands: &mut Commands, _actor_entity: AttributesRef) -> Entity {
+        let entity_commands = commands.spawn((
             NodeType::Modifier,
-            EffectSource(actor_entity.id()),
-            EffectTarget(actor_entity.id()),
             AttributeModifier::<T> {
-                value_source: self.value_source.clone(),
+                expression: self.expression.clone(),
                 who: self.who,
                 operation: self.operation,
             },
             Name::new(format!("{}", self)),
         ));
-
-        // This is a roundabout way to ensure that this attribute is marked as dirty when the dependency changes.
-        let func = |entity: Entity, mut commands: Commands| {
-            commands.trigger(MarkNodeDirty::<T> {
-                entity,
-                phantom_data: Default::default(),
-            });
-        };
-        // This is fine because modifiers with no dependencies have an empty implementation.
-        self.value_source
-            .insert_dependency(actor_entity.id(), &mut entity_commands, func);
 
         entity_commands.id()
     }

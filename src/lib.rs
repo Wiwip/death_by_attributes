@@ -12,6 +12,7 @@ pub mod attributes;
 pub mod condition;
 pub mod context;
 pub mod effect;
+pub mod expression;
 pub mod graph;
 pub mod inspector;
 pub mod math;
@@ -26,8 +27,8 @@ use crate::ability::{Ability, AbilityCooldown, AbilityOf, AbilityPlugin, Granted
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::attribute_clamp::apply_clamps;
 use crate::attributes::{
-    on_add_attribute, on_change_notify_attribute_dependencies, on_change_notify_attribute_parents,
-    ReflectAccessAttribute,
+    ReflectAccessAttribute, on_add_attribute, on_change_notify_attribute_dependencies,
+    on_change_notify_attribute_parents,
 };
 use crate::condition::ConditionPlugin;
 use crate::effect::global_effect::GlobalEffectPlugin;
@@ -37,9 +38,7 @@ use crate::effect::{
 };
 use crate::graph::NodeType;
 use crate::inspector::pretty_type_name;
-use crate::modifier::{
-    apply_modifier_events, ApplyAttributeModifierMessage, AttributeCalculatorCached, Who,
-};
+use crate::modifier::{ApplyAttributeModifierMessage, AttributeCalculatorCached, Who, apply_modifier_events, ModifierSource, ModifierTarget};
 use crate::prelude::*;
 use crate::registry::RegistryPlugin;
 use crate::schedule::EffectsSet;
@@ -50,7 +49,7 @@ use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
 
 pub mod prelude {
     pub use crate::attributes::{
-        AccessAttribute, Attribute, AttributeTypeId, IntoValue, ReflectAccessAttribute, Value,
+        AccessAttribute, Attribute, AttributeTypeId, ReflectAccessAttribute,
     };
     pub use crate::condition::{Condition, ConditionExt};
     pub use crate::modifier::{AccessModifier, AttributeModifier, Modifier};
@@ -153,6 +152,8 @@ pub type AttributesMut<'w> = EntityMutExcept<
         EffectTicker,
         EffectSource,
         EffectTarget,
+        ModifierSource,
+        ModifierTarget,
         AppliedEffects,
         EffectSources,
         Ability,
@@ -173,6 +174,8 @@ pub type AttributesRef<'w> = EntityRefExcept<
         EffectTicker,
         EffectSource,
         EffectTarget,
+        ModifierSource,
+        ModifierTarget,
         AppliedEffects,
         EffectSources,
         Ability,
@@ -220,6 +223,7 @@ pub struct CurrentValueChanged<T: Attribute> {
 #[derive(Clone, Debug)]
 pub enum AttributeError {
     AttributeNotPresent(TypeId),
+    PhantomQuery,
 }
 
 impl std::fmt::Display for AttributeError {
@@ -231,6 +235,9 @@ impl std::fmt::Display for AttributeError {
                     "Attribute with TypeId {:?} not present on entity.",
                     type_id
                 )
+            }
+            AttributeError::PhantomQuery => {
+                write!(f, "Phantom query on entity does not exist.")
             }
         }
     }

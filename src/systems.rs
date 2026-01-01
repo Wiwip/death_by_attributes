@@ -2,15 +2,23 @@ use crate::actors::Actor;
 use crate::assets::EffectDef;
 use crate::attributes::{Attribute, AttributeQueryData, AttributeQueryDataReadOnly};
 use crate::condition::GameplayContext;
-use crate::effect::{AppliedEffects, Effect, EffectSource, EffectStatusParam, EffectTarget, EffectTicker, Stacks};
+use crate::effect::{
+    AppliedEffects, Effect, EffectSource, EffectStatusParam, EffectTarget, EffectTargeting,
+    EffectTicker, Stacks,
+};
+use crate::expression::Expression;
 use crate::graph::{NodeType, QueryGraphAdapter};
-use crate::modifier::{ApplyAttributeModifierMessage, AttributeCalculator, Who};
+use crate::inspector::pretty_type_name;
+use crate::modifier::{AppliedModifiers, ApplyAttributeModifierMessage, AttributeCalculator, ModifierOf, ModifierSource, ModifierTarget, OwnedModifiers, Who};
 use crate::prelude::*;
 use crate::{AttributesRef, CurrentValueChanged, Dirty};
+use bevy::ecs::error::warn;
+use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
-use petgraph::visit::{IntoNeighbors};
-use std::any::type_name;
+use petgraph::visit::IntoNeighbors;
+use std::any::{type_name, TypeId};
 use std::marker::PhantomData;
+use std::os::linux::raw::stat;
 
 #[derive(EntityEvent)]
 #[entity_event(propagate=&'static EffectTarget, auto_propagate)]
@@ -40,14 +48,20 @@ pub fn mark_node_dirty_observer<T: Attribute>(
 /// Navigates the tree descendants to update the tree attribute values
 /// Effects that have a periodic timer application must be ignored in the current value calculations
 pub fn update_effect_system<T: Attribute>(
-    graph: QueryGraphAdapter,
+    //graph: QueryGraphAdapter,
     actors: Query<Entity, With<Actor>>,
-    nodes: Query<&NodeType>,
+    applied_modifiers: Query<&AppliedModifiers>,
+    //nodes: Query<&NodeType>,
     dirty_nodes: Query<&Dirty<T>>,
     statuses: Query<EffectStatusParam>,
-    attributes: Query<AttributeQueryDataReadOnly<T>>,
+    //attributes: Query<AttributeQueryDataReadOnly<T>>,
     attribute_refs: Query<AttributesRef>,
-    modifiers: Query<&AttributeModifier<T>>,
+    modifiers: Query<(
+        &AttributeModifier<T>,
+        &ModifierOf,
+        &ModifierSource,
+        &ModifierTarget,
+    )>,
     mut commands: Commands,
 ) {
     debug_once!("Ready: update_effect_tree_system::{}", type_name::<T>());
@@ -57,22 +71,67 @@ pub fn update_effect_system<T: Attribute>(
             continue;
         }
 
-        let Ok(attribute_ref) = attribute_refs.get(actor_entity) else {
-            error!("{}: Error getting attribute ref.", actor_entity);
+        let Ok(applied_modifiers) = applied_modifiers.get(actor_entity) else {
             continue;
         };
 
-        update_effect_tree_attributes::<T>(
+        let calculator = applied_modifiers
+            .iter()
+            .filter_map(|modifier_entity| {
+                // Get the modifier
+                let Ok((modifier, parent, source, target)) = modifiers.get(modifier_entity) else {
+                    println!("{}: {}, nope?",modifier_entity ,pretty_type_name::<T>());
+                    return None;
+                };
+
+                // Get the effect to check if we should apply it
+                let Ok(status) = statuses.get(parent.0) else {
+                    return None;
+                };
+                if status.is_periodic() || status.is_inactive() {
+                    return None;
+                }
+
+                let [source, target, effect] = attribute_refs
+                    .get_many([source.0, target.0, parent.0])
+                    .unwrap();
+                let context = GameplayContext {
+                    source_actor: &source,
+                    target_actor: &target,
+                    owner: &effect,
+                };
+
+                let calc = AttributeCalculator::convert(modifier, &context).unwrap_or_default();
+
+                Some(calc)
+            })
+            .fold(AttributeCalculator::default(), |acc, child| {
+                acc.combine(child)
+            });
+
+        println!("{}: {:?}", pretty_type_name::<T>(), calculator);
+
+        // Signal to update the attribute
+        commands.trigger(UpdateAttributeSignal {
+            entity: actor_entity,
+            calculator,
+        });
+
+        // Cleans the node
+        commands.entity(actor_entity).try_remove::<Dirty<T>>();
+
+        /*update_effect_tree_attributes::<T>(
             &graph,
             &nodes,
             actor_entity,
             &dirty_nodes,
             &statuses,
             &attributes,
-            &attribute_ref,
+            &attribute_refs,
+            &actor_attribute_ref,
             &modifiers,
             &mut commands,
-        );
+        );*/
     }
 }
 
@@ -83,8 +142,14 @@ fn update_effect_tree_attributes<T: Attribute>(
     dirty_nodes: &Query<&Dirty<T>>,
     statuses: &Query<EffectStatusParam>,
     attributes: &Query<AttributeQueryDataReadOnly<T>>,
-    actor_ref: &AttributesRef,
-    modifiers: &Query<&AttributeModifier<T>>,
+    attributes_ref: &Query<AttributesRef>,
+    actor_attribute_ref: &AttributesRef,
+    modifiers: &Query<(
+        &AttributeModifier<T>,
+        &EffectSource,
+        &EffectTarget,
+        &ModifierOf,
+    )>,
     commands: &mut Commands,
 ) -> AttributeCalculator<T> {
     let Ok(node_type) = nodes.get(current_entity) else {
@@ -120,7 +185,8 @@ fn update_effect_tree_attributes<T: Attribute>(
                         dirty_nodes,
                         statuses,
                         attributes,
-                        actor_ref,
+                        attributes_ref,
+                        actor_attribute_ref,
                         modifiers,
                         commands,
                     )
@@ -131,10 +197,19 @@ fn update_effect_tree_attributes<T: Attribute>(
             calculator
         }
         NodeType::Modifier => {
-            if let Ok(modifier) = modifiers.get(current_entity) {
-                AttributeCalculator::convert(modifier, &actor_ref).unwrap_or_default()
+            if let Ok((modifier, source, target, parent)) = modifiers.get(current_entity) {
+                let [source, target, effect] = attributes_ref
+                    .get_many([source.0, target.0, parent.0])
+                    .unwrap();
+                let context = GameplayContext {
+                    source_actor: &source,
+                    target_actor: &target,
+                    owner: &effect,
+                };
+
+                AttributeCalculator::convert(modifier, &context).unwrap_or_default()
             } else {
-                // This happens when we are looking for component A, but the modifier applies to component B
+                // This happens when we are looking for A, but the modifier applies to B
                 AttributeCalculator::default()
             }
         }
@@ -186,8 +261,7 @@ pub fn apply_periodic_effect<T: Attribute>(
         AttributesRef,
         &Effect,
         &EffectTicker,
-        &AppliedEffects,
-        &Stacks,
+        &OwnedModifiers,
         &EffectTarget,
         &EffectSource,
     )>,
@@ -195,7 +269,7 @@ pub fn apply_periodic_effect<T: Attribute>(
     mut event_writer: MessageWriter<ApplyAttributeModifierMessage<T>>,
     effect_assets: Res<Assets<EffectDef>>,
 ) {
-    for (effect_ref, effect, timer, effect_modifiers, stacks, target, source) in effects.iter() {
+    for (effect_ref, effect, timer, owned_modifiers, target, source) in effects.iter() {
         if !timer.just_finished() {
             continue;
         }
@@ -225,38 +299,20 @@ pub fn apply_periodic_effect<T: Attribute>(
         }
 
         // Timer has triggered. Grab modifiers and apply them.
-        for children in effect_modifiers.iter() {
+        for children in owned_modifiers.iter() {
             let Ok(attribute_modifier) = modifiers.get(children) else {
                 continue;
             };
 
-            // Apply the stack count to the modifier
-            let _stack_count = stacks.current_value();
-
             // Clone the modifier so we can apply the stack count to it.
             let applied_modifier = attribute_modifier.clone();
-            //applied_modifier.scaling *= stack_count as f64;
 
-            match attribute_modifier.who {
-                Who::Target => {
-                    event_writer.write(ApplyAttributeModifierMessage {
-                        target: target.0,
-                        modifier: applied_modifier,
-                    });
-                }
-                Who::Source => {
-                    event_writer.write(ApplyAttributeModifierMessage {
-                        target: source.0,
-                        modifier: applied_modifier,
-                    });
-                }
-                Who::Effect => {
-                    event_writer.write(ApplyAttributeModifierMessage {
-                        target: effect_ref.id(),
-                        modifier: applied_modifier,
-                    });
-                }
-            }
+            event_writer.write(ApplyAttributeModifierMessage {
+                source_entity: source.0,
+                target_entity: target.0,
+                effect_entity: effect_ref.id(),
+                modifier: applied_modifier,
+            });
         }
     }
 }

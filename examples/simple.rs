@@ -3,10 +3,10 @@ use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::window::PresentMode;
 use bevy_egui::EguiPlugin;
-use bevy_inspector_egui::DefaultInspectorConfigPlugin;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
+use bevy_inspector_egui::DefaultInspectorConfigPlugin;
 use petgraph::prelude::Dfs;
-use petgraph::visit::{DfsEvent, depth_first_search};
+use petgraph::visit::{depth_first_search, DfsEvent};
 use root_attribute::ability::{AbilityBuilder, AbilityExecute, TargetData, TryActivateAbility};
 use root_attribute::actors::ActorBuilder;
 use root_attribute::assets::{AbilityDef, EffectDef};
@@ -15,11 +15,11 @@ use root_attribute::condition::AttributeCondition;
 use root_attribute::context::EffectContext;
 use root_attribute::effect::{Effect, EffectStackingPolicy};
 use root_attribute::graph::QueryGraphAdapter;
-use root_attribute::inspector::ActorInspectorPlugin;
 use root_attribute::inspector::debug_overlay::DebugOverlayMarker;
+use root_attribute::inspector::ActorInspectorPlugin;
 use root_attribute::modifier::{ModOp, Who};
 use root_attribute::prelude::*;
-use root_attribute::{AttributesPlugin, attribute, init_attribute};
+use root_attribute::{attribute, init_attribute, AttributesPlugin};
 use std::fmt::Debug;
 use std::time::Duration;
 
@@ -65,7 +65,7 @@ fn main() {
             init_attribute::<ManaPool>,
             init_attribute::<ManaRegen>,
             init_attribute::<AttackPower>,
-            init_attribute::<Armour>,
+            //init_attribute::<Armour>,
             init_attribute::<MagicPower>,
         ))
         .add_plugins(EguiPlugin::default())
@@ -91,7 +91,6 @@ fn main() {
                 ..default()
             });
         })
-        .add_observer(damage_event_calculations)
         .run();
 }
 
@@ -120,8 +119,8 @@ fn setup_effects(mut commands: Commands, mut ctx: EffectContext) {
     let ap_buff = ctx.add_effect(
         Effect::permanent()
             .name("AttackPower Buff".into())
-            .modify::<AttackPower>(Health::value(), ModOp::Add, Who::Target) //, 0.01)
-            .modify::<Intelligence>(Health::value(), ModOp::Add, Who::Target) //, 0.25)
+            .modify::<AttackPower>(Health::source_expr(), ModOp::Add, Who::Target) //, 0.01)
+            .modify::<Intelligence>(Health::source_expr(), ModOp::Add, Who::Target) //, 0.25)
             .build(),
     );
 
@@ -129,7 +128,7 @@ fn setup_effects(mut commands: Commands, mut ctx: EffectContext) {
     let mp_buff = ctx.add_effect(
         Effect::permanent()
             .name("MagicPower Buff".into())
-            .modify::<MagicPower>(Intelligence::value(), ModOp::Add, Who::Target)
+            .modify::<MagicPower>(Intelligence::source_expr(), ModOp::Add, Who::Target)
             .modify::<MagicPower>(5u32, ModOp::Add, Who::Target)
             .activate_while(AttributeCondition::<Health>::new(..=500, Who::Source))
             .with_stacking_policy(EffectStackingPolicy::Add {
@@ -143,8 +142,8 @@ fn setup_effects(mut commands: Commands, mut ctx: EffectContext) {
     let hp_buff = ctx.add_effect(
         Effect::permanent()
             .name("MaxHealth Increase".into())
-            .modify::<MaxHealth>(1u32, ModOp::Inc, Who::Target)
-            .modify::<ManaPool>(Health::value(), ModOp::Add, Who::Target)
+            .modify::<MaxHealth>(45u32, ModOp::Add, Who::Target)
+            //.modify::<ManaPool>(Health::source_expr(), ModOp::Add, Who::Target)
             .with_stacking_policy(EffectStackingPolicy::RefreshDuration)
             .build(),
     );
@@ -153,19 +152,23 @@ fn setup_effects(mut commands: Commands, mut ctx: EffectContext) {
     let regen = ctx.add_effect(
         Effect::permanent_ticking(1.0)
             .name("Regen".into())
-            .modify::<Health>(HealthRegen::value(), ModOp::Add, Who::Target)
-            .modify::<Mana>(ManaRegen::value(), ModOp::Add, Who::Target)
+            .modify::<Health>(
+                HealthRegen::source_expr(),
+                ModOp::Add,
+                Who::Target,
+            )
+            .modify::<Mana>(ManaRegen::source_expr(), ModOp::Add, Who::Target)
             .build(),
     );
 
-    let global_effect = ctx.add_effect(
+    /*let global_effect = ctx.add_effect(
         Effect::permanent()
             .name("Global Armour".into())
             .modify::<Armour>(10.0f32, ModOp::Add, Who::Target)
             .build(),
-    );
+    );*/
 
-    ctx.add_global_effect(global_effect);
+    //ctx.add_global_effect(global_effect);
 
     commands.insert_resource(EffectsDatabase {
         ap_buff,
@@ -287,12 +290,6 @@ fn inputs(
                 TargetData::SelfCast,
             ));
         }
-        if keys.just_pressed(KeyCode::Backspace) {
-            commands.trigger(DamageEvent {
-                entity: player_entity,
-                damage: 10.0,
-            });
-        }
         if keys.just_pressed(KeyCode::KeyR) {
             analyze_dependencies_with_petgraph(graph, actors);
         }
@@ -340,23 +337,4 @@ pub fn analyze_dependencies_with_petgraph(
 
 fn do_gameplay_stuff() {
     std::thread::sleep(Duration::from_millis(12));
-}
-
-#[derive(EntityEvent)]
-struct DamageEvent {
-    entity: Entity,
-    damage: f32,
-}
-
-fn damage_event_calculations(trigger: On<DamageEvent>, mut actors: Query<(&mut Health, &Armour)>) {
-    let Ok((mut health, armour)) = actors.get_mut(trigger.entity) else {
-        return;
-    };
-
-    let armour_reduction = 1.0 - armour.current_value();
-    let damage_taken = trigger.damage * armour_reduction;
-
-    let new_health = health.current_value() - damage_taken as u32;
-    health.set_base_value(new_health);
-    debug!("{} took {} damage", trigger.entity, damage_taken);
 }

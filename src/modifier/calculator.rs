@@ -5,13 +5,15 @@ use bevy::prelude::*;
 use num_traits::{AsPrimitive, Bounded, FromPrimitive, Zero};
 use serde::Serialize;
 use std::fmt::{Debug, Display, Formatter};
+use crate::condition::GameplayContext;
+use crate::expression::Expression;
 
 #[derive(Debug, Clone, Copy, Reflect, Serialize)]
 pub enum ModOp {
     Set,
     Add,
     Sub,
-    Inc,
+    Increase,
     Mul,
 }
 
@@ -21,7 +23,7 @@ impl Display for ModOp {
             ModOp::Set => write!(f, "="),
             ModOp::Add => write!(f, "+"),
             ModOp::Sub => write!(f, "-"),
-            ModOp::Inc => write!(f, "+*"),
+            ModOp::Increase => write!(f, "+*"),
             ModOp::Mul => write!(f, "*"),
         }
     }
@@ -115,27 +117,27 @@ impl<T: Attribute> AttributeCalculator<T> {
 
     pub fn convert(
         modifier: &AttributeModifier<T>,
-        attributes_ref: &AttributesRef,
+        context: &GameplayContext,
     ) -> Result<Self, AttributeError> {
         let calculator = match modifier.operation {
             ModOp::Set => Self {
-                set: Some(modifier.value_source.current_value(attributes_ref)?),
+                set: Some(modifier.expression.eval(context)?),
                 ..default()
             },
             ModOp::Add => Self {
-                additive: modifier.value_source.current_value(attributes_ref)?,
+                additive: modifier.expression.eval(context)?,
                 ..default()
             },
             ModOp::Sub => Self {
-                subtractive: modifier.value_source.current_value(attributes_ref)?,
+                subtractive: modifier.expression.eval(context)?,
                 ..default()
             },
-            ModOp::Inc => Self {
-                increase: modifier.value_source.current_value(attributes_ref)?.as_(),
+            ModOp::Increase => Self {
+                increase: modifier.expression.eval(context)?.as_(),
                 ..default()
             },
             ModOp::Mul => Self {
-                multiplier: modifier.value_source.current_value(attributes_ref)?.as_(),
+                multiplier: modifier.expression.eval(context)?.as_(),
                 ..default()
             },
         };

@@ -1,5 +1,5 @@
 use crate::assets::EffectDef;
-use crate::attributes::{Attribute, IntoValue};
+use crate::attributes::Attribute;
 use crate::condition::{AttributeCondition, BoxCondition};
 use crate::effect::application::EffectApplicationPolicy;
 use crate::effect::EffectStackingPolicy;
@@ -9,6 +9,7 @@ use crate::prelude::*;
 use bevy::ecs::system::IntoObserverSystem;
 use bevy::prelude::{Bundle, Entity, EntityCommands, EntityEvent, Name};
 use std::ops::RangeBounds;
+use crate::expression::{Expr, IntoExpression};
 
 pub struct EffectBuilder {
     def: EffectDef,
@@ -79,14 +80,14 @@ impl EffectBuilder {
     /// ```
     pub fn modify<T: Attribute>(
         mut self,
-        value: impl IntoValue<Out = T::Property> + 'static,
+        expr: impl Into<Expr<T::Property>>,
         modifier: ModOp,
         who: Who,
     ) -> Self {
         self.def
             .modifiers
             .push(Box::new(AttributeModifier::<T>::new(
-                value.into_value(),
+                expr.into(),
                 modifier,
                 who,
             )));

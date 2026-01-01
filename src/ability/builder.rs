@@ -1,7 +1,8 @@
 use crate::ability::AbilityCooldown;
 use crate::assets::AbilityDef;
-use crate::attributes::{Attribute, IntoValue, Lit, Value};
+use crate::attributes::Attribute;
 use crate::condition::{AttributeCondition, BoxCondition};
+use crate::expression::Expr;
 use crate::inspector::pretty_type_name;
 use crate::modifier::{AttributeCalculatorCached, ModOp, Modifier, Who};
 use crate::mutator::EntityActions;
@@ -9,7 +10,6 @@ use crate::prelude::AttributeModifier;
 use bevy::ecs::system::IntoObserverSystem;
 use bevy::prelude::*;
 use num_traits::{AsPrimitive, Num};
-use std::sync::Arc;
 
 pub struct AbilityBuilder {
     name: String,
@@ -43,8 +43,7 @@ impl AbilityBuilder {
     }
 
     pub fn with_cost<T: Attribute>(mut self, cost: T::Property) -> Self {
-        let mutator =
-            AttributeModifier::<T>::new(Value(Arc::new(Lit(cost))), ModOp::Sub, Who::Source);
+        let mutator = AttributeModifier::<T>::new(Expr::Lit(cost), ModOp::Sub, Who::Source);
         self.cost_mods.push(Box::new(mutator));
 
         let condition = AttributeCondition::<T>::source(cost..);
@@ -52,15 +51,14 @@ impl AbilityBuilder {
         self
     }
 
-    pub fn with_cooldown(
-        mut self,
-        value: impl IntoValue<Out = f64> + Send + Sync + Clone + 'static,
-    ) -> Self {
+    pub fn with_cooldown(mut self, expr: impl Into<Expr<f64>>) -> Self {
+        let val = expr.into();
+
         self.mutators.push(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
                 entity_commands.try_insert(AbilityCooldown {
                     timer: Timer::from_seconds(0.0, TimerMode::Once),
-                    value: value.clone().into_value(),
+                    value: val.clone(),
                 });
             },
         ));

@@ -3,11 +3,12 @@ use crate::ability::{
     TryActivateAbility,
 };
 use crate::assets::AbilityDef;
-use crate::condition::{BoxCondition, GameplayContext};
+use crate::condition::{BoxCondition, GameplayContext, GameplayContextMut};
 use crate::{AttributesMut, AttributesRef};
 use bevy::asset::Assets;
 use bevy::prelude::*;
 use std::time::Duration;
+use crate::expression::Expression;
 
 pub fn tick_ability_cooldown(mut query: Query<&mut AbilityCooldown>, time: Res<Time>) {
     query.par_iter_mut().for_each(|mut cooldown| {
@@ -29,6 +30,7 @@ pub fn try_activate_ability_observer(
     mut commands: Commands,
 ) -> Result<(), BevyError> {
     let Ok((source_entity_ref, actor_abilities)) = actors.get(trigger.ability) else {
+        warn!("The Actor({}) has no GrantedAbilities", trigger.ability);
         return Ok(());
     };
 
@@ -71,7 +73,11 @@ pub fn try_activate_ability_observer(
         .unwrap_or(false);
 
         if can_activate {
-            commands.trigger(AbilityCooldownReset(ability_entity));
+            commands.trigger(AbilityCooldownReset {
+                target: target_entity_ref.id(),
+                source: source_entity_ref.id(),
+                ability: ability_entity,
+            });
             commands.trigger(ActivateAbility {
                 target: target_entity_ref.id(),
                 source: source_entity_ref.id(),
@@ -118,20 +124,33 @@ fn can_activate_ability(
 }
 
 #[derive(EntityEvent)]
-pub(crate) struct AbilityCooldownReset(pub Entity);
+pub(crate) struct AbilityCooldownReset {
+    pub source: Entity,
+    pub target: Entity,
+    #[event_target]
+    pub ability: Entity,
+}
 
 pub(crate) fn reset_ability_cooldown(
     trigger: On<AbilityCooldownReset>,
     mut cooldowns: Query<(&AbilityOf, &mut AbilityCooldown)>,
     query: Query<AttributesRef>,
 ) -> Result<(), BevyError> {
-    let Ok((parent, mut cooldown)) = cooldowns.get_mut(trigger.0) else {
+    let Ok((_parent, mut cooldown)) = cooldowns.get_mut(trigger.ability) else {
         // This event does not affect an ability without a cooldown.
         return Ok(());
     };
 
-    let entity_ref = query.get(parent.0)?;
-    let cd_value = cooldown.value.current_value(&entity_ref)?;
+    let [source, target, owner] = query.get_many([trigger.source, trigger.target, trigger.ability])?;
+    let context = GameplayContext {
+        target_actor: &source,
+        source_actor: &target,
+        owner: &owner,
+    };
+
+    //let entity_ref = query.get(parent.0)?;
+    //let cd_value = cooldown.value.eval(&entity_ref)?;
+    let cd_value = cooldown.value.eval(&context)?;
 
     cooldown
         .timer
@@ -141,7 +160,7 @@ pub(crate) fn reset_ability_cooldown(
 }
 
 #[derive(EntityEvent)]
-pub(crate) struct ActivateAbility {
+pub struct ActivateAbility {
     #[event_target]
     pub target: Entity,
     pub source: Entity,
@@ -156,16 +175,25 @@ pub(crate) fn activate_ability(
     ability_assets: Res<Assets<AbilityDef>>,
     mut commands: Commands,
 ) -> Result<(), BevyError> {
-    let mut source_actor_mut = actors.get_mut(trigger.source)?;
+    //let [mut target_actor_mut, mut source_actor_mut, mut ability_actor_mut] =
+    //    actors.get_many_mut([trigger.target, trigger.source, trigger.ability])?;
+    
+    
+    /*let mut context = GameplayContextMut {
+        target_actor: &mut target_actor_mut,
+        source_actor: &mut source_actor_mut,
+        owner: &mut ability_actor_mut,
+    };*/
+    
+    debug!("{}: Commit ability cost.", trigger.ability);
     let ability = abilities.get(trigger.ability)?;
-
     let ability_spec = ability_assets
         .get(&ability.0.clone())
         .ok_or("No ability asset.")?;
-
-    debug!("{}: Commit ability cost.", source_actor_mut.id());
-    for effect in &ability_spec.cost_modifiers {
-        effect.apply_immediate(&mut source_actor_mut);
+    
+    for modifiers in &ability_spec.cost_modifiers {
+        //modifiers.apply_immediate(&mut context);
+        modifiers.apply_delayed(trigger.source, trigger.target, trigger.ability, &mut commands);
     }
 
     // Activate the ability
