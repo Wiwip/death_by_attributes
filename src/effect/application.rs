@@ -1,3 +1,4 @@
+use crate::AttributesMut;
 use crate::assets::EffectDef;
 use crate::condition::GameplayContext;
 use crate::effect::stacks::NotifyAddStackEvent;
@@ -7,7 +8,6 @@ use crate::effect::{
 };
 use crate::graph::NodeType;
 use crate::modifier::{Modifier, ModifierOf};
-use crate::AttributesMut;
 use bevy::asset::{Assets, Handle};
 use bevy::log::debug;
 use bevy::prelude::*;
@@ -328,7 +328,7 @@ mod test {
     use crate::prelude::*;
     use crate::registry::effect_registry::EffectToken;
     use crate::registry::{Registry, RegistryMut};
-    use crate::{attribute, init_attribute, AttributesPlugin};
+    use crate::{AttributesPlugin, attribute, init_attribute};
     use bevy::ecs::system::RunSystemOnce;
 
     attribute!(TestA, f32);

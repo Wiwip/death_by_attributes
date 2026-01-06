@@ -52,9 +52,9 @@ impl<T: Attribute> std::fmt::Debug for AttributeCondition<T> {
 
 impl<T: Attribute> Condition for AttributeCondition<T> {
     fn eval(&self, context: &GameplayContext) -> Result<bool, BevyError> {
-        let entity = self.who.resolve_entity(context);
+        let attributes = context.attribute_ref(self.who);
 
-        match entity.get::<T>() {
+        match attributes.get::<T>() {
             Some(value) => Ok(self.bounds.contains(&value.current_value())),
             None => {
                 error!("Error evaluating attribute condition:{}", self);
@@ -149,14 +149,14 @@ impl<C: Condition> Condition for Not<C> {
 
 #[derive(Serialize)]
 pub struct TagCondition<C: Component> {
-    target: Who,
+    who: Who,
     phantom_data: PhantomData<C>,
 }
 
 impl<C: Component> TagCondition<C> {
     pub fn new(target: Who) -> Self {
         Self {
-            target,
+            who: target,
             phantom_data: PhantomData,
         }
     }
@@ -176,13 +176,14 @@ impl<C: Component> TagCondition<C> {
 
 impl<C: Component> Condition for TagCondition<C> {
     fn eval(&self, context: &GameplayContext) -> Result<bool, BevyError> {
-        Ok(self.target.resolve_entity(context).contains::<C>())
+        let entity = context.attribute_ref(self.who);
+        Ok(entity.contains::<C>())
     }
 }
 
 impl<C: Component> std::fmt::Debug for TagCondition<C> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Has Tag {} on {}", pretty_type_name::<C>(), self.target)
+        write!(f, "Has Tag {} on {}", pretty_type_name::<C>(), self.who)
     }
 }
 

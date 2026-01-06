@@ -1,12 +1,12 @@
+use crate::AttributeError;
+use crate::condition::GameplayContext;
+use crate::expression::Expression;
 use crate::math::SaturatingAttributes;
 use crate::prelude::{Attribute, AttributeModifier};
-use crate::{AttributeError, AttributesRef};
 use bevy::prelude::*;
 use num_traits::{AsPrimitive, Bounded, FromPrimitive, Zero};
 use serde::Serialize;
 use std::fmt::{Debug, Display, Formatter};
-use crate::condition::GameplayContext;
-use crate::expression::Expression;
 
 #[derive(Debug, Clone, Copy, Reflect, Serialize)]
 pub enum ModOp {

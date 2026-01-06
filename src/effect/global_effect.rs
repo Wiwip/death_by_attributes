@@ -47,16 +47,16 @@ mod test {
     use crate::assets::{AbilityDef, ActorDef};
     use crate::condition::AttributeCondition;
     use crate::context::EffectContext;
-    use crate::{attribute, init_attribute, AttributesPlugin};
-    use crate::prelude::*;
-    use bevy::ecs::system::RunSystemOnce;
-    use bevy::prelude::*;
     use crate::effect::{Effect, EffectInactive};
+    use crate::expression::*;
     use crate::modifier::{ModOp, Who};
-    use crate::registry::{Registry, RegistryMut};
+    use crate::prelude::*;
     use crate::registry::ability_registry::AbilityToken;
     use crate::registry::effect_registry::EffectToken;
-    use crate::expression::*;
+    use crate::registry::{Registry, RegistryMut};
+    use crate::{AttributesPlugin, attribute, init_attribute};
+    use bevy::ecs::system::RunSystemOnce;
+    use bevy::prelude::*;
 
     attribute!(TestAttribute, f64);
 

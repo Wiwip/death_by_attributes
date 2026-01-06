@@ -2,7 +2,6 @@ mod attribute;
 
 use crate::AttributeError;
 use crate::condition::GameplayContext;
-use crate::modifier::Who;
 use crate::prelude::*;
 use bevy::prelude::{Deref, DerefMut, Reflect};
 use num_traits::Num;

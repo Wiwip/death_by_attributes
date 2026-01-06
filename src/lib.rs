@@ -143,9 +143,9 @@ pub fn init_attribute<T: Attribute>(app: &mut App) {
     );
 }
 
-pub type AttributesMut<'w> = EntityMutExcept<
+pub type AttributesMut<'w, 's> = EntityMutExcept<
     'w,
-    'w,
+    's,
     (
         // We exclude anything related to effects
         ChildOf,

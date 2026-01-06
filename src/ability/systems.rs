@@ -4,11 +4,11 @@ use crate::ability::{
 };
 use crate::assets::AbilityDef;
 use crate::condition::{BoxCondition, GameplayContext, GameplayContextMut};
+use crate::expression::Expression;
 use crate::{AttributesMut, AttributesRef};
 use bevy::asset::Assets;
 use bevy::prelude::*;
 use std::time::Duration;
-use crate::expression::Expression;
 
 pub fn tick_ability_cooldown(mut query: Query<&mut AbilityCooldown>, time: Res<Time>) {
     query.par_iter_mut().for_each(|mut cooldown| {
@@ -141,15 +141,14 @@ pub(crate) fn reset_ability_cooldown(
         return Ok(());
     };
 
-    let [source, target, owner] = query.get_many([trigger.source, trigger.target, trigger.ability])?;
+    let [source, target, owner] =
+        query.get_many([trigger.source, trigger.target, trigger.ability])?;
     let context = GameplayContext {
         target_actor: &source,
         source_actor: &target,
         owner: &owner,
     };
 
-    //let entity_ref = query.get(parent.0)?;
-    //let cd_value = cooldown.value.eval(&entity_ref)?;
     let cd_value = cooldown.value.eval(&context)?;
 
     cooldown
@@ -170,30 +169,32 @@ pub struct ActivateAbility {
 /// Bypass [TryActivateAbility]'s checks. Usually triggered after a successful [TryActivateAbility].
 pub(crate) fn activate_ability(
     trigger: On<ActivateAbility>,
-    mut actors: Query<AttributesMut>,
+    actors: Query<AttributesMut<'static, 'static>>,
     abilities: Query<&Ability>,
     ability_assets: Res<Assets<AbilityDef>>,
     mut commands: Commands,
 ) -> Result<(), BevyError> {
-    //let [mut target_actor_mut, mut source_actor_mut, mut ability_actor_mut] =
-    //    actors.get_many_mut([trigger.target, trigger.source, trigger.ability])?;
-    
-    
-    /*let mut context = GameplayContextMut {
-        target_actor: &mut target_actor_mut,
-        source_actor: &mut source_actor_mut,
-        owner: &mut ability_actor_mut,
-    };*/
-    
+    let mut context = GameplayContextMut {
+        target_actor: trigger.target,
+        source_actor: trigger.source,
+        owner: trigger.ability,
+        actors,
+    };
+
     debug!("{}: Commit ability cost.", trigger.ability);
     let ability = abilities.get(trigger.ability)?;
     let ability_spec = ability_assets
         .get(&ability.0.clone())
         .ok_or("No ability asset.")?;
-    
+
     for modifiers in &ability_spec.cost_modifiers {
-        //modifiers.apply_immediate(&mut context);
-        modifiers.apply_delayed(trigger.source, trigger.target, trigger.ability, &mut commands);
+        modifiers.apply_immediate(&mut context);
+        /*modifiers.apply_delayed(
+            trigger.source,
+            trigger.target,
+            trigger.ability,
+            &mut commands,
+        );*/
     }
 
     // Activate the ability

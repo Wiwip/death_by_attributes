@@ -1,7 +1,7 @@
+use crate::AttributesRef;
 use crate::assets::EffectDef;
 use crate::condition::GameplayContext;
 use crate::effect::{Effect, EffectInactive, EffectSource, EffectTarget, EffectTicker};
-use crate::AttributesRef;
 use bevy::asset::Assets;
 use bevy::ecs::relationship::Relationship;
 use bevy::log::error;
@@ -80,7 +80,6 @@ mod test {
     use crate::ability::AbilityBuilder;
     use crate::actors::{Actor, ActorBuilder};
     use crate::assets::{AbilityDef, ActorDef};
-    use crate::{attribute, AttributesPlugin};
     use crate::condition::AttributeCondition;
     use crate::context::EffectContext;
     use crate::effect::{Effect, EffectInactive};
@@ -89,6 +88,7 @@ mod test {
     use crate::registry::ability_registry::AbilityToken;
     use crate::registry::effect_registry::EffectToken;
     use crate::registry::{Registry, RegistryMut};
+    use crate::{AttributesPlugin, attribute};
     use bevy::ecs::system::RunSystemOnce;
 
     attribute!(TestA, f32);

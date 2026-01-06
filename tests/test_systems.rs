@@ -6,7 +6,7 @@ use root_attribute::context::EffectContext;
 use root_attribute::effect::{Effect, EffectApplicationPolicy, EffectBuilder};
 use root_attribute::modifier::{ModOp, Who};
 use root_attribute::prelude::*;
-use root_attribute::{attribute, init_attribute, AttributesPlugin};
+use root_attribute::{AttributesPlugin, attribute, init_attribute};
 
 attribute!(TestA, u32);
 

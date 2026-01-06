@@ -245,13 +245,15 @@ fn setup_actor(mut ctx: EffectContext, efx: Res<EffectsDatabase>, abilities: Res
 
     let player_entity = ctx.add_spawn_actor(actor_template).id();
 
-    let test_entity = ctx.add_spawn_actor(
-        ActorBuilder::new()
-            .name("==Test==")
-            .with::<Strength>(10.0)
-            .insert(DebugOverlayMarker)
-            .build(),
-    ).id();
+    let test_entity = ctx
+        .add_spawn_actor(
+            ActorBuilder::new()
+                .name("==Test==")
+                .with::<Strength>(10.0)
+                .insert(DebugOverlayMarker)
+                .build(),
+        )
+        .id();
 
     let test_effect = EffectBuilder::permanent()
         .modify::<Strength>(Strength::source_expr(), ModOp::Add, Who::Target)
@@ -319,14 +321,12 @@ pub fn analyze_dependencies_with_petgraph(
     for actor_entity in actors.iter() {
         println!("Analyzing actor: {:?}", actor_entity);
 
-        //let node_type = self.node_type.get(node).expect("");
-
         // Use petgraph's depth_first_search with a custom visitor
         depth_first_search(&graph, Some(actor_entity), |event| {
             match event {
-                DfsEvent::Discover(entity, time) => {
-
-                    println!("  Discovered: {} at time {}", entity, time.0);
+                DfsEvent::Discover(entity, _time) => {
+                    let node_type = node_type.get(entity).expect("No NodeType on entity.");
+                    println!("{node_type:?}: {}", entity);
                 }
                 DfsEvent::TreeEdge(source, target) => {
                     println!("  Tree edge: {} -> {}", source, target);
@@ -335,7 +335,7 @@ pub fn analyze_dependencies_with_petgraph(
                     warn!("  Back edge (cycle): {} -> {}", source, target);
                 }
                 DfsEvent::CrossForwardEdge(source, target) => {
-                    println!("  Cross edge: {} -> {}", source, target);
+                    warn!("  Cross edge: {} -> {}", source, target);
                 }
                 DfsEvent::Finish(entity, time) => {
                     println!("  Finished: {} at time {}", entity, time.0);

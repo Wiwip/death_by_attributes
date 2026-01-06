@@ -2,12 +2,9 @@ use crate::actors::Actor;
 use crate::assets::EffectDef;
 use crate::attributes::{Attribute, AttributeQueryData, AttributeQueryDataReadOnly};
 use crate::condition::GameplayContext;
-use crate::effect::{
-    Effect, EffectSource, EffectStatusParam, EffectTarget, EffectTargeting, EffectTicker, Stacks,
-};
+use crate::effect::{Effect, EffectSource, EffectStatusParam, EffectTarget, EffectTicker};
 use crate::graph::{DependencyGraph, NodeType};
-use crate::inspector::pretty_type_name;
-use crate::modifier::{ApplyAttributeModifierMessage, AttributeCalculator, OwnedModifiers, Who};
+use crate::modifier::{ApplyAttributeModifierMessage, AttributeCalculator, OwnedModifiers};
 use crate::prelude::*;
 use crate::{AttributesRef, CurrentValueChanged, Dirty};
 use bevy::prelude::*;

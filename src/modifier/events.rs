@@ -1,11 +1,11 @@
 use crate::AttributesMut;
+use crate::condition::GameplayContext;
 use crate::inspector::pretty_type_name;
 use crate::math::AbsDiff;
 use crate::modifier::calculator::AttributeCalculator;
 use crate::prelude::*;
 use crate::systems::MarkNodeDirty;
 use bevy::prelude::*;
-use crate::condition::GameplayContext;
 
 #[derive(Message)]
 pub struct ApplyAttributeModifierMessage<T: Attribute> {
@@ -22,7 +22,7 @@ pub fn apply_modifier_events<T: Attribute>(
 ) {
     for ev in event_reader.read() {
         let has_changed = apply_modifier(&ev, &mut attributes).unwrap_or(false);
-        
+
         if has_changed {
             commands.trigger(MarkNodeDirty::<T> {
                 entity: ev.target_entity,
@@ -55,7 +55,11 @@ pub fn apply_modifier<T: Attribute>(
         .current_value();
 
     let Ok(calculator) = AttributeCalculator::<T>::convert(&trigger.modifier, &context) else {
-        return Err(format!("Could not convert modifier {} to calculator.", trigger.modifier).into());
+        return Err(format!(
+            "Could not convert modifier {} to calculator.",
+            trigger.modifier
+        )
+        .into());
     };
     let new_base_value = calculator.eval(base_value);
 

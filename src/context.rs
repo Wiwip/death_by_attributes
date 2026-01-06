@@ -1,7 +1,7 @@
 use crate::actors::SpawnActorCommand;
 use crate::assets::{ActorDef, EffectDef};
-use crate::effect::{ApplyEffectEvent, EffectTargeting};
 use crate::effect::global_effect::{GlobalActor, GlobalEffects};
+use crate::effect::{ApplyEffectEvent, EffectTargeting};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 

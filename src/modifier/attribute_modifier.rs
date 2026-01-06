@@ -1,8 +1,6 @@
-use crate::ability::TargetData;
+use crate::Spawnable;
 use crate::condition::{GameplayContext, GameplayContextMut};
-use crate::effect::{EffectSource, EffectTarget};
 use crate::expression::Expr;
-use crate::graph::NodeType;
 use crate::inspector::pretty_type_name;
 use crate::math::AbsDiff;
 use crate::modifier::calculator::{AttributeCalculator, ModOp};
@@ -10,8 +8,6 @@ use crate::modifier::events::ApplyAttributeModifierMessage;
 use crate::modifier::{Modifier, ModifierMarker};
 use crate::modifier::{ReflectAccessModifier, Who};
 use crate::prelude::*;
-use crate::systems::MarkNodeDirty;
-use crate::{AttributesRef, Spawnable};
 use bevy::prelude::*;
 use std::any::type_name;
 use std::fmt::Debug;
@@ -57,22 +53,22 @@ where
 }
 
 impl<T: Attribute> Modifier for AttributeModifier<T> {
-    fn apply_immediate(&self, mut context: &mut GameplayContextMut) -> bool {
+    fn apply_immediate(&self, context: &mut GameplayContextMut) -> bool {
         let immutable_context = GameplayContext {
-            source_actor: &context.source_actor.as_readonly(),
-            target_actor: &context.target_actor.as_readonly(),
-            owner: &context.owner.as_readonly(),
+            source_actor: &context.attribute_ref(Who::Source),
+            target_actor: &context.attribute_ref(Who::Target),
+            owner: &context.attribute_ref(Who::Owner),
         };
 
         let Ok(calc) = AttributeCalculator::<T>::convert(self, &immutable_context) else {
             return false;
         };
-        let Some(attribute) = context.target_actor.get::<T>() else {
+        let Some(attribute) = context.attribute_ref(Who::Target).get::<T>() else {
             return false;
         };
         let new_val = calc.eval(attribute.base_value());
 
-        let attributes_mut = self.who.resolve_entity_mut(&mut context);
+        let mut attributes_mut = context.attribute_mut(self.who);
         // Apply the modifier
         if let Some(mut attribute) = attributes_mut.get_mut::<T>() {
             // Ensure that the modifier meaningfully changed the value before we trigger the event.

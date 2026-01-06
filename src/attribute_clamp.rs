@@ -1,5 +1,5 @@
 use crate::attributes::AttributeQueryData;
-use crate::condition::{convert_bounds, multiply_bounds, GameplayContext};
+use crate::condition::GameplayContext;
 use crate::expression::{Expr, Expression};
 use crate::inspector::pretty_type_name;
 use crate::prelude::*;
@@ -137,4 +137,39 @@ pub fn bound_clamp<V: Num + PartialOrd + Bounded + Copy>(
     };
 
     value
+}
+
+pub fn convert_bounds<S, T>(bounds: impl RangeBounds<S>) -> (Bound<T::Property>, Bound<T::Property>)
+where
+    S: Num + AsPrimitive<T::Property> + Copy + 'static,
+    T: Attribute,
+{
+    let start_bound: Bound<T::Property> = match bounds.start_bound() {
+        Bound::Included(&bound) => Bound::Included(bound.as_()),
+        Bound::Excluded(&bound) => Bound::Excluded(bound.as_()),
+        Bound::Unbounded => Bound::Unbounded,
+    };
+    let end_bound: Bound<T::Property> = match bounds.end_bound() {
+        Bound::Included(bound) => Bound::Included(bound.as_()),
+        Bound::Excluded(bound) => Bound::Excluded(bound.as_()),
+        Bound::Unbounded => Bound::Unbounded,
+    };
+    (start_bound, end_bound)
+}
+
+pub fn multiply_bounds<T: Attribute>(
+    bounds: impl RangeBounds<T::Property>,
+    multiplier: T::Property,
+) -> (Bound<T::Property>, Bound<T::Property>) {
+    let start_bound: Bound<T::Property> = match bounds.start_bound() {
+        Bound::Included(&bound) => Bound::Included(bound * multiplier),
+        Bound::Excluded(&bound) => Bound::Excluded(bound * multiplier),
+        Bound::Unbounded => Bound::Unbounded,
+    };
+    let end_bound: Bound<T::Property> = match bounds.end_bound() {
+        Bound::Included(&bound) => Bound::Included(bound * multiplier),
+        Bound::Excluded(&bound) => Bound::Excluded(bound * multiplier),
+        Bound::Unbounded => Bound::Unbounded,
+    };
+    (start_bound, end_bound)
 }

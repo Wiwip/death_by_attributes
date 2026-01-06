@@ -1,7 +1,8 @@
 use crate::ability::{AbilityOf, GrantAbilityCommand};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
-use crate::attribute_clamp::{observe_current_value_change_for_clamp_bounds, Clamp};
-use crate::condition::convert_bounds;
+use crate::attribute_clamp::{
+    Clamp, convert_bounds, observe_current_value_change_for_clamp_bounds,
+};
 use crate::effect::{ApplyEffectEvent, EffectTargeting};
 use crate::graph::NodeType;
 use crate::inspector::pretty_type_name;
@@ -159,7 +160,6 @@ impl ActorBuilder {
 
                 let mut observer =
                     Observer::new(observe_current_value_change_for_clamp_bounds::<S, T>);
-                println!("WATCHING: parent_actor {:?}", parent_actor);
                 observer.watch_entity(parent_actor);
 
                 entity_commands.insert(Clamp::<T>::new(S::source_expr(), bounds));

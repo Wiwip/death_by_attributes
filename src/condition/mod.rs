@@ -1,17 +1,14 @@
 use crate::condition::systems::evaluate_effect_conditions;
 use bevy::app::{App, Plugin};
 use bevy::prelude::*;
-use num_traits::{AsPrimitive, Num};
-use std::collections::Bound;
 use std::fmt::Debug;
-use std::ops::RangeBounds;
 
 mod conditions;
 mod systems;
 
-use crate::attributes::Attribute;
 use crate::{AttributesMut, AttributesRef};
 
+use crate::modifier::Who;
 use crate::schedule::EffectsSet;
 pub use conditions::{
     AbilityCondition, And, AttributeCondition, ChanceCondition, ConditionExt, Not, Or,
@@ -45,49 +42,52 @@ impl BoxCondition {
     }
 }
 
-pub struct GameplayContextMut<'a> {
-    pub source_actor: &'a mut AttributesMut<'a>,
-    pub target_actor: &'a mut AttributesMut<'a>,
-    pub owner: &'a mut AttributesMut<'a>,
+pub struct GameplayContextMut<'w, 's> {
+    pub source_actor: Entity,
+    pub target_actor: Entity,
+    pub owner: Entity,
+
+    pub actors: Query<'w, 's, AttributesMut<'static, 'static>>,
 }
 
-pub struct GameplayContext<'a> {
-    pub source_actor: &'a AttributesRef<'a>,
-    pub target_actor: &'a AttributesRef<'a>,
-    pub owner: &'a AttributesRef<'a>,
+impl GameplayContextMut<'_, '_> {
+    pub fn entity(&self, who: Who) -> Entity {
+        match who {
+            Who::Target => self.target_actor,
+            Who::Source => self.source_actor,
+            Who::Owner => self.owner,
+        }
+    }
+
+    pub fn attribute_ref(&self, who: Who) -> AttributesRef<'_> {
+        self.actors.get(self.entity(who)).unwrap()
+    }
+
+    pub fn attribute_mut(&mut self, who: Who) -> AttributesMut<'_, '_> {
+        self.actors.get_mut(self.entity(who)).unwrap()
+    }
 }
 
-pub fn convert_bounds<S, T>(bounds: impl RangeBounds<S>) -> (Bound<T::Property>, Bound<T::Property>)
-where
-    S: Num + AsPrimitive<T::Property> + Copy + 'static,
-    T: Attribute,
-{
-    let start_bound: Bound<T::Property> = match bounds.start_bound() {
-        Bound::Included(&bound) => Bound::Included(bound.as_()),
-        Bound::Excluded(&bound) => Bound::Excluded(bound.as_()),
-        Bound::Unbounded => Bound::Unbounded,
-    };
-    let end_bound: Bound<T::Property> = match bounds.end_bound() {
-        Bound::Included(bound) => Bound::Included(bound.as_()),
-        Bound::Excluded(bound) => Bound::Excluded(bound.as_()),
-        Bound::Unbounded => Bound::Unbounded,
-    };
-    (start_bound, end_bound)
+pub struct GameplayContext<'w> {
+    pub source_actor: &'w AttributesRef<'w>,
+    pub target_actor: &'w AttributesRef<'w>,
+    pub owner: &'w AttributesRef<'w>,
 }
 
-pub fn multiply_bounds<T: Attribute>(
-    bounds: impl RangeBounds<T::Property>,
-    multiplier: T::Property,
-) -> (Bound<T::Property>, Bound<T::Property>) {
-    let start_bound: Bound<T::Property> = match bounds.start_bound() {
-        Bound::Included(&bound) => Bound::Included(bound * multiplier),
-        Bound::Excluded(&bound) => Bound::Excluded(bound * multiplier),
-        Bound::Unbounded => Bound::Unbounded,
-    };
-    let end_bound: Bound<T::Property> = match bounds.end_bound() {
-        Bound::Included(&bound) => Bound::Included(bound * multiplier),
-        Bound::Excluded(&bound) => Bound::Excluded(bound * multiplier),
-        Bound::Unbounded => Bound::Unbounded,
-    };
-    (start_bound, end_bound)
+impl GameplayContext<'_> {
+    pub fn entity(&self, who: Who) -> Entity {
+        match who {
+            Who::Target => self.target_actor.id(),
+            Who::Source => self.source_actor.id(),
+            Who::Owner => self.owner.id(),
+        }
+    }
+
+    pub fn attribute_ref(&self, who: Who) -> &AttributesRef<'_> {
+        match who {
+            Who::Target => self.target_actor,
+            Who::Source => self.source_actor,
+            Who::Owner => self.owner,
+        }
+    }
 }

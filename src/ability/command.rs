@@ -1,4 +1,4 @@
-use crate::ability::{Ability, AbilityOf};
+use crate::ability::Ability;
 use crate::assets::AbilityDef;
 use bevy::asset::{Assets, Handle};
 use bevy::ecs::world::CommandQueue;
@@ -11,7 +11,6 @@ pub struct GrantAbilityCommand {
 
 impl EntityCommand for GrantAbilityCommand {
     fn apply(self, mut actor: EntityWorldMut) -> () {
-        let id = actor.id();
         let ability_def = {
             // Create a temporary scope to borrow the world
             let world = actor.world();
@@ -37,11 +36,7 @@ impl EntityCommand for GrantAbilityCommand {
             queue
         };
 
-        println!("Spawning Ability??? for {}", id);
-        actor.insert((
-            Ability(self.handle),
-            Name::new(ability_def.name.clone()),
-        ));
+        actor.insert((Ability(self.handle), Name::new(ability_def.name.clone())));
 
         // Apply the commands
         actor.world_scope(|world| {

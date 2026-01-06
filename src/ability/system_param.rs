@@ -1,4 +1,6 @@
-use crate::ability::{Ability, AbilityError, GrantAbilityCommand, GrantedAbilities, TargetData, TryActivateAbility};
+use crate::ability::{
+    Ability, AbilityError, GrantAbilityCommand, GrantedAbilities, TargetData, TryActivateAbility,
+};
 use crate::actors::Actor;
 use crate::assets::AbilityDef;
 use bevy::ecs::system::SystemParam;
@@ -37,17 +39,34 @@ impl<'w, 's> AbilityContext<'w, 's> {
     }
 
     pub fn try_activate_by_tag<T: Component>(&mut self, entity: Entity) {
-        self.commands.trigger(TryActivateAbility::by_tag::<T>(entity, TargetData::SelfCast));
+        self.commands.trigger(TryActivateAbility::by_tag::<T>(
+            entity,
+            TargetData::SelfCast,
+        ));
     }
 
-    pub fn try_activate_by_def<T: Component>(&mut self, entity: Entity, definition: AssetId<AbilityDef>) {
-        self.commands.trigger(TryActivateAbility::by_def(entity, definition, TargetData::SelfCast));
+    pub fn try_activate_by_def<T: Component>(
+        &mut self,
+        entity: Entity,
+        definition: AssetId<AbilityDef>,
+    ) {
+        self.commands.trigger(TryActivateAbility::by_def(
+            entity,
+            definition,
+            TargetData::SelfCast,
+        ));
     }
-    
+
     pub fn ability_def(&self, entity: Entity) -> Result<&AbilityDef, AbilityError> {
-        let ability = self.abilities.get(entity).or(Err(AbilityError::AbilityDoesNotExist(entity)))?;
-        let definition = self.ability_definitions.get(&ability.0).ok_or(AbilityError::AbilityDoesNotExist(entity))?;
-        
+        let ability = self
+            .abilities
+            .get(entity)
+            .or(Err(AbilityError::AbilityDoesNotExist(entity)))?;
+        let definition = self
+            .ability_definitions
+            .get(&ability.0)
+            .ok_or(AbilityError::AbilityDoesNotExist(entity))?;
+
         Ok(definition)
     }
 }

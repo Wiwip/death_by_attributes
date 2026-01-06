@@ -1,7 +1,6 @@
-use crate::attributes::Attribute;
 use crate::effect::{AppliedEffects, EffectSource};
-use bevy::ecs::system::lifetimeless::Read;
 use bevy::ecs::system::SystemParam;
+use bevy::ecs::system::lifetimeless::Read;
 use bevy::prelude::*;
 use petgraph::visit::Visitable;
 use petgraph::visit::{GraphBase, IntoNeighbors};

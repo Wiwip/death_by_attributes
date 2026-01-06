@@ -2,10 +2,10 @@ mod attribute_modifier;
 mod calculator;
 mod events;
 
-use crate::condition::{GameplayContext, GameplayContextMut};
+use crate::Spawnable;
+use crate::condition::GameplayContextMut;
 use crate::inspector::pretty_type_name;
 use crate::prelude::*;
-use crate::{AttributesMut, AttributesRef, Spawnable};
 use bevy::prelude::{Commands, Component, Entity, EntityCommands, Reflect, reflect_trait};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter};
@@ -56,11 +56,11 @@ pub enum Who {
 }
 
 impl Who {
-    /// Resolves the `Who` variant to a specific entity from the context.
-    pub fn resolve_entity_mut<'a, 'b>(
+    /*/// Resolves the `Who` variant to a specific entity from the context.
+    pufn resolve_entity_mut<'w, 's>(
         &self,
-        context: &'b mut GameplayContextMut<'a>,
-    ) -> &'b mut AttributesMut<'a> {
+        context: &'s mut GameplayContextMut<'w>,
+    ) -> &'s mut AttributesMut<'w> {
         let result = match self {
             Who::Target => &mut *context.target_actor,
             Who::Source => &mut *context.source_actor,
@@ -76,7 +76,7 @@ impl Who {
             Who::Source => context.source_actor,
             Who::Owner => context.owner,
         }
-    }
+    }*/
 }
 
 impl Debug for Who {
