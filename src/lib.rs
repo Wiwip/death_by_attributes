@@ -38,7 +38,9 @@ use crate::effect::{
 };
 use crate::graph::NodeType;
 use crate::inspector::pretty_type_name;
-use crate::modifier::{ApplyAttributeModifierMessage, AttributeCalculatorCached, Who, apply_modifier_events, ModifierSource, ModifierTarget};
+use crate::modifier::{
+    ApplyAttributeModifierMessage, AttributeCalculatorCached, Who, apply_modifier_events,
+};
 use crate::prelude::*;
 use crate::registry::RegistryPlugin;
 use crate::schedule::EffectsSet;
@@ -152,8 +154,6 @@ pub type AttributesMut<'w> = EntityMutExcept<
         EffectTicker,
         EffectSource,
         EffectTarget,
-        ModifierSource,
-        ModifierTarget,
         AppliedEffects,
         EffectSources,
         Ability,
@@ -174,8 +174,6 @@ pub type AttributesRef<'w> = EntityRefExcept<
         EffectTicker,
         EffectSource,
         EffectTarget,
-        ModifierSource,
-        ModifierTarget,
         AppliedEffects,
         EffectSources,
         Ability,
@@ -186,7 +184,7 @@ pub type AttributesRef<'w> = EntityRefExcept<
 >;
 
 pub trait Spawnable: Send + Sync {
-    fn spawn(&self, commands: &mut Commands, actor_entity: AttributesRef) -> Entity;
+    fn spawn(&self, commands: &mut EntityCommands);
     fn who(&self) -> Who;
 }
 

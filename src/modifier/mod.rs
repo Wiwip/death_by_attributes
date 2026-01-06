@@ -100,27 +100,7 @@ impl Display for Who {
 #[relationship(relationship_target = OwnedModifiers)]
 pub struct ModifierOf(pub Entity);
 
-/// All effects that are targeting this entity.
+/// All modifiers belonging to this effect.
 #[derive(Component, Reflect, Debug)]
 #[relationship_target(relationship = ModifierOf, linked_spawn)]
 pub struct OwnedModifiers(Vec<Entity>);
-
-/// The target entity of this modifier.
-#[derive(Component, Reflect, Debug)]
-#[relationship(relationship_target = ModifierSources)]
-pub struct ModifierSource(pub Entity);
-
-/// All modifiers that are sourced from this entity.
-#[derive(Component, Reflect, Debug)]
-#[relationship_target(relationship = ModifierSource)]
-pub struct ModifierSources(Vec<Entity>);
-
-/// The target entity of this modifier.
-#[derive(Component, Reflect, Debug)]
-#[relationship(relationship_target = AppliedModifiers)]
-pub struct ModifierTarget(pub Entity);
-
-/// All modifiers that are targeting this entity.
-#[derive(Component, Reflect, Debug)]
-#[relationship_target(relationship = ModifierTarget)]
-pub struct AppliedModifiers(Vec<Entity>);

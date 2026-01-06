@@ -3,23 +3,23 @@ use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::window::PresentMode;
 use bevy_egui::EguiPlugin;
-use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use bevy_inspector_egui::DefaultInspectorConfigPlugin;
+use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use petgraph::prelude::Dfs;
-use petgraph::visit::{depth_first_search, DfsEvent};
+use petgraph::visit::{DfsEvent, depth_first_search};
 use root_attribute::ability::{AbilityBuilder, AbilityExecute, TargetData, TryActivateAbility};
 use root_attribute::actors::ActorBuilder;
 use root_attribute::assets::{AbilityDef, EffectDef};
 use root_attribute::attributes::ReflectAccessAttribute;
 use root_attribute::condition::AttributeCondition;
 use root_attribute::context::EffectContext;
-use root_attribute::effect::{Effect, EffectStackingPolicy};
-use root_attribute::graph::QueryGraphAdapter;
-use root_attribute::inspector::debug_overlay::DebugOverlayMarker;
+use root_attribute::effect::{Effect, EffectBuilder, EffectStackingPolicy};
+use root_attribute::graph::{DependencyGraph, NodeType};
 use root_attribute::inspector::ActorInspectorPlugin;
+use root_attribute::inspector::debug_overlay::DebugOverlayMarker;
 use root_attribute::modifier::{ModOp, Who};
 use root_attribute::prelude::*;
-use root_attribute::{attribute, init_attribute, AttributesPlugin};
+use root_attribute::{AttributesPlugin, attribute, init_attribute};
 use std::fmt::Debug;
 use std::time::Duration;
 
@@ -152,11 +152,7 @@ fn setup_effects(mut commands: Commands, mut ctx: EffectContext) {
     let regen = ctx.add_effect(
         Effect::permanent_ticking(1.0)
             .name("Regen".into())
-            .modify::<Health>(
-                HealthRegen::source_expr(),
-                ModOp::Add,
-                Who::Target,
-            )
+            .modify::<Health>(HealthRegen::source_expr(), ModOp::Add, Who::Target)
             .modify::<Mana>(ManaRegen::source_expr(), ModOp::Add, Who::Target)
             .build(),
     );
@@ -249,6 +245,24 @@ fn setup_actor(mut ctx: EffectContext, efx: Res<EffectsDatabase>, abilities: Res
 
     let player_entity = ctx.add_spawn_actor(actor_template).id();
 
+    let test_entity = ctx.add_spawn_actor(
+        ActorBuilder::new()
+            .name("==Test==")
+            .with::<Strength>(10.0)
+            .insert(DebugOverlayMarker)
+            .build(),
+    ).id();
+
+    let test_effect = EffectBuilder::permanent()
+        .modify::<Strength>(Strength::source_expr(), ModOp::Add, Who::Target)
+        .build();
+    ctx.apply_dynamic_effect_to_target(test_entity, player_entity, test_effect);
+
+    let test_effect = EffectBuilder::permanent()
+        .modify::<Intelligence>(Strength::source_expr(), ModOp::Add, Who::Target)
+        .build();
+    ctx.apply_dynamic_effect_to_target(player_entity, test_entity, test_effect);
+
     ctx.apply_effect_to_self(player_entity, &efx.ap_buff);
     ctx.apply_effect_to_self(player_entity, &efx.hp_buff);
     ctx.apply_effect_to_self(player_entity, &efx.hp_regen);
@@ -274,7 +288,8 @@ fn inputs(
     mut players: Query<(Entity, &AttackPower), With<Player>>,
     keys: Res<ButtonInput<KeyCode>>,
     mut commands: Commands,
-    graph: QueryGraphAdapter,
+    graph: DependencyGraph,
+    node_type: Query<&NodeType>,
     actors: Query<Entity, With<Player>>,
 ) {
     if let Ok((player_entity, _)) = players.single_mut() {
@@ -291,22 +306,26 @@ fn inputs(
             ));
         }
         if keys.just_pressed(KeyCode::KeyR) {
-            analyze_dependencies_with_petgraph(graph, actors);
+            analyze_dependencies_with_petgraph(graph, actors, node_type);
         }
     }
 }
 
 pub fn analyze_dependencies_with_petgraph(
-    graph: QueryGraphAdapter,
+    graph: DependencyGraph,
     actors: Query<Entity, With<Player>>,
+    node_type: Query<&NodeType>,
 ) {
     for actor_entity in actors.iter() {
         println!("Analyzing actor: {:?}", actor_entity);
+
+        //let node_type = self.node_type.get(node).expect("");
 
         // Use petgraph's depth_first_search with a custom visitor
         depth_first_search(&graph, Some(actor_entity), |event| {
             match event {
                 DfsEvent::Discover(entity, time) => {
+
                     println!("  Discovered: {} at time {}", entity, time.0);
                 }
                 DfsEvent::TreeEdge(source, target) => {
@@ -331,7 +350,7 @@ pub fn analyze_dependencies_with_petgraph(
         while let Some(_) = dfs.next(&graph) {
             count += 1;
         }
-        info!("Actor {:?} has {} reachable nodes", actor_entity, count);
+        println!("Actor {:?} has {} reachable nodes", actor_entity, count);
     }
 }
 

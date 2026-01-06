@@ -1,10 +1,11 @@
-
+use crate::attributes::Attribute;
+use crate::effect::{AppliedEffects, EffectSource};
+use bevy::ecs::system::lifetimeless::Read;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use petgraph::visit::Visitable;
 use petgraph::visit::{GraphBase, IntoNeighbors};
 use std::collections::HashSet;
-use crate::effect::AppliedEffects;
 
 /// Attributes are Components and inserted on Entities.
 /// - Derived attributes could be used
@@ -17,38 +18,49 @@ use crate::effect::AppliedEffects;
 pub enum NodeType {
     Actor,
     Effect,
-    Modifier,
 }
 
 // Lightweight wrapper that implements petgraph traits
 #[derive(SystemParam)]
-pub struct QueryGraphAdapter<'w, 's> {
-    dependencies: Query<'w, 's, (Entity, &'static AppliedEffects)>,
+pub struct DependencyGraph<'w, 's> {
+    node_type: Query<'w, 's, Read<NodeType>>,
+    applied_effects: Query<'w, 's, (Entity, Read<AppliedEffects>)>,
+    effect_sources: Query<'w, 's, (Entity, Read<EffectSource>)>,
 }
 
-impl GraphBase for QueryGraphAdapter<'_, '_> {
+impl GraphBase for DependencyGraph<'_, '_> {
     type NodeId = Entity;
     type EdgeId = (Entity, Entity);
 }
 
-impl IntoNeighbors for &QueryGraphAdapter<'_, '_> {
+impl IntoNeighbors for &DependencyGraph<'_, '_> {
     type Neighbors = vec::IntoIter<Entity>;
 
     fn neighbors(self, node: Self::NodeId) -> Self::Neighbors {
-        match self.dependencies.get(node) {
-            Ok((_, effects)) => effects.iter().collect::<Vec<Entity>>().into_iter(),
-            Err(_) => vec![].into_iter(), // No child entities
-        }
+        let node_type = self.node_type.get(node).expect("Error getting node type.");
+
+        let neighbours = match *node_type {
+            NodeType::Actor => self
+                .applied_effects
+                .get(node)
+                .map(|(_, effects)| effects.iter().collect::<Vec<_>>())
+                .unwrap_or_default(),
+            NodeType::Effect => self
+                .effect_sources
+                .get(node)
+                .map(|(_, source)| vec![source.0])
+                .unwrap_or_default(),
+        };
+
+        neighbours.into_iter()
     }
 }
 
-impl Visitable for QueryGraphAdapter<'_, '_> {
+impl Visitable for DependencyGraph<'_, '_> {
     type Map = HashSet<Entity>;
-
     fn visit_map(&self) -> Self::Map {
         HashSet::new()
     }
-
     fn reset_map(&self, map: &mut Self::Map) {
         map.clear();
     }

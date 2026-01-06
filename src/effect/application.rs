@@ -1,4 +1,3 @@
-use crate::AttributesMut;
 use crate::assets::EffectDef;
 use crate::condition::GameplayContext;
 use crate::effect::stacks::NotifyAddStackEvent;
@@ -7,7 +6,8 @@ use crate::effect::{
     AppliedEffects, Effect, EffectSource, EffectStackingPolicy, EffectTarget, EffectTargeting,
 };
 use crate::graph::NodeType;
-use crate::modifier::{Modifier, ModifierOf, ModifierSource, ModifierTarget, Who};
+use crate::modifier::{Modifier, ModifierOf};
+use crate::AttributesMut;
 use bevy::asset::{Assets, Handle};
 use bevy::log::debug;
 use bevy::prelude::*;
@@ -266,30 +266,10 @@ impl ApplyEffectEvent {
         }
 
         // Spawn effect modifiers
-        effect
-            .modifiers
-            .iter()
-            .for_each(|modifier| match modifier.who() {
-                Who::Target => {
-                    let (_, target) = actors.get_mut(self.targeting.target()).unwrap();
-                    let mod_entity = modifier.spawn(commands, target.as_readonly());
-                    commands.entity(mod_entity).insert((
-                        ModifierOf(effect_entity),
-                        ModifierSource(self.targeting.source()),
-                        ModifierTarget(self.targeting.target()),
-                    ));
-                }
-                Who::Source => {
-                    let (_, source) = actors.get_mut(self.targeting.source()).unwrap();
-                    let mod_entity = modifier.spawn(commands, source.as_readonly());
-                    commands.entity(mod_entity).insert((
-                        ModifierOf(effect_entity),
-                        ModifierSource(self.targeting.source()),
-                        ModifierTarget(self.targeting.target()),
-                    ));
-                }
-                Who::Owner => todo!(),
-            });
+        effect.modifiers.iter().for_each(|modifier| {
+            let mut entity_commands = commands.spawn(ModifierOf(effect_entity));
+            modifier.spawn(&mut entity_commands);
+        });
 
         // Spawn effect triggers
         for triggers in &effect.on_actor_triggers {
@@ -344,11 +324,11 @@ mod test {
     use crate::condition::AttributeCondition;
     use crate::context::EffectContext;
     use crate::effect::builder::EffectBuilder;
-    use crate::modifier::ModOp;
+    use crate::modifier::{ModOp, Who};
     use crate::prelude::*;
     use crate::registry::effect_registry::EffectToken;
     use crate::registry::{Registry, RegistryMut};
-    use crate::{AttributesPlugin, attribute, init_attribute};
+    use crate::{attribute, init_attribute, AttributesPlugin};
     use bevy::ecs::system::RunSystemOnce;
 
     attribute!(TestA, f32);

@@ -1,10 +1,9 @@
-use crate::effect::{AttributeDependency, AttributeDependents};
+use crate::effect::AttributeDependents;
 use crate::expression::{AttributeExpr, AttributeExprRef, Expr};
 use crate::inspector::pretty_type_name;
 use crate::math::{AbsDiff, SaturatingAttributes};
-use crate::modifier::{AttributeCalculator, AttributeCalculatorCached, Who};
+use crate::modifier::{AttributeCalculator, AttributeCalculatorCached};
 use crate::systems::MarkNodeDirty;
-use crate::{AttributeError, AttributesRef};
 use bevy::ecs::component::Mutable;
 use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
@@ -14,10 +13,9 @@ pub use num_traits::{
     SaturatingAdd, SaturatingMul, Zero,
 };
 use serde::Serialize;
-use std::any::TypeId;
 use std::collections::HashSet;
+use std::fmt::Debug;
 use std::fmt::Display;
-use std::fmt::{Debug, Formatter};
 use std::hash::Hasher;
 use std::hash::{DefaultHasher, Hash};
 use std::iter::Sum;

@@ -3,22 +3,17 @@ use crate::assets::EffectDef;
 use crate::attributes::{Attribute, AttributeQueryData, AttributeQueryDataReadOnly};
 use crate::condition::GameplayContext;
 use crate::effect::{
-    AppliedEffects, Effect, EffectSource, EffectStatusParam, EffectTarget, EffectTargeting,
-    EffectTicker, Stacks,
+    Effect, EffectSource, EffectStatusParam, EffectTarget, EffectTargeting, EffectTicker, Stacks,
 };
-use crate::expression::Expression;
-use crate::graph::{NodeType, QueryGraphAdapter};
+use crate::graph::{DependencyGraph, NodeType};
 use crate::inspector::pretty_type_name;
-use crate::modifier::{AppliedModifiers, ApplyAttributeModifierMessage, AttributeCalculator, ModifierOf, ModifierSource, ModifierTarget, OwnedModifiers, Who};
+use crate::modifier::{ApplyAttributeModifierMessage, AttributeCalculator, OwnedModifiers, Who};
 use crate::prelude::*;
 use crate::{AttributesRef, CurrentValueChanged, Dirty};
-use bevy::ecs::error::warn;
-use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
 use petgraph::visit::IntoNeighbors;
-use std::any::{type_name, TypeId};
+use std::any::type_name;
 use std::marker::PhantomData;
-use std::os::linux::raw::stat;
 
 #[derive(EntityEvent)]
 #[entity_event(propagate=&'static EffectTarget, auto_propagate)]
@@ -48,20 +43,15 @@ pub fn mark_node_dirty_observer<T: Attribute>(
 /// Navigates the tree descendants to update the tree attribute values
 /// Effects that have a periodic timer application must be ignored in the current value calculations
 pub fn update_effect_system<T: Attribute>(
-    //graph: QueryGraphAdapter,
+    graph: DependencyGraph,
+    nodes: Query<&NodeType>,
     actors: Query<Entity, With<Actor>>,
-    applied_modifiers: Query<&AppliedModifiers>,
-    //nodes: Query<&NodeType>,
     dirty_nodes: Query<&Dirty<T>>,
     statuses: Query<EffectStatusParam>,
-    //attributes: Query<AttributeQueryDataReadOnly<T>>,
+    attributes: Query<AttributeQueryDataReadOnly<T>>,
     attribute_refs: Query<AttributesRef>,
-    modifiers: Query<(
-        &AttributeModifier<T>,
-        &ModifierOf,
-        &ModifierSource,
-        &ModifierTarget,
-    )>,
+    effects: Query<(&OwnedModifiers, &EffectSource, &EffectTarget)>,
+    modifiers: Query<&AttributeModifier<T>>,
     mut commands: Commands,
 ) {
     debug_once!("Ready: update_effect_tree_system::{}", type_name::<T>());
@@ -71,45 +61,18 @@ pub fn update_effect_system<T: Attribute>(
             continue;
         }
 
-        let Ok(applied_modifiers) = applied_modifiers.get(actor_entity) else {
-            continue;
-        };
-
-        let calculator = applied_modifiers
-            .iter()
-            .filter_map(|modifier_entity| {
-                // Get the modifier
-                let Ok((modifier, parent, source, target)) = modifiers.get(modifier_entity) else {
-                    println!("{}: {}, nope?",modifier_entity ,pretty_type_name::<T>());
-                    return None;
-                };
-
-                // Get the effect to check if we should apply it
-                let Ok(status) = statuses.get(parent.0) else {
-                    return None;
-                };
-                if status.is_periodic() || status.is_inactive() {
-                    return None;
-                }
-
-                let [source, target, effect] = attribute_refs
-                    .get_many([source.0, target.0, parent.0])
-                    .unwrap();
-                let context = GameplayContext {
-                    source_actor: &source,
-                    target_actor: &target,
-                    owner: &effect,
-                };
-
-                let calc = AttributeCalculator::convert(modifier, &context).unwrap_or_default();
-
-                Some(calc)
-            })
-            .fold(AttributeCalculator::default(), |acc, child| {
-                acc.combine(child)
-            });
-
-        println!("{}: {:?}", pretty_type_name::<T>(), calculator);
+        let calculator = update_effect_tree_attributes::<T>(
+            actor_entity,
+            &graph,
+            &nodes,
+            &dirty_nodes,
+            &statuses,
+            &attributes,
+            &attribute_refs,
+            &effects,
+            &modifiers,
+            &mut commands,
+        );
 
         // Signal to update the attribute
         commands.trigger(UpdateAttributeSignal {
@@ -119,44 +82,25 @@ pub fn update_effect_system<T: Attribute>(
 
         // Cleans the node
         commands.entity(actor_entity).try_remove::<Dirty<T>>();
-
-        /*update_effect_tree_attributes::<T>(
-            &graph,
-            &nodes,
-            actor_entity,
-            &dirty_nodes,
-            &statuses,
-            &attributes,
-            &attribute_refs,
-            &actor_attribute_ref,
-            &modifiers,
-            &mut commands,
-        );*/
     }
 }
 
 fn update_effect_tree_attributes<T: Attribute>(
-    graph: &QueryGraphAdapter,
-    nodes: &Query<&NodeType>,
     current_entity: Entity,
+    graph: &DependencyGraph,
+    nodes: &Query<&NodeType>,
     dirty_nodes: &Query<&Dirty<T>>,
     statuses: &Query<EffectStatusParam>,
     attributes: &Query<AttributeQueryDataReadOnly<T>>,
-    attributes_ref: &Query<AttributesRef>,
-    actor_attribute_ref: &AttributesRef,
-    modifiers: &Query<(
-        &AttributeModifier<T>,
-        &EffectSource,
-        &EffectTarget,
-        &ModifierOf,
-    )>,
+    attribute_refs: &Query<AttributesRef>,
+    effects: &Query<(&OwnedModifiers, &EffectSource, &EffectTarget)>,
+    modifiers: &Query<&AttributeModifier<T>>,
     commands: &mut Commands,
 ) -> AttributeCalculator<T> {
     let Ok(node_type) = nodes.get(current_entity) else {
         error!("{}: Error getting node type.", current_entity);
         return AttributeCalculator::default();
     };
-
     let Ok(status) = statuses.get(current_entity) else {
         return AttributeCalculator::default();
     };
@@ -173,20 +117,20 @@ fn update_effect_tree_attributes<T: Attribute>(
     }
 
     let node_calculator = match node_type {
-        NodeType::Actor | NodeType::Effect => {
+        NodeType::Actor => {
             // Traverse children
             let calculator = graph
                 .neighbors(current_entity)
                 .map(|entity| {
                     update_effect_tree_attributes::<T>(
+                        entity,
                         graph,
                         nodes,
-                        entity,
                         dirty_nodes,
                         statuses,
                         attributes,
-                        attributes_ref,
-                        actor_attribute_ref,
+                        attribute_refs,
+                        effects,
                         modifiers,
                         commands,
                     )
@@ -194,24 +138,48 @@ fn update_effect_tree_attributes<T: Attribute>(
                 .fold(AttributeCalculator::default(), |acc, child| {
                     acc.combine(child)
                 });
+
             calculator
         }
-        NodeType::Modifier => {
-            if let Ok((modifier, source, target, parent)) = modifiers.get(current_entity) {
-                let [source, target, effect] = attributes_ref
-                    .get_many([source.0, target.0, parent.0])
-                    .unwrap();
-                let context = GameplayContext {
-                    source_actor: &source,
-                    target_actor: &target,
-                    owner: &effect,
-                };
+        NodeType::Effect => {
+            let Ok((modifier_entities, source, target)) = effects.get(current_entity) else {
+                error!("{}: Error getting effect type.", current_entity);
+                return AttributeCalculator::default();
+            };
 
-                AttributeCalculator::convert(modifier, &context).unwrap_or_default()
-            } else {
-                // This happens when we are looking for A, but the modifier applies to B
-                AttributeCalculator::default()
-            }
+            let calculator = modifier_entities
+                .iter()
+                .filter_map(|modifier_entity| {
+                    // Get the modifier
+                    let Ok(modifier) = modifiers.get(modifier_entity) else {
+                        return None;
+                    };
+                    // Get the effect to check if we should apply it
+                    let Ok(status) = statuses.get(current_entity) else {
+                        return None;
+                    };
+                    if status.is_periodic() || status.is_inactive() {
+                        return None;
+                    }
+
+                    let [source, target, effect] = attribute_refs
+                        .get_many([source.0, target.0, current_entity])
+                        .unwrap();
+                    let context = GameplayContext {
+                        source_actor: &source,
+                        target_actor: &target,
+                        owner: &effect,
+                    };
+
+                    let calc = AttributeCalculator::convert(modifier, &context).unwrap_or_default();
+
+                    Some(calc)
+                })
+                .fold(AttributeCalculator::default(), |acc, child| {
+                    acc.combine(child)
+                });
+
+            calculator
         }
     };
 

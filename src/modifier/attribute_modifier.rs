@@ -86,7 +86,13 @@ impl<T: Attribute> Modifier for AttributeModifier<T> {
         }
     }
 
-    fn apply_delayed(&self, source: Entity, target: Entity, effect: Entity, commands: &mut Commands) {
+    fn apply_delayed(
+        &self,
+        source: Entity,
+        target: Entity,
+        effect: Entity,
+        commands: &mut Commands,
+    ) {
         commands.write_message(ApplyAttributeModifierMessage::<T> {
             source_entity: source,
             target_entity: target,
@@ -97,9 +103,8 @@ impl<T: Attribute> Modifier for AttributeModifier<T> {
 }
 
 impl<T: Attribute> Spawnable for AttributeModifier<T> {
-    fn spawn(&self, commands: &mut Commands, _actor_entity: AttributesRef) -> Entity {
-        let entity_commands = commands.spawn((
-            NodeType::Modifier,
+    fn spawn(&self, commands: &mut EntityCommands) {
+        commands.insert((
             AttributeModifier::<T> {
                 expression: self.expression.clone(),
                 who: self.who,
@@ -107,8 +112,6 @@ impl<T: Attribute> Spawnable for AttributeModifier<T> {
             },
             Name::new(format!("{}", self)),
         ));
-
-        entity_commands.id()
     }
 
     fn who(&self) -> Who {
