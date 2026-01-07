@@ -1,3 +1,5 @@
+extern crate core;
+
 use bevy::prelude::*;
 use std::any::TypeId;
 use std::error::Error;
@@ -39,7 +41,7 @@ use crate::effect::{
 use crate::graph::NodeType;
 use crate::inspector::pretty_type_name;
 use crate::modifier::{
-    ApplyAttributeModifierMessage, AttributeCalculatorCached, Who, apply_modifier_events,
+    ApplyAttributeModifierMessage, AttributeCalculatorCached, apply_modifier_events,
 };
 use crate::prelude::*;
 use crate::registry::RegistryPlugin;
@@ -185,7 +187,7 @@ pub type AttributesRef<'w> = EntityRefExcept<
 
 pub trait Spawnable: Send + Sync {
     fn spawn(&self, commands: &mut EntityCommands);
-    fn who(&self) -> Who;
+    //fn who(&self) -> Who;
 }
 
 #[derive(Component, Copy, Clone, Debug)]

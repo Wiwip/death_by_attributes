@@ -291,7 +291,6 @@ fn inputs(
     keys: Res<ButtonInput<KeyCode>>,
     mut commands: Commands,
     graph: DependencyGraph,
-    node_type: Query<&NodeType>,
     actors: Query<Entity, With<Player>>,
 ) {
     if let Ok((player_entity, _)) = players.single_mut() {
@@ -308,7 +307,7 @@ fn inputs(
             ));
         }
         if keys.just_pressed(KeyCode::KeyR) {
-            analyze_dependencies_with_petgraph(graph, actors, node_type);
+            analyze_dependencies_with_petgraph(graph, actors);
         }
     }
 }
@@ -316,41 +315,9 @@ fn inputs(
 pub fn analyze_dependencies_with_petgraph(
     graph: DependencyGraph,
     actors: Query<Entity, With<Player>>,
-    node_type: Query<&NodeType>,
 ) {
     for actor_entity in actors.iter() {
-        println!("Analyzing actor: {:?}", actor_entity);
-
-        // Use petgraph's depth_first_search with a custom visitor
-        depth_first_search(&graph, Some(actor_entity), |event| {
-            match event {
-                DfsEvent::Discover(entity, _time) => {
-                    let node_type = node_type.get(entity).expect("No NodeType on entity.");
-                    println!("{node_type:?}: {}", entity);
-                }
-                DfsEvent::TreeEdge(source, target) => {
-                    println!("  Tree edge: {} -> {}", source, target);
-                }
-                DfsEvent::BackEdge(source, target) => {
-                    warn!("  Back edge (cycle): {} -> {}", source, target);
-                }
-                DfsEvent::CrossForwardEdge(source, target) => {
-                    warn!("  Cross edge: {} -> {}", source, target);
-                }
-                DfsEvent::Finish(entity, time) => {
-                    println!("  Finished: {} at time {}", entity, time.0);
-                }
-            }
-            petgraph::visit::Control::<Entity>::Continue
-        });
-
-        // Use petgraph's DFS iterator
-        let mut dfs = Dfs::new(&graph, actor_entity);
-        let mut count = 0;
-        while let Some(_) = dfs.next(&graph) {
-            count += 1;
-        }
-        println!("Actor {:?} has {} reachable nodes", actor_entity, count);
+        graph.print_dependencies(actor_entity);
     }
 }
 

@@ -2,9 +2,12 @@ use crate::effect::{AppliedEffects, EffectSource};
 use bevy::ecs::system::SystemParam;
 use bevy::ecs::system::lifetimeless::Read;
 use bevy::prelude::*;
-use petgraph::visit::Visitable;
+use petgraph::visit::{DfsEvent, Visitable, depth_first_search};
 use petgraph::visit::{GraphBase, IntoNeighbors};
+use ptree::{TreeBuilder, print_tree};
 use std::collections::HashSet;
+use std::panic;
+use std::panic::catch_unwind;
 
 /// Attributes are Components and inserted on Entities.
 /// - Derived attributes could be used
@@ -19,12 +22,56 @@ pub enum NodeType {
     Effect,
 }
 
+impl std::fmt::Display for NodeType {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
 // Lightweight wrapper that implements petgraph traits
 #[derive(SystemParam)]
 pub struct DependencyGraph<'w, 's> {
     node_type: Query<'w, 's, Read<NodeType>>,
     applied_effects: Query<'w, 's, (Entity, Read<AppliedEffects>)>,
     effect_sources: Query<'w, 's, (Entity, Read<EffectSource>)>,
+}
+
+impl DependencyGraph<'_, '_> {
+    fn node_type(&self, entity: Entity) -> Option<&NodeType> {
+        self.node_type.get(entity).ok()
+    }
+
+    pub fn print_dependencies(&self, entity: Entity) {
+        let node_type = self.node_type(entity).expect("Node type not found");
+        let mut tree = TreeBuilder::new("Root".into());
+        tree.begin_child(format!("{}({})", node_type, entity.to_string()));
+
+        // Use petgraph's depth_first_search with a custom visitor
+        depth_first_search(&self, Some(entity), |event| {
+            match event {
+                DfsEvent::Discover(_entity, _time) => {}
+                DfsEvent::TreeEdge(_source, target) => {
+                    let node_type = self.node_type(target).expect("Node type not found");
+                    tree.begin_child(format!("{}({})", node_type, target));
+                }
+                DfsEvent::BackEdge(_source, target) => {
+                    let node_type = self.node_type(target).expect("Node type not found");
+                    tree.begin_child(format!("{}({})", node_type, target));
+                    tree.end_child();
+                }
+                DfsEvent::CrossForwardEdge(source, target) => {
+                    warn!("Cross edge: {} -> {}", source, target);
+                }
+                DfsEvent::Finish(_entity, _time) => {
+                    tree.end_child();
+                }
+            }
+            petgraph::visit::Control::<Entity>::Continue
+        });
+
+        let final_tree = tree.build();
+        print_tree(&final_tree).expect("Failed to print tree");
+    }
 }
 
 impl GraphBase for DependencyGraph<'_, '_> {

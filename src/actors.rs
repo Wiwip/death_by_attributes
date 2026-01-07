@@ -147,10 +147,9 @@ impl ActorBuilder {
         limits: impl RangeBounds<f64> + Send + Sync + 'static,
     ) -> ActorBuilder
     where
-        S: Attribute,
+        S: Attribute<Property = T::Property>,
         T: Attribute,
         f64: AsPrimitive<T::Property>,
-        S: Attribute<Property = T::Property>,
     {
         let bounds = (limits.start_bound().cloned(), limits.end_bound().cloned());
 

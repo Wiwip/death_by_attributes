@@ -55,30 +55,6 @@ pub enum Who {
     Owner,
 }
 
-impl Who {
-    /*/// Resolves the `Who` variant to a specific entity from the context.
-    pufn resolve_entity_mut<'w, 's>(
-        &self,
-        context: &'s mut GameplayContextMut<'w>,
-    ) -> &'s mut AttributesMut<'w> {
-        let result = match self {
-            Who::Target => &mut *context.target_actor,
-            Who::Source => &mut *context.source_actor,
-            Who::Owner => &mut *context.owner,
-        };
-        result
-    }
-
-    /// Resolves the `Who` variant to a specific entity from the context.
-    pub fn resolve_entity<'a>(&self, context: &'a GameplayContext<'a>) -> &'a AttributesRef<'a> {
-        match self {
-            Who::Target => context.target_actor,
-            Who::Source => context.source_actor,
-            Who::Owner => context.owner,
-        }
-    }*/
-}
-
 impl Debug for Who {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self)

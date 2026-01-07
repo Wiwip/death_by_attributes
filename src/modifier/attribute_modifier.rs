@@ -109,8 +109,4 @@ impl<T: Attribute> Spawnable for AttributeModifier<T> {
             Name::new(format!("{}", self)),
         ));
     }
-
-    fn who(&self) -> Who {
-        self.who
-    }
 }
