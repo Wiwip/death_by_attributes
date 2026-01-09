@@ -1,5 +1,5 @@
 use crate::AttributesMut;
-use crate::condition::GameplayContext;
+use crate::condition::EvalContext;
 use crate::inspector::pretty_type_name;
 use crate::math::AbsDiff;
 use crate::modifier::calculator::AttributeCalculator;
@@ -39,7 +39,7 @@ pub fn apply_modifier<T: Attribute>(
     let query = [trigger.source_entity, trigger.target_entity];
     let [source, target] = attributes.get_many(query)?;
 
-    let context = GameplayContext {
+    let context = EvalContext {
         source_actor: &source,
         target_actor: &target,
         owner: &source,

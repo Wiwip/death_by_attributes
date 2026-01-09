@@ -3,12 +3,12 @@ use crate::ability::{
     TryActivateAbility,
 };
 use crate::assets::AbilityDef;
-use crate::condition::{BoxCondition, GameplayContext, GameplayContextMut};
-use crate::expression::Expression;
+use crate::condition::{BoxCondition, EvalContext, GameplayContextMut};
 use crate::{AttributesMut, AttributesRef};
 use bevy::asset::Assets;
 use bevy::prelude::*;
 use std::time::Duration;
+use crate::expression::ExpressionError::AttributeError;
 
 pub fn tick_ability_cooldown(mut query: Query<&mut AbilityCooldown>, time: Res<Time>) {
     query.par_iter_mut().for_each(|mut cooldown| {
@@ -95,7 +95,7 @@ fn can_activate_ability(
     ability_def: &AbilityDef,
     conditions: &BoxCondition,
 ) -> Result<bool, BevyError> {
-    let context = GameplayContext {
+    let context = EvalContext {
         target_actor: &target_entity_ref,
         source_actor: &source_entity_ref,
         owner: &ability_entity_ref,
@@ -143,7 +143,7 @@ pub(crate) fn reset_ability_cooldown(
 
     let [source, target, owner] =
         query.get_many([trigger.source, trigger.target, trigger.ability])?;
-    let context = GameplayContext {
+    let context = EvalContext {
         target_actor: &source,
         source_actor: &target,
         owner: &owner,

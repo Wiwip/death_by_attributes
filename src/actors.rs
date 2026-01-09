@@ -132,7 +132,7 @@ impl ActorBuilder {
                 let limits = convert_bounds::<f64, T>(limits.clone());
 
                 entity_commands.insert(Clamp::<T> {
-                    expression: T::source_expr(),
+                    expression: T::src(),
                     limits,
                     bounds: limits,
                 });
@@ -161,7 +161,7 @@ impl ActorBuilder {
                     Observer::new(observe_current_value_change_for_clamp_bounds::<S, T>);
                 observer.watch_entity(parent_actor);
 
-                entity_commands.insert(Clamp::<T>::new(S::source_expr(), bounds));
+                entity_commands.insert(Clamp::<T>::new(S::src(), bounds));
 
                 entity_commands.commands().spawn((
                     observer,

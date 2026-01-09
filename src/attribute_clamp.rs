@@ -1,6 +1,6 @@
 use crate::attributes::AttributeQueryData;
-use crate::condition::GameplayContext;
-use crate::expression::{Expr, Expression};
+use crate::condition::EvalContext;
+use crate::expression::Expr;
 use crate::inspector::pretty_type_name;
 use crate::prelude::*;
 use crate::{AttributesRef, CurrentValueChanged};
@@ -52,7 +52,7 @@ pub fn observe_current_value_change_for_clamp_bounds<S: Attribute, T: Attribute>
             return;
         };
 
-        let fake_context = GameplayContext {
+        let fake_context = EvalContext {
             source_actor: &attribute_ref,
             target_actor: &attribute_ref,
             owner: &attribute_ref,

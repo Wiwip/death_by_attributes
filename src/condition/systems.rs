@@ -1,6 +1,6 @@
 use crate::AttributesRef;
 use crate::assets::EffectDef;
-use crate::condition::GameplayContext;
+use crate::condition::EvalContext;
 use crate::effect::{Effect, EffectInactive, EffectSource, EffectTarget, EffectTicker};
 use bevy::asset::Assets;
 use bevy::ecs::relationship::Relationship;
@@ -49,7 +49,7 @@ pub fn evaluate_effect_conditions(
             continue;
         };
 
-        let context = GameplayContext {
+        let context = EvalContext {
             target_actor: &target_actor_ref,
             source_actor: &source_actor_ref,
             owner: &effect_entity_ref,
@@ -145,7 +145,7 @@ mod test {
     pub fn fireball_ability() -> AbilityDef {
         AbilityBuilder::new()
             .with_name("Test Ability".into())
-            .with_cooldown(TestB::source_expr())
+            .with_cooldown(TestB::src())
             .with_cost::<TestB>(3.0)
             .build()
     }

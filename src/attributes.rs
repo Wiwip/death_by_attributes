@@ -1,5 +1,6 @@
 use crate::effect::AttributeDependents;
-use crate::expression::{AttributeExpr, AttributeExprRef, Expr};
+use crate::expression::{Expr, ExprNode, parent};
+use crate::expression::{dst, src};
 use crate::inspector::pretty_type_name;
 use crate::math::{AbsDiff, SaturatingAttributes};
 use crate::modifier::{AttributeCalculator, AttributeCalculatorCached};
@@ -53,14 +54,14 @@ where
     fn set_base_value(&mut self, value: Self::Property);
     fn current_value(&self) -> Self::Property;
     fn set_current_value(&mut self, value: Self::Property);
-    fn source_expr() -> Expr<Self::Property> {
-        Expr::<Self::Property>::Expr(AttributeExprRef(Arc::new(AttributeExpr::<Self>::Source)))
+    fn src() -> Expr<Self::Property> {
+        Expr::<Self::Property>(Arc::new(ExprNode::Attribute(Box::new(src::<Self>()))))
     }
-    fn target_expr() -> Expr<Self::Property> {
-        Expr::<Self::Property>::Expr(AttributeExprRef(Arc::new(AttributeExpr::<Self>::Target)))
+    fn dst() -> Expr<Self::Property> {
+        Expr::<Self::Property>(Arc::new(ExprNode::Attribute(Box::new(dst::<Self>()))))
     }
-    fn parent_expr() -> Expr<Self::Property> {
-        Expr::<Self::Property>::Expr(AttributeExprRef(Arc::new(AttributeExpr::<Self>::Parent)))
+    fn parent() -> Expr<Self::Property> {
+        Expr::<Self::Property>(Arc::new(ExprNode::Attribute(Box::new(parent::<Self>()))))
     }
     fn attribute_type_id() -> AttributeTypeId;
 }

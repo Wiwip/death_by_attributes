@@ -119,8 +119,8 @@ fn setup_effects(mut commands: Commands, mut ctx: EffectContext) {
     let ap_buff = ctx.add_effect(
         Effect::permanent()
             .name("AttackPower Buff".into())
-            .modify::<AttackPower>(Health::source_expr(), ModOp::Add, Who::Target) //, 0.01)
-            .modify::<Intelligence>(Health::source_expr(), ModOp::Add, Who::Target) //, 0.25)
+            .modify::<AttackPower>(Health::src(), ModOp::Add, Who::Target) //, 0.01)
+            .modify::<Intelligence>(Health::src(), ModOp::Add, Who::Target) //, 0.25)
             .build(),
     );
 
@@ -128,7 +128,7 @@ fn setup_effects(mut commands: Commands, mut ctx: EffectContext) {
     let mp_buff = ctx.add_effect(
         Effect::permanent()
             .name("MagicPower Buff".into())
-            .modify::<MagicPower>(Intelligence::source_expr(), ModOp::Add, Who::Target)
+            .modify::<MagicPower>(Intelligence::src(), ModOp::Add, Who::Target)
             .modify::<MagicPower>(5u32, ModOp::Add, Who::Target)
             .activate_while(AttributeCondition::<Health>::new(..=500, Who::Source))
             .with_stacking_policy(EffectStackingPolicy::Add {
@@ -152,8 +152,8 @@ fn setup_effects(mut commands: Commands, mut ctx: EffectContext) {
     let regen = ctx.add_effect(
         Effect::permanent_ticking(1.0)
             .name("Regen".into())
-            .modify::<Health>(HealthRegen::source_expr(), ModOp::Add, Who::Target)
-            .modify::<Mana>(ManaRegen::source_expr(), ModOp::Add, Who::Target)
+            .modify::<Health>(HealthRegen::src(), ModOp::Add, Who::Target)
+            .modify::<Mana>(ManaRegen::src(), ModOp::Add, Who::Target)
             .build(),
     );
 
@@ -256,12 +256,12 @@ fn setup_actor(mut ctx: EffectContext, efx: Res<EffectsDatabase>, abilities: Res
         .id();
 
     let test_effect = EffectBuilder::permanent()
-        .modify::<Strength>(Strength::source_expr(), ModOp::Add, Who::Target)
+        .modify::<Strength>(Strength::src(), ModOp::Add, Who::Target)
         .build();
     ctx.apply_dynamic_effect_to_target(test_entity, player_entity, test_effect);
 
     let test_effect = EffectBuilder::permanent()
-        .modify::<Intelligence>(Strength::source_expr(), ModOp::Add, Who::Target)
+        .modify::<Intelligence>(Strength::src(), ModOp::Add, Who::Target)
         .build();
     ctx.apply_dynamic_effect_to_target(player_entity, test_entity, test_effect);
 

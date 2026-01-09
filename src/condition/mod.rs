@@ -30,7 +30,7 @@ impl Plugin for ConditionPlugin {
 }
 
 pub trait Condition: Debug + Send + Sync {
-    fn eval(&self, context: &GameplayContext) -> Result<bool, BevyError>;
+    fn eval(&self, context: &EvalContext) -> Result<bool, BevyError>;
 }
 
 #[derive(Debug)]
@@ -68,13 +68,13 @@ impl GameplayContextMut<'_, '_> {
     }
 }
 
-pub struct GameplayContext<'w> {
+pub struct EvalContext<'w> {
     pub source_actor: &'w AttributesRef<'w>,
     pub target_actor: &'w AttributesRef<'w>,
     pub owner: &'w AttributesRef<'w>,
 }
 
-impl GameplayContext<'_> {
+impl EvalContext<'_> {
     pub fn entity(&self, who: Who) -> Entity {
         match who {
             Who::Target => self.target_actor.id(),

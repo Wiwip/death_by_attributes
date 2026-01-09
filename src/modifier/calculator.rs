@@ -1,12 +1,12 @@
 use crate::AttributeError;
-use crate::condition::GameplayContext;
-use crate::expression::Expression;
+use crate::condition::EvalContext;
 use crate::math::SaturatingAttributes;
 use crate::prelude::{Attribute, AttributeModifier};
 use bevy::prelude::*;
 use num_traits::{AsPrimitive, Bounded, FromPrimitive, Zero};
 use serde::Serialize;
 use std::fmt::{Debug, Display, Formatter};
+use crate::expression::ExpressionError;
 
 #[derive(Debug, Clone, Copy, Reflect, Serialize)]
 pub enum ModOp {
@@ -117,8 +117,8 @@ impl<T: Attribute> AttributeCalculator<T> {
 
     pub fn convert(
         modifier: &AttributeModifier<T>,
-        context: &GameplayContext,
-    ) -> Result<Self, AttributeError> {
+        context: &EvalContext,
+    ) -> Result<Self, ExpressionError> {
         let calculator = match modifier.operation {
             ModOp::Set => Self {
                 set: Some(modifier.expression.eval(context)?),

@@ -1,349 +1,212 @@
 mod attribute;
+mod math;
 
-use crate::AttributeError;
-use crate::condition::GameplayContext;
+use crate::condition::EvalContext;
 use crate::prelude::*;
-use bevy::prelude::{Deref, DerefMut, Reflect};
 use num_traits::Num;
-use std::any::TypeId;
+use std::error::Error;
+use std::fmt::{Debug, Display, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-pub trait Expression: Send + Sync + 'static {
-    type Out: Num;
+#[derive(Default, Debug, Clone)]
+pub struct Expr<P: Num>(pub Arc<ExprNode<P>>);
 
-    fn eval(&self, context: &GameplayContext) -> Result<Self::Out, AttributeError>;
+impl<P: Num + Debug + Copy + 'static> Expr<P> {
+    pub fn cast<T: Num + Debug + Send + Sync + 'static>(self) -> Expr<T>
+    where
+        P: Into<T> + Debug + Send + Sync,
+    {
+        Expr(Arc::new(ExprNode::Cast(Box::new(CastOp {
+            inner: self,
+            _phantom: PhantomData,
+        }))))
+    }
+
+    pub fn eval(&self, ctx: &EvalContext) -> Result<P, ExpressionError> {
+        match self.0.as_ref() {
+            ExprNode::None => Err(ExpressionError::NoneNode),
+            ExprNode::Lit(n) => Ok(*n),
+            ExprNode::Attribute(attr) => attr.retrieve(ctx),
+            ExprNode::BinaryOp { lhs, op, rhs } => match op {
+                BinaryOp::Add => Ok(lhs.eval(ctx)? + rhs.eval(ctx)?),
+                BinaryOp::Mul => Ok(lhs.eval(ctx)? * rhs.eval(ctx)?),
+            },
+            ExprNode::Cast(expr) => expr.eval_cast(ctx),
+            _ => todo!("Missing Node Implementation"),
+        }
+    }
+
+    pub fn lit(value: P) -> Expr<P> {
+        Expr(Arc::new(ExprNode::Lit(value)))
+    }
 }
 
-pub trait IntoExpression {
-    type Out: Num;
-
-    fn into_expr(self) -> Expr<Self::Out>;
-}
-
-#[derive(Default, Debug, Clone, Reflect)]
-pub enum Expr<P: Num> {
+#[derive(Default, Debug)]
+pub enum ExprNode<P: Num> {
     #[default]
-    Empty,
+    None,
     Lit(P),
-    Expr(AttributeExprRef<P>),
-    Operation,
+    Attribute(Box<dyn RetrieveAttribute<P>>),
+    Cast(Box<dyn Castable<P>>),
+    BinaryOp {
+        lhs: Expr<P>,
+        op: BinaryOp,
+        rhs: Expr<P>,
+    },
 }
 
-impl<P: Num + Send + Sync + Copy + 'static> Expression for Expr<P> {
-    type Out = P;
+#[derive(Debug)]
+pub enum ExpressionError {
+    AttributeError,
+    NoneNode,
+}
 
-    fn eval(&self, context: &GameplayContext) -> Result<Self::Out, AttributeError> {
+impl Display for ExpressionError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Expr::Lit(value) => Ok(*value),
-            Expr::Expr(expr_ref) => expr_ref.eval(context),
-            Expr::Operation => {
-                todo!()
+            ExpressionError::AttributeError => {
+                write!(
+                    f,
+                    "Attribute error: Failed to retrieve attribute from context"
+                )
             }
-            Expr::Empty => {
-                todo!()
+            ExpressionError::NoneNode => {
+                write!(f, "A NoneNode was present.")
             }
         }
     }
 }
 
-#[derive(Deref, DerefMut, Clone)]
-pub struct AttributeExprRef<P: Num>(pub Arc<dyn Expression<Out = P>>);
+impl Error for ExpressionError {}
 
-impl<P: Num> std::fmt::Debug for AttributeExprRef<P> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AttributeExprRef").finish()
-    }
+/// New trait: Allows an expression of any source type 'S' to be evaluated as 'P'
+pub trait Castable<P: Num>: Debug + Send + Sync {
+    fn eval_cast(&self, ctx: &EvalContext) -> Result<P, ExpressionError>;
 }
 
-pub enum AttributeExpr<T> {
-    Source,
-    Target,
-    Parent,
-    _Phantom(PhantomData<T>),
+/// Implementation: Bridge between Source type (S) and Target type (P)
+#[derive(Debug)]
+struct CastOp<S: Num, P: Num + Debug> {
+    inner: Expr<S>,
+    _phantom: PhantomData<P>,
 }
 
-impl<T: Attribute> Expression for AttributeExpr<T> {
-    type Out = T::Property;
-
-    fn eval(&self, context: &GameplayContext) -> Result<T::Property, AttributeError> {
-        let entity = match self {
-            AttributeExpr::Source => context.source_actor,
-            AttributeExpr::Target => context.target_actor,
-            AttributeExpr::Parent => context.owner,
-            _ => return Err(AttributeError::PhantomQuery),
-        };
-
-        Ok(entity
-            .get::<T>()
-            .ok_or(AttributeError::AttributeNotPresent(TypeId::of::<T>()))?
-            .current_value())
+impl<S, P> Castable<P> for CastOp<S, P>
+where
+    S: Num + Debug + Copy + Into<P> + Send + Sync + 'static,
+    P: Num + Debug + Send + Sync + 'static,
+{
+    fn eval_cast(&self, ctx: &EvalContext) -> Result<P, ExpressionError> {
+        Ok(self.inner.eval(ctx)?.into())
     }
 }
 
 #[derive(Debug)]
-pub struct AddExpression<T1, T2> {
-    lhs: T1,
-    rhs: T2,
+pub enum BinaryOp {
+    Add,
+    Mul,
 }
 
-impl<T1, T2> Expression for AddExpression<T1, T2>
-where
-    T1: Expression,
-    T2: Expression,
-    T1::Out: Num + From<T2::Out>,
-{
-    type Out = T1::Out;
-
-    fn eval(&self, context: &GameplayContext) -> Result<Self::Out, AttributeError> {
-        Ok(self.lhs.eval(context)? + self.rhs.eval(context)?.into())
-    }
-}
-
-impl<P> std::ops::Add for Expr<P>
-where
-    P: Num + Send + Sync + Copy + 'static,
-{
+impl<P: Num + Debug> std::ops::Add for Expr<P> {
     type Output = Expr<P>;
 
-    fn add(self, rhs: Self) -> Self::Output {
-        let add = AddExpression { lhs: self, rhs };
-
-        let expr = AttributeExprRef(Arc::new(add));
-
-        Expr::Expr(expr)
-    }
-}
-
-impl std::ops::Add<Expr<u32>> for u32 {
-    type Output = Expr<u32>;
-
-    fn add(self, rhs: Expr<u32>) -> Self::Output {
-        Expr::Lit(self) + rhs
-    }
-}
-
-impl std::ops::Add<u32> for Expr<u32> {
-    type Output = Expr<u32>;
-
-    fn add(self, rhs: u32) -> Self::Output {
-        self + Expr::Lit(rhs)
-    }
-}
-
-/*impl<T1, T2> AttributeExpr for AddExpression<T1, T2>
-where
-    T1: AttributeExpr,
-    T2: AttributeExpr,
-    T1::Output: Num + From<T2::Output>,
-{
-    type Output = T1::Output;
-
-    fn eval(&self, context: &EffectContext) -> Result<Self::Output, AttributeError> {
-        Ok(self.lhs.eval(context)? + self.rhs.eval(context)?.into())
-    }
-}*/
-
-/*
-pub trait AttributeExpr: Send + Sync + std::fmt::Display + Debug + 'static {
-    type Output: Num;
-
-    fn eval(&self, context: &EffectContext) -> Result<Self::Output, AttributeError>;
-
-    fn insert_dependency(
-        &self,
-        target: Entity,
-        entity_commands: &mut EntityCommands,
-        func: fn(Entity, Commands),
-    );
-}
-
-pub trait IntoExpression {
-    type Out: Num;
-
-    fn into_expr(self) -> Value<Self::Out>;
-}
-
-/// A [Value] refers to an Attribute value.
-/// It can be a literal value, or a reference to an Attribute.
-#[derive(Deref, DerefMut)]
-pub struct Value<P: Num>(pub Arc<dyn AttributeExpr<Output = P>>);
-
-impl<P: Num + std::fmt::Display + Debug + Copy + Clone + Send + Sync + 'static> Default
-    for Value<P>
-{
-    fn default() -> Self {
-        Value(Arc::new(Lit(P::zero())))
-    }
-}
-
-impl<P: Num + 'static> Clone for Value<P> {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
-
-impl<P: Num + 'static> Debug for Value<P> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.0)
-    }
-}
-
-impl<P: Num + 'static> std::fmt::Display for Value<P> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-/// An [AttributeValue] is a dynamic reference to an Attribute.
-#[derive(Clone, Copy, Debug)]
-pub struct AttributeValue<T: Attribute> {
-    pub cached_value: T::Property,
-    pub target: Who,
-    pub phantom_data: PhantomData<T>,
-}
-
-impl<T: Attribute> std::fmt::Display for AttributeValue<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "AttributeValue({:.4},{})",
-            self.cached_value, self.target
-        )
-    }
-}
-
-impl<T: Attribute> AttributeExpr for AttributeValue<T> {
-    type Output = T::Property;
-
-    fn eval(&self, context: &EffectContext) -> Result<Self::Output, AttributeError> {
-        let attribute_ref = self.target.resolve_entity(context);
-        Ok(attribute_ref
-            .get::<T>()
-            .ok_or(AttributeError::AttributeNotPresent(TypeId::of::<T>()))?
-            .current_value())
-    }
-
-    /// Inserts a dependency on the target entity.
-    /// This is used to ensure that the target entity is updated when the source attribute changes.
-    /// The func serves as a trigger to MarkNodeDirty<T> on the attribute that must be recalculated
-    fn insert_dependency(
-        &self,
-        target: Entity,
-        entity_commands: &mut EntityCommands,
-        func: fn(Entity, Commands),
-    ) {
-        entity_commands.insert(AttributeDependency::<T>::new(target));
-
-        let mut observer = Observer::new(
-            move |trigger: On<AttributeDependencyChanged<T>>, commands: Commands| {
-                func(trigger.entity, commands);
-            },
-        );
-        observer.watch_entity(entity_commands.id());
-        entity_commands.commands().spawn(observer);
-    }
-}
-
-impl<T: Attribute> IntoExpression for AttributeValue<T> {
-    type Out = T::Property;
-
-    fn into_expr(self) -> Value<Self::Out> {
-        Value(Arc::new(AttributeValue::<T> {
-            cached_value: Self::Out::zero(),
-            phantom_data: Default::default(),
-            target: Who::Target,
+    fn add(self, rhs: Expr<P>) -> Self::Output {
+        Expr(Arc::new(ExprNode::BinaryOp {
+            lhs: self,
+            op: BinaryOp::Add,
+            rhs,
         }))
     }
 }
 
-/// A [Lit] is a static value.
-#[derive(Deref, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Lit<T: Num>(pub T);
+impl<P: Num + Debug> std::ops::Mul for Expr<P> {
+    type Output = Expr<P>;
 
-impl<T: Num + Clone + Copy + Send + Sync + 'static + std::fmt::Display> std::fmt::Display
-    for Lit<T>
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        todo!()
+    fn mul(self, rhs: Expr<P>) -> Self::Output {
+        Expr(Arc::new(ExprNode::BinaryOp {
+            lhs: self,
+            op: BinaryOp::Mul,
+            rhs,
+        }))
     }
 }
 
-impl<T: Num + Clone + Copy + Send + Sync + 'static + std::fmt::Display> Debug for Lit<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        todo!()
+impl std::ops::Mul<f32> for Expr<f32> {
+    type Output = Expr<f32>;
+    fn mul(self, rhs: f32) -> Self::Output {
+        self * Expr(Arc::new(ExprNode::Lit(rhs)))
     }
 }
 
-impl<T: Num + Clone + Copy + Send + Sync + 'static + std::fmt::Display> AttributeExpr for Lit<T> {
-    type Output = T;
-
-    fn eval(&self, _context: &EffectContext) -> Result<Self::Output, AttributeError> {
-        Ok(self.0)
-    }
-    fn insert_dependency(
-        &self,
-        _: Entity,
-        _: &mut EntityCommands<'_>,
-        _: for<'a, 'b> fn(Entity, Commands<'a, 'b>),
-    ) {
-        // Empty implementation
+impl std::ops::Mul<Expr<f32>> for f32 {
+    type Output = Expr<f32>;
+    fn mul(self, rhs: Expr<f32>) -> Self::Output {
+        Expr(Arc::new(ExprNode::Lit(self))) * rhs
     }
 }
 
-#[macro_export]
-macro_rules! impl_into_value {
-    ( $x:ty ) => {
-        impl IntoExpression for $x {
-            type Out = $x;
-
-            fn into_expr(self) -> Value<$x> {
-                Value(Arc::new(Lit(self)))
-            }
-        }
-    };
+pub trait RetrieveAttribute<P: Num>: Debug + Send + Sync {
+    fn retrieve(&self, context: &EvalContext) -> Result<P, ExpressionError>;
 }
-*/
 
-/*
 #[derive(Debug)]
-pub struct AddExpression<T1, T2> {
-    lhs: T1,
-    rhs: T2,
-}
+pub struct Src<T: Attribute>(PhantomData<T>);
 
-/*impl<T1, T2> AttributeExpr for AddExpression<T1, T2>
-where
-    T1: AttributeExpr,
-    T2: AttributeExpr,
-    T1::Output: Num + From<T2::Output>,
-{
-    type Output = T1::Output;
-
-    fn eval(&self, context: &EffectContext) -> Result<Self::Output, AttributeError> {
-        Ok(self.lhs.eval(context)? + self.rhs.eval(context)?.into())
+impl<T: Attribute> RetrieveAttribute<T::Property> for Src<T> {
+    fn retrieve(&self, context: &EvalContext) -> Result<T::Property, ExpressionError> {
+        Ok(context
+            .source_actor
+            .get::<T>()
+            .ok_or(ExpressionError::AttributeError)?
+            .current_value())
     }
 }
 
-impl<T1, T2> std::ops::Add<AttributeValue<T1>> for AttributeValue<T2>
-where
-    T1: Attribute,
-    T2: Attribute,
-{
-    type Output = AddExpression<AttributeValue<T2>, AttributeValue<T1>>;
+pub fn src<T: Attribute>() -> Src<T> {
+    Src(PhantomData)
+}
 
-    fn add(self, rhs: AttributeValue<T1>) -> AddExpression<AttributeValue<T2>, AttributeValue<T1>> {
-        AddExpression { lhs: self, rhs }
+#[derive(Debug)]
+pub struct Dst<T: Attribute>(PhantomData<T>);
+
+impl<T: Attribute> RetrieveAttribute<T::Property> for Dst<T> {
+    fn retrieve(&self, context: &EvalContext) -> Result<T::Property, ExpressionError> {
+        Ok(context
+            .target_actor
+            .get::<T>()
+            .ok_or(ExpressionError::AttributeError)?
+            .current_value())
     }
-}*/
-*/
+}
+
+pub fn dst<T: Attribute>() -> Dst<T> {
+    Dst(PhantomData)
+}
+
+#[derive(Debug)]
+pub struct Parent<T: Attribute>(PhantomData<T>);
+
+impl<T: Attribute> RetrieveAttribute<T::Property> for Parent<T> {
+    fn retrieve(&self, context: &EvalContext) -> Result<T::Property, ExpressionError> {
+        Ok(context
+            .owner
+            .get::<T>()
+            .ok_or(ExpressionError::AttributeError)?
+            .current_value())
+    }
+}
+
+pub fn parent<T: Attribute>() -> Parent<T> {
+    Parent(PhantomData)
+}
 
 #[macro_export]
 macro_rules! impl_into_expr {
     ( $x:ty ) => {
         impl From<$x> for Expr<$x> {
             fn from(value: $x) -> Self {
-                Expr::Lit(value)
+                Expr(Arc::new(ExprNode::Lit(value)))
             }
         }
     };

@@ -1,5 +1,5 @@
 use crate::Spawnable;
-use crate::condition::{GameplayContext, GameplayContextMut};
+use crate::condition::{EvalContext, GameplayContextMut};
 use crate::expression::Expr;
 use crate::inspector::pretty_type_name;
 use crate::math::AbsDiff;
@@ -13,11 +13,11 @@ use std::any::type_name;
 use std::fmt::Debug;
 use std::fmt::Display;
 
-#[derive(Component, Clone, Debug, Reflect)]
-#[reflect(AccessModifier)]
+#[derive(Component, Clone, Debug)]
+//#[reflect(AccessModifier)]
 #[require(ModifierMarker)]
 pub struct AttributeModifier<T: Attribute> {
-    #[reflect(ignore)]
+    //#[reflect(ignore)]
     pub expression: Expr<T::Property>,
     pub who: Who,
     pub operation: ModOp,
@@ -54,7 +54,7 @@ where
 
 impl<T: Attribute> Modifier for AttributeModifier<T> {
     fn apply_immediate(&self, context: &mut GameplayContextMut) -> bool {
-        let immutable_context = GameplayContext {
+        let immutable_context = EvalContext {
             source_actor: &context.attribute_ref(Who::Source),
             target_actor: &context.attribute_ref(Who::Target),
             owner: &context.attribute_ref(Who::Owner),

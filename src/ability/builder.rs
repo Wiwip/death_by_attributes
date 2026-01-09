@@ -43,7 +43,7 @@ impl AbilityBuilder {
     }
 
     pub fn with_cost<T: Attribute>(mut self, cost: T::Property) -> Self {
-        let mutator = AttributeModifier::<T>::new(Expr::Lit(cost), ModOp::Sub, Who::Source);
+        let mutator = AttributeModifier::<T>::new(Expr::lit(cost), ModOp::Sub, Who::Source);
         self.cost_mods.push(Box::new(mutator));
 
         let condition = AttributeCondition::<T>::source(cost..);

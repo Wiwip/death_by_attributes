@@ -1,7 +1,7 @@
 use crate::actors::Actor;
 use crate::assets::EffectDef;
 use crate::attributes::{Attribute, AttributeQueryData, AttributeQueryDataReadOnly};
-use crate::condition::GameplayContext;
+use crate::condition::EvalContext;
 use crate::effect::{Effect, EffectSource, EffectStatusParam, EffectTarget, EffectTicker};
 use crate::graph::{DependencyGraph, NodeType};
 use crate::modifier::{ApplyAttributeModifierMessage, AttributeCalculator, OwnedModifiers};
@@ -162,7 +162,7 @@ fn update_effect_tree_attributes<T: Attribute>(
                     let [source, target, effect] = attribute_refs
                         .get_many([source.0, target.0, current_entity])
                         .unwrap();
-                    let context = GameplayContext {
+                    let context = EvalContext {
                         source_actor: &source,
                         target_actor: &target,
                         owner: &effect,
@@ -247,7 +247,7 @@ pub fn apply_periodic_effect<T: Attribute>(
         let source_actor_ref = actors.get(source.0).unwrap();
         let target_actor_ref = actors.get(target.0).unwrap();
 
-        let context = GameplayContext {
+        let context = EvalContext {
             target_actor: &target_actor_ref,
             source_actor: &source_actor_ref,
             owner: &effect_ref,
