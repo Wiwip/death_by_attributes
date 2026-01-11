@@ -2,7 +2,7 @@ use crate::ability::AbilityCooldown;
 use crate::assets::AbilityDef;
 use crate::attributes::Attribute;
 use crate::condition::{AttributeCondition, BoxCondition};
-use crate::expression::{Expr, ExprNode, FloatExprNode};
+use crate::expression::Expr;
 use crate::inspector::pretty_type_name;
 use crate::modifier::{AttributeCalculatorCached, ModOp, Modifier, Who};
 use crate::mutator::EntityActions;
@@ -10,7 +10,7 @@ use crate::prelude::AttributeModifier;
 use bevy::ecs::system::IntoObserverSystem;
 use bevy::prelude::*;
 use num_traits::{AsPrimitive, Num};
-use std::sync::Arc;
+use crate::expression::float::FloatExprNode;
 
 pub struct AbilityBuilder {
     name: String,

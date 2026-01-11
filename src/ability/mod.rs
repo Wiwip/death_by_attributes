@@ -13,10 +13,11 @@ use bevy::prelude::*;
 use std::error::Error;
 use std::fmt::Formatter;
 
-use crate::expression::{Expr, FloatExprNode};
 pub use builder::AbilityBuilder;
 pub use command::GrantAbilityCommand;
 pub use system_param::AbilityContext;
+use crate::expression::float::FloatExprNode;
+use crate::prelude::Expr;
 
 pub struct AbilityPlugin;
 

@@ -1,18 +1,15 @@
 use crate::ability::{AbilityOf, GrantAbilityCommand};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
-use crate::attribute_clamp::{
-    Clamp, convert_bounds, observe_current_value_change_for_clamp_bounds,
-};
+use crate::attribute_clamp::{convert_bounds, Clamp};
 use crate::effect::{ApplyEffectEvent, EffectTargeting};
 use crate::graph::NodeType;
-use crate::inspector::pretty_type_name;
 use crate::modifier::AttributeCalculatorCached;
 use crate::mutator::EntityActions;
 use crate::prelude::*;
-use crate::{CurrentValueChanged, GrantedAbilities};
+use crate::GrantedAbilities;
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use num_traits::{AsPrimitive, Num, Zero};
+use num_traits::{AsPrimitive, Num};
 use std::collections::VecDeque;
 use std::ops::RangeBounds;
 

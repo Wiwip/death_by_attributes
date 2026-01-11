@@ -3,11 +3,10 @@ use crate::assets::EffectDef;
 use crate::attribute;
 use crate::effect::Effect;
 use crate::effect::timing::EffectDuration;
-use crate::expression::{Expr, IntExprNode, SelectExprNode};
+use crate::expression::SelectExprNode;
 use crate::prelude::Attribute;
 use bevy::prelude::*;
 use num_traits::AsPrimitive;
-use std::sync::Arc;
 
 pub enum EffectStackingPolicy {
     None, // Each effect is independently added to the entity

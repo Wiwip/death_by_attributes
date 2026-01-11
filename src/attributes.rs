@@ -1,6 +1,6 @@
 use crate::effect::AttributeDependents;
-use crate::expression::attribute::{RetrieveAttribute, dst, parent, src};
-use crate::expression::{Expr, ExprNode, FloatExprNode};
+use crate::expression::attribute::{dst, parent, src, RetrieveAttribute};
+use crate::expression::{Expr, ExprNode};
 use crate::inspector::pretty_type_name;
 use crate::math::{AbsDiff, SaturatingAttributes};
 use crate::modifier::{AttributeCalculator, AttributeCalculatorCached};
