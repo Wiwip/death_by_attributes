@@ -3,7 +3,7 @@ use crate::attributes::Attribute;
 use crate::condition::{AttributeCondition, BoxCondition};
 use crate::effect::EffectStackingPolicy;
 use crate::effect::application::EffectApplicationPolicy;
-use crate::expression::Expr;
+use crate::expression::{Expr, ExprNode};
 use crate::modifier::{ModOp, Who};
 use crate::mutator::EntityActions;
 use crate::prelude::*;
@@ -80,7 +80,7 @@ impl EffectBuilder {
     /// ```
     pub fn modify<T: Attribute>(
         mut self,
-        expr: impl Into<Expr<T::Property>>,
+        expr: impl Into<Expr<T::ExprType>>,
         modifier: ModOp,
         who: Who,
     ) -> Self {
@@ -109,14 +109,14 @@ impl EffectBuilder {
     ///     .attach_if(ChanceCondition(0.10))
     ///     .build()
     /// ```
-    pub fn attach_if(mut self, condition: impl crate::condition::Condition + 'static) -> Self {
+    pub fn attach_if(mut self, condition: impl Condition + 'static) -> Self {
         self.def
             .attach_conditions
             .push(BoxCondition::new(condition));
         self
     }
 
-    pub fn activate_while(mut self, condition: impl crate::condition::Condition + 'static) -> Self {
+    pub fn activate_while(mut self, condition: impl Condition + 'static) -> Self {
         self.def
             .activate_conditions
             .push(BoxCondition::new(condition));

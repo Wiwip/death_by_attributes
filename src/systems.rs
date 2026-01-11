@@ -3,6 +3,7 @@ use crate::assets::EffectDef;
 use crate::attributes::{Attribute, AttributeQueryData, AttributeQueryDataReadOnly};
 use crate::condition::EvalContext;
 use crate::effect::{Effect, EffectSource, EffectStatusParam, EffectTarget, EffectTicker};
+use crate::expression::ExprNode;
 use crate::graph::{DependencyGraph, NodeType};
 use crate::modifier::{ApplyAttributeModifierMessage, AttributeCalculator, OwnedModifiers};
 use crate::prelude::*;

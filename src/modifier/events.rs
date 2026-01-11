@@ -1,5 +1,6 @@
 use crate::AttributesMut;
 use crate::condition::EvalContext;
+use crate::expression::ExprNode;
 use crate::inspector::pretty_type_name;
 use crate::math::AbsDiff;
 use crate::modifier::calculator::AttributeCalculator;

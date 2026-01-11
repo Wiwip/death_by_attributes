@@ -1,12 +1,11 @@
-use crate::AttributeError;
 use crate::condition::EvalContext;
+use crate::expression::{ExprNode, ExpressionError};
 use crate::math::SaturatingAttributes;
 use crate::prelude::{Attribute, AttributeModifier};
 use bevy::prelude::*;
-use num_traits::{AsPrimitive, Bounded, FromPrimitive, Zero};
+use num_traits::{AsPrimitive, Bounded, FromPrimitive, Num, Zero};
 use serde::Serialize;
 use std::fmt::{Debug, Display, Formatter};
-use crate::expression::ExpressionError;
 
 #[derive(Debug, Clone, Copy, Reflect, Serialize)]
 pub enum ModOp {
@@ -119,25 +118,27 @@ impl<T: Attribute> AttributeCalculator<T> {
         modifier: &AttributeModifier<T>,
         context: &EvalContext,
     ) -> Result<Self, ExpressionError> {
+        let value = modifier.expression.eval(context)?;
+
         let calculator = match modifier.operation {
             ModOp::Set => Self {
-                set: Some(modifier.expression.eval(context)?),
+                set: Some(value),
                 ..default()
             },
             ModOp::Add => Self {
-                additive: modifier.expression.eval(context)?,
+                additive: value,
                 ..default()
             },
             ModOp::Sub => Self {
-                subtractive: modifier.expression.eval(context)?,
+                subtractive: value,
                 ..default()
             },
             ModOp::Increase => Self {
-                increase: modifier.expression.eval(context)?.as_(),
+                increase: value.as_(),
                 ..default()
             },
             ModOp::Mul => Self {
-                multiplier: modifier.expression.eval(context)?.as_(),
+                multiplier: value.as_(),
                 ..default()
             },
         };

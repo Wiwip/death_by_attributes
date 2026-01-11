@@ -1,15 +1,12 @@
-
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::ReflectAccessAttribute;
+    use crate::condition::EvalContext;
+    use crate::prelude::*;
     use crate::{AttributesRef, attribute};
     use bevy::ecs::system::RunSystemOnce;
     use bevy::prelude::{Single, World};
-    use crate::condition::EvalContext;
-    use crate::prelude::*;
 
     attribute!(Int32Attr, i32);
     attribute!(UInt32Attr, u32);
@@ -44,7 +41,6 @@ mod tests {
                 /*let mul_expr = source * target;
                 let result = mul_expr.eval(&context).unwrap();
                 assert_eq!(result, 10000);*/
-
             })
             .unwrap();
     }

@@ -357,7 +357,7 @@ mod test {
             TEST_EFFECT,
             Effect::permanent()
                 .name("Increase Effect".into())
-                .modify::<TestA>(200.0_f32, ModOp::Add, Who::Target)
+                .modify::<TestA>(200.0, ModOp::Add, Who::Target)
                 .build(),
         );
 

@@ -1,6 +1,6 @@
 use crate::effect::AttributeDependents;
-use crate::expression::{Expr, ExprNode, parent};
-use crate::expression::{dst, src};
+use crate::expression::attribute::{RetrieveAttribute, dst, parent, src};
+use crate::expression::{Expr, ExprNode, FloatExprNode};
 use crate::inspector::pretty_type_name;
 use crate::math::{AbsDiff, SaturatingAttributes};
 use crate::modifier::{AttributeCalculator, AttributeCalculatorCached};
@@ -9,6 +9,7 @@ use bevy::ecs::component::Mutable;
 use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
 use bevy::reflect::GetTypeRegistration;
+use num_traits::NumCast;
 pub use num_traits::{
     AsPrimitive, Bounded, FromPrimitive, Num, NumAssign, NumAssignOps, NumOps, Saturating,
     SaturatingAdd, SaturatingMul, Zero,
@@ -23,46 +24,51 @@ use std::iter::Sum;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+pub trait Value
+where
+    Self: Num + NumOps + NumAssign + NumAssignOps + NumCast,
+    Self: Copy + Clone + Debug + Display,
+    Self: Send + Sync,
+    Self: SaturatingAttributes<Output = Self> + Sum + Bounded + AbsDiff + PartialOrd,
+    Self: FromPrimitive + AsPrimitive<f64> + Reflect,
+{
+}
+
+impl<T> Value for T
+where
+    Self: Num + NumOps + NumAssign + NumAssignOps + NumCast,
+    Self: Copy + Clone + Debug + Display,
+    Self: Send + Sync,
+    Self: SaturatingAttributes<Output = Self> + Sum + Bounded + AbsDiff + PartialOrd,
+    Self: FromPrimitive + AsPrimitive<f64> + Reflect,
+{
+}
+
 pub trait Attribute
 where
     Self: Component<Mutability = Mutable> + Copy + Clone + Debug + Display,
     Self: Reflect + TypePath + GetTypeRegistration,
-    Self: Serialize,
 {
-    type Property: Num
-        + NumOps
-        + NumAssign
-        + NumAssignOps
-        + SaturatingAttributes<Output = Self::Property>
-        + Sum
-        + Bounded
-        + AbsDiff
-        + PartialOrd
-        + FromPrimitive
-        + AsPrimitive<f64>
-        + Reflect
-        + Copy
-        + Clone
-        + Debug
-        + Display
-        + Send
-        + Serialize
-        + Sync;
+    type Property: Value;
+    type ExprType: ExprNode<Output = Self::Property>;
 
     fn new<T: Num + AsPrimitive<Self::Property> + Copy>(value: T) -> Self;
     fn base_value(&self) -> Self::Property;
     fn set_base_value(&mut self, value: Self::Property);
     fn current_value(&self) -> Self::Property;
     fn set_current_value(&mut self, value: Self::Property);
-    fn src() -> Expr<Self::Property> {
-        Expr::<Self::Property>(Arc::new(ExprNode::Attribute(Box::new(src::<Self>()))))
+    // Helper to wrap attribute access in an Expression
+    fn new_expr(node: Box<dyn RetrieveAttribute<Self::Property>>) -> Expr<Self::ExprType>;
+    fn src() -> Expr<Self::ExprType> {
+        Self::new_expr(Box::new(src::<Self>()))
     }
-    fn dst() -> Expr<Self::Property> {
-        Expr::<Self::Property>(Arc::new(ExprNode::Attribute(Box::new(dst::<Self>()))))
+    fn dst() -> Expr<Self::ExprType> {
+        Self::new_expr(Box::new(dst::<Self>()))
     }
-    fn parent() -> Expr<Self::Property> {
-        Expr::<Self::Property>(Arc::new(ExprNode::Attribute(Box::new(parent::<Self>()))))
+    fn parent() -> Expr<Self::ExprType> {
+        Self::new_expr(Box::new(parent::<Self>()))
     }
+    fn lit(value: Self::Property) -> Expr<Self::ExprType>;
     fn attribute_type_id() -> AttributeTypeId;
 }
 
@@ -86,6 +92,7 @@ macro_rules! attribute_impl {
 
         impl $crate::attributes::Attribute for $StructName {
             type Property = $ValueType;
+            type ExprType = $crate::expression::SelectExprNode<$ValueType>;
 
             fn new<T>(value: T) -> Self
             where
@@ -107,6 +114,18 @@ macro_rules! attribute_impl {
             }
             fn set_current_value(&mut self, value: $ValueType) {
                 self.current_value = value;
+            }
+            fn new_expr(
+                node: Box<dyn $crate::prelude::RetrieveAttribute<Self::Property>>,
+            ) -> $crate::prelude::Expr<Self::ExprType> {
+                $crate::prelude::Expr::<Self::ExprType>(std::sync::Arc::new(
+                    Self::ExprType::Attribute(node),
+                ))
+            }
+            fn lit(value: $ValueType) -> $crate::prelude::Expr<Self::ExprType> {
+                $crate::prelude::Expr::<Self::ExprType>(std::sync::Arc::new(Self::ExprType::Lit(
+                    value,
+                )))
             }
             fn attribute_type_id() -> $crate::prelude::AttributeTypeId {
                 $crate::prelude::AttributeTypeId::of::<Self>()

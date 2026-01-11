@@ -1,23 +1,34 @@
-mod attribute;
+pub mod attribute;
 mod math;
 
 use crate::condition::EvalContext;
-use crate::prelude::*;
-use num_traits::Num;
+use crate::prelude::RetrieveAttribute;
+use bevy::prelude::*;
+use num_traits::{Float, Num, PrimInt};
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
-use std::marker::PhantomData;
 use std::sync::Arc;
 
-#[derive(Default, Debug, Clone)]
-pub struct Expr<P: Num>(pub Arc<ExprNode<P>>);
+pub trait ExprNode: Send + Sync {
+    type Output;
+    fn eval(&self, ctx: &EvalContext) -> Result<Self::Output, ExpressionError>;
+}
 
-impl<P: Num + Debug + Copy + 'static> Expr<P> {
-    pub fn cast<T: Num + Debug + Send + Sync + 'static>(self) -> Expr<T>
+#[derive(Default, Deref, Debug, Clone)]
+pub struct Expr<N: ExprNode>(pub Arc<N>);
+
+impl<N: ExprNode> Expr<N> {
+    pub fn eval(&self, ctx: &EvalContext) -> Result<N::Output, ExpressionError> {
+        self.0.eval(ctx)
+    }
+}
+
+/*impl<P: Value> Expr<P> {
+    pub fn cast<T: Value>(self) -> Expr<T>
     where
         P: Into<T> + Debug + Send + Sync,
     {
-        Expr(Arc::new(ExprNode::Cast(Box::new(CastOp {
+        Expr(Arc::new(FloatExprNode::Cast(Box::new(CastOp {
             inner: self,
             _phantom: PhantomData,
         }))))
@@ -25,54 +36,210 @@ impl<P: Num + Debug + Copy + 'static> Expr<P> {
 
     pub fn eval(&self, ctx: &EvalContext) -> Result<P, ExpressionError> {
         match self.0.as_ref() {
-            ExprNode::None => Err(ExpressionError::NoneNode),
-            ExprNode::Lit(n) => Ok(*n),
-            ExprNode::Attribute(attr) => attr.retrieve(ctx),
-            ExprNode::BinaryOp { lhs, op, rhs } => match op {
-                BinaryOp::Add => Ok(lhs.eval(ctx)? + rhs.eval(ctx)?),
-                BinaryOp::Mul => Ok(lhs.eval(ctx)? * rhs.eval(ctx)?),
-            },
-            ExprNode::Cast(expr) => expr.eval_cast(ctx),
-            _ => todo!("Missing Node Implementation"),
+            FloatExprNode::None => Err(ExpressionError::EmptyExpr),
+            FloatExprNode::Lit(n) => Ok(*n),
+            FloatExprNode::Attribute(attr) => attr.retrieve(ctx),
+            FloatExprNode::UnaryOp { op, expr } => {
+                let value: f64 = expr.eval(ctx)?.as_();
+                let out = match op {
+                    UnaryOp::Acos => value.acos(),
+                    UnaryOp::Asin => value.asin(),
+                    UnaryOp::Cos => value.cos(),
+                    UnaryOp::Sin => value.sin(),
+                };
+                P::from(out).ok_or(ExpressionError::InvalidTypes)
+            }
+            FloatExprNode::BinaryOp { lhs, op, rhs } => {
+                let left = lhs.eval(ctx)?;
+                let right = rhs.eval(ctx)?;
+                match op {
+                    BinaryOp::Add => Ok(left + right),
+                    BinaryOp::Sub => Ok(left - right),
+                    BinaryOp::Mul => Ok(left * right),
+                    BinaryOp::Div => Ok(left / right),
+                    BinaryOp::Remainder => Ok(left % right),
+                }
+            }
+            FloatExprNode::Cast(expr) => expr.eval_cast(ctx),
         }
     }
 
     pub fn lit(value: P) -> Expr<P> {
-        Expr(Arc::new(ExprNode::Lit(value)))
+        Expr(Arc::new(FloatExprNode::Lit(value)))
+    }
+}*/
+
+/*impl<P: Num +Debug> std::ops::Add for Expr<P> {
+    type Output = Expr<P>;
+
+    fn add(self, rhs: Expr<P>) -> Self::Output {
+        Expr(Arc::new(FloatExprNode::BinaryOp {
+            lhs: self,
+            op: BinaryOp::Add,
+            rhs,
+        }))
+    }
+}*/
+
+/*impl<P: Num + PrimInt + Debug> std::ops::Add for Expr<P> {
+    type Output = Expr<P>;
+
+    fn add(self, rhs: Expr<P>) -> Self::Output {
+        Expr(Arc::new(IntExprNode::BinaryOp {
+            lhs: self,
+            op: BinaryOp::Add,
+            rhs,
+        }))
+    }
+}*/
+
+/*impl<P: Num + Float + Debug> std::ops::Mul for Expr<P> {
+    type Output = Expr<P>;
+
+    fn mul(self, rhs: Expr<P>) -> Self::Output {
+        Expr(Arc::new(FloatExprNode::BinaryOp {
+            lhs: self,
+            op: BinaryOp::Mul,
+            rhs,
+        }))
+    }
+}*/
+
+/*impl std::ops::Mul<f32> for Expr<f32> {
+    type Output = Expr<f32>;
+    fn mul(self, rhs: f32) -> Self::Output {
+        self * Expr(Arc::new(FloatExprNode::Lit(rhs)))
     }
 }
 
-#[derive(Default, Debug)]
-pub enum ExprNode<P: Num> {
+impl std::ops::Mul<Expr<f32>> for f32 {
+    type Output = Expr<f32>;
+    fn mul(self, rhs: Expr<f32>) -> Self::Output {
+        Expr(Arc::new(FloatExprNode::Lit(self))) * rhs
+    }
+}*/
+
+#[derive(Default)]
+pub enum FloatExprNode<P: Float + Send + Sync> {
     #[default]
     None,
     Lit(P),
     Attribute(Box<dyn RetrieveAttribute<P>>),
     Cast(Box<dyn Castable<P>>),
-    BinaryOp {
-        lhs: Expr<P>,
-        op: BinaryOp,
-        rhs: Expr<P>,
+    UnaryOp {
+        op: UnaryOp,
+        expr: Expr<FloatExprNode<P>>,
     },
+    BinaryOp {
+        lhs: Expr<FloatExprNode<P>>,
+        op: BinaryOp,
+        rhs: Expr<FloatExprNode<P>>,
+    },
+}
+
+impl<P: Float + Send + Sync> ExprNode for FloatExprNode<P> {
+    type Output = P;
+
+    fn eval(&self, ctx: &EvalContext) -> Result<Self::Output, ExpressionError> {
+        match self {
+            FloatExprNode::None => Err(ExpressionError::EmptyExpr),
+            FloatExprNode::Lit(lit) => Ok(lit.clone()),
+            FloatExprNode::Attribute(attribute) => Ok(attribute.retrieve(ctx)?),
+            FloatExprNode::Cast(_) => {
+                unimplemented!()
+            }
+            FloatExprNode::UnaryOp { op, expr } => match op {
+                UnaryOp::Sin => unimplemented!(),
+                UnaryOp::Acos => unimplemented!(),
+                UnaryOp::Asin => unimplemented!(),
+                UnaryOp::Cos => unimplemented!(),
+            },
+            FloatExprNode::BinaryOp { lhs, op, rhs } => {
+                let l = lhs.eval(ctx)?;
+                let r = rhs.eval(ctx)?;
+                match op {
+                    BinaryOp::Add => Ok(l + r),
+                    BinaryOp::Sub => Ok(l - r),
+                    BinaryOp::Mul => Ok(l * r),
+                    BinaryOp::Div => Ok(l / r),
+                    BinaryOp::Remainder => Ok(l % r),
+                }
+            }
+        }
+    }
+}
+
+#[derive(Default)]
+pub enum IntExprNode<P: PrimInt + Send + Sync> {
+    #[default]
+    None,
+    Lit(P),
+    Attribute(Box<dyn RetrieveAttribute<P>>),
+    Cast(Box<dyn Castable<P>>),
+    UnaryOp {
+        op: UnaryOp,
+        expr: Expr<IntExprNode<P>>,
+    },
+    BinaryOp {
+        lhs: Expr<IntExprNode<P>>,
+        op: BinaryOp,
+        rhs: Expr<IntExprNode<P>>,
+    },
+}
+
+impl<P: PrimInt + Send + Sync> ExprNode for IntExprNode<P> {
+    type Output = P;
+
+    fn eval(&self, ctx: &EvalContext) -> Result<Self::Output, ExpressionError> {
+        match self {
+            IntExprNode::None => Err(ExpressionError::EmptyExpr),
+            IntExprNode::Lit(lit) => Ok(lit.clone()),
+            IntExprNode::Attribute(attribute) => Ok(attribute.retrieve(ctx)?),
+            IntExprNode::Cast(_) => {
+                unimplemented!()
+            }
+            IntExprNode::UnaryOp { op, expr } => match op {
+                UnaryOp::Sin => unimplemented!(),
+                UnaryOp::Acos => unimplemented!(),
+                UnaryOp::Asin => unimplemented!(),
+                UnaryOp::Cos => unimplemented!(),
+            },
+            IntExprNode::BinaryOp { lhs, op, rhs } => {
+                let l = lhs.eval(ctx)?;
+                let r = rhs.eval(ctx)?;
+                match op {
+                    BinaryOp::Add => Ok(l + r),
+                    BinaryOp::Sub => Ok(l - r),
+                    BinaryOp::Mul => Ok(l * r),
+                    BinaryOp::Div => Ok(l / r),
+                    BinaryOp::Remainder => Ok(l % r),
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
 pub enum ExpressionError {
-    AttributeError,
-    NoneNode,
+    AttributeNotFound,
+    EmptyExpr,
+    InvalidTypes,
 }
 
 impl Display for ExpressionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            ExpressionError::AttributeError => {
+            ExpressionError::AttributeNotFound => {
                 write!(
                     f,
                     "Attribute error: Failed to retrieve attribute from context"
                 )
             }
-            ExpressionError::NoneNode => {
-                write!(f, "A NoneNode was present.")
+            ExpressionError::EmptyExpr => {
+                write!(f, "An Empty Expression was found.")
+            }
+            ExpressionError::InvalidTypes => {
+                write!(f, "Invalid expression type.")
             }
         }
     }
@@ -86,33 +253,93 @@ pub trait Castable<P: Num>: Debug + Send + Sync {
 }
 
 /// Implementation: Bridge between Source type (S) and Target type (P)
-#[derive(Debug)]
-struct CastOp<S: Num, P: Num + Debug> {
+/*#[derive(Debug)]
+struct CastOp<S: Value, P: Value> {
     inner: Expr<S>,
     _phantom: PhantomData<P>,
 }
 
 impl<S, P> Castable<P> for CastOp<S, P>
 where
-    S: Num + Debug + Copy + Into<P> + Send + Sync + 'static,
-    P: Num + Debug + Send + Sync + 'static,
+    S: Value + Into<P>,
+    P: Value,
 {
     fn eval_cast(&self, ctx: &EvalContext) -> Result<P, ExpressionError> {
         Ok(self.inner.eval(ctx)?.into())
     }
+}*/
+
+#[derive(Debug, Clone, Copy)]
+pub enum UnaryOp {
+    Acos,
+    Asin,
+    Cos,
+    Sin,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum BinaryOp {
     Add,
+    Sub,
     Mul,
+    Div,
+    Remainder,
 }
 
-impl<P: Num + Debug> std::ops::Add for Expr<P> {
-    type Output = Expr<P>;
+#[macro_export]
+macro_rules! impl_into_expr {
+    // Inner rule for a single implementation
+    (@impl $x:ty, $node:ident) => {
+        impl From<$x> for Expr<$node<$x>> {
+            fn from(value: $x) -> Self {
+                Expr(Arc::new($node::Lit(value)))
+            }
+        }
+    };
+    // Batch rule for multiple types mapping to the same Node
+    ($node:ident: $($x:ty),+ $(,)?) => {
+        $(
+            $crate::impl_into_expr!(@impl $x, $node);
+        )+
+    };
+}
 
-    fn add(self, rhs: Expr<P>) -> Self::Output {
-        Expr(Arc::new(ExprNode::BinaryOp {
+impl_into_expr!(IntExprNode: i8, i16, i32, i64, i128, isize, u8, u16, u32, u64, u128, usize);
+impl_into_expr!(FloatExprNode: f32, f64);
+
+pub trait SelectExprNodeImpl {
+    type Property;
+    type Node: ExprNode<Output = Self::Property>;
+}
+
+pub type SelectExprNode<T> = <T as SelectExprNodeImpl>::Node;
+
+#[macro_export]
+macro_rules! impl_select_expr {
+    // Inner rule for a single implementation
+    (@impl $x:ty, $select:ident) => {
+        impl SelectExprNodeImpl for $x {
+            type Property = $x;
+            type Node = $select<Self::Property>;
+        }
+    };
+    // Batch rule for multiple types mapping to the same Node
+    ($select:ident: $($x:ty),+ $(,)?) => {
+        $(
+            $crate::impl_select_expr!(@impl $x, $select);
+        )+
+    };
+}
+
+// Grouped declarations are cleaner and easier to maintain
+impl_select_expr!(IntExprNode: i8, i16, i32, i64, i128, isize, u8, u16, u32, u64, u128, usize);
+impl_select_expr!(FloatExprNode: f32, f64);
+
+impl std::ops::Add for Expr<FloatExprNode<f32>> {
+    type Output = Expr<FloatExprNode<f32>>;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Expr(Arc::new(SelectExprNode::<f32>::BinaryOp {
             lhs: self,
             op: BinaryOp::Add,
             rhs,
@@ -120,122 +347,14 @@ impl<P: Num + Debug> std::ops::Add for Expr<P> {
     }
 }
 
-impl<P: Num + Debug> std::ops::Mul for Expr<P> {
-    type Output = Expr<P>;
-
-    fn mul(self, rhs: Expr<P>) -> Self::Output {
-        Expr(Arc::new(ExprNode::BinaryOp {
-            lhs: self,
-            op: BinaryOp::Mul,
-            rhs,
-        }))
-    }
-}
-
-impl std::ops::Mul<f32> for Expr<f32> {
-    type Output = Expr<f32>;
-    fn mul(self, rhs: f32) -> Self::Output {
-        self * Expr(Arc::new(ExprNode::Lit(rhs)))
-    }
-}
-
-impl std::ops::Mul<Expr<f32>> for f32 {
-    type Output = Expr<f32>;
-    fn mul(self, rhs: Expr<f32>) -> Self::Output {
-        Expr(Arc::new(ExprNode::Lit(self))) * rhs
-    }
-}
-
-pub trait RetrieveAttribute<P: Num>: Debug + Send + Sync {
-    fn retrieve(&self, context: &EvalContext) -> Result<P, ExpressionError>;
-}
-
-#[derive(Debug)]
-pub struct Src<T: Attribute>(PhantomData<T>);
-
-impl<T: Attribute> RetrieveAttribute<T::Property> for Src<T> {
-    fn retrieve(&self, context: &EvalContext) -> Result<T::Property, ExpressionError> {
-        Ok(context
-            .source_actor
-            .get::<T>()
-            .ok_or(ExpressionError::AttributeError)?
-            .current_value())
-    }
-}
-
-pub fn src<T: Attribute>() -> Src<T> {
-    Src(PhantomData)
-}
-
-#[derive(Debug)]
-pub struct Dst<T: Attribute>(PhantomData<T>);
-
-impl<T: Attribute> RetrieveAttribute<T::Property> for Dst<T> {
-    fn retrieve(&self, context: &EvalContext) -> Result<T::Property, ExpressionError> {
-        Ok(context
-            .target_actor
-            .get::<T>()
-            .ok_or(ExpressionError::AttributeError)?
-            .current_value())
-    }
-}
-
-pub fn dst<T: Attribute>() -> Dst<T> {
-    Dst(PhantomData)
-}
-
-#[derive(Debug)]
-pub struct Parent<T: Attribute>(PhantomData<T>);
-
-impl<T: Attribute> RetrieveAttribute<T::Property> for Parent<T> {
-    fn retrieve(&self, context: &EvalContext) -> Result<T::Property, ExpressionError> {
-        Ok(context
-            .owner
-            .get::<T>()
-            .ok_or(ExpressionError::AttributeError)?
-            .current_value())
-    }
-}
-
-pub fn parent<T: Attribute>() -> Parent<T> {
-    Parent(PhantomData)
-}
-
-#[macro_export]
-macro_rules! impl_into_expr {
-    ( $x:ty ) => {
-        impl From<$x> for Expr<$x> {
-            fn from(value: $x) -> Self {
-                Expr(Arc::new(ExprNode::Lit(value)))
-            }
-        }
-    };
-}
-
-impl_into_expr!(i8);
-impl_into_expr!(i16);
-impl_into_expr!(i32);
-impl_into_expr!(i64);
-impl_into_expr!(i128);
-impl_into_expr!(isize);
-
-impl_into_expr!(u8);
-impl_into_expr!(u16);
-impl_into_expr!(u32);
-impl_into_expr!(u64);
-impl_into_expr!(u128);
-impl_into_expr!(usize);
-
-impl_into_expr!(f32);
-impl_into_expr!(f64);
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::ReflectAccessAttribute;
+    use crate::prelude::*;
     use crate::{AttributesRef, attribute};
     use bevy::ecs::system::RunSystemOnce;
-    use bevy::prelude::{Single, World};
+    use bevy::prelude::*;
 
     attribute!(Test, f32);
     attribute!(TestF64, f64);
@@ -248,33 +367,20 @@ mod tests {
 
         world
             .run_system_once(|actor: Single<AttributesRef>| {
-                /*let a = Test::value();
-                let b = TestF64::value();
+                let a = Test::src();
+                let b = Test::src();
 
-                //let _add_expr_inv = a + b;
+                let c = a + b;
 
-                let a = AttributeValueExpr::<Test> {
-                    who: Who::Target,
-                    phantom_data: Default::default(),
-                }
-                .expr();
-                let b = AttributeValueExpr::<Test> {
-                    who: Who::Target,
-                    phantom_data: Default::default(),
-                }
-                .expr();
-
-                let add_expr = a + b;
-
-                let context = GameplayContext {
-                    target_actor: &actor,
+                let ctx = EvalContext {
                     source_actor: &actor,
+                    target_actor: &actor,
                     owner: &actor,
                 };
 
-                let result = add_expr.eval(&context).unwrap();
+                let result = c.eval(&ctx).unwrap();
 
-                println!("Result: {}", result)*/
+                println!("Result: {}", result)
             })
             .unwrap();
     }

@@ -5,8 +5,6 @@ use bevy::window::PresentMode;
 use bevy_egui::EguiPlugin;
 use bevy_inspector_egui::DefaultInspectorConfigPlugin;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
-use petgraph::prelude::Dfs;
-use petgraph::visit::{DfsEvent, depth_first_search};
 use root_attribute::ability::{AbilityBuilder, AbilityExecute, TargetData, TryActivateAbility};
 use root_attribute::actors::ActorBuilder;
 use root_attribute::assets::{AbilityDef, EffectDef};
@@ -14,7 +12,7 @@ use root_attribute::attributes::ReflectAccessAttribute;
 use root_attribute::condition::AttributeCondition;
 use root_attribute::context::EffectContext;
 use root_attribute::effect::{Effect, EffectBuilder, EffectStackingPolicy};
-use root_attribute::graph::{DependencyGraph, NodeType};
+use root_attribute::graph::DependencyGraph;
 use root_attribute::inspector::ActorInspectorPlugin;
 use root_attribute::inspector::debug_overlay::DebugOverlayMarker;
 use root_attribute::modifier::{ModOp, Who};
@@ -119,8 +117,8 @@ fn setup_effects(mut commands: Commands, mut ctx: EffectContext) {
     let ap_buff = ctx.add_effect(
         Effect::permanent()
             .name("AttackPower Buff".into())
-            .modify::<AttackPower>(Health::src(), ModOp::Add, Who::Target) //, 0.01)
-            .modify::<Intelligence>(Health::src(), ModOp::Add, Who::Target) //, 0.25)
+            .modify::<AttackPower>(Health::src(), ModOp::Add, Who::Target)
+            .modify::<Intelligence>(Health::src(), ModOp::Add, Who::Target)
             .build(),
     );
 
@@ -228,12 +226,12 @@ fn setup_actor(mut ctx: EffectContext, efx: Res<EffectsDatabase>, abilities: Res
         .with::<Health>(85.0)
         .with::<MaxHealth>(100.0)
         .with::<HealthRegen>(2.0)
-        .clamp_by::<MaxHealth, Health>(..=1.0)
+        //.clamp_by::<MaxHealth, Health>(..=1.0)
         // Mana
         .with::<Mana>(30u32)
         .with::<ManaPool>(60.0)
         .with::<ManaRegen>(4.0)
-        .clamp_by::<ManaPool, Mana>(..=1.0)
+        //.clamp_by::<ManaPool, Mana>(..=1.0)
         // Misc
         .with::<MagicPower>(1.0)
         .with::<AttackPower>(10.0)

@@ -1,6 +1,6 @@
 use crate::attributes::AttributeQueryData;
 use crate::condition::EvalContext;
-use crate::expression::Expr;
+use crate::expression::{Expr, ExprNode};
 use crate::inspector::pretty_type_name;
 use crate::prelude::*;
 use crate::{AttributesRef, CurrentValueChanged};
@@ -9,10 +9,11 @@ use bevy::prelude::*;
 use num_traits::{AsPrimitive, Bounded, Num};
 use std::collections::Bound;
 use std::ops::RangeBounds;
+use std::process::Output;
 
 #[derive(Component, Debug, Clone)]
 pub struct Clamp<T: Attribute> {
-    pub(crate) expression: Expr<T::Property>,
+    pub(crate) expression: Expr<T::ExprType>,
     pub(crate) limits: (Bound<T::Property>, Bound<T::Property>),
     pub(crate) bounds: (Bound<T::Property>, Bound<T::Property>),
 }
@@ -23,7 +24,7 @@ where
     f64: AsPrimitive<T::Property>,
 {
     pub fn new(
-        expression: Expr<T::Property>,
+        expression: Expr<T::ExprType>,
         limits: impl RangeBounds<f64> + Send + Sync + Copy + 'static,
     ) -> Self {
         Self {
@@ -39,7 +40,7 @@ pub fn observe_current_value_change_for_clamp_bounds<S: Attribute, T: Attribute>
     trigger: On<CurrentValueChanged<S>>,
     mut set: ParamSet<(Query<AttributesRef>, Query<&mut Clamp<T>, Allow<Internal>>)>,
 ) {
-    let source_value: T::Property = {
+    /*let source_value: T::ExprType = {
         let binding = set.p0();
         let attribute_ref = binding.get(trigger.entity).unwrap();
 
@@ -64,7 +65,6 @@ pub fn observe_current_value_change_for_clamp_bounds<S: Attribute, T: Attribute>
             );
             return;
         };
-        println!("value_source: {}", value_source);
         value_source
     };
 
@@ -81,7 +81,7 @@ pub fn observe_current_value_change_for_clamp_bounds<S: Attribute, T: Attribute>
 
     // Multiply the source value by the limit to get the derived limit
     let limit_bounds = multiply_bounds::<T>(clamp.limits, source_value);
-    clamp.bounds = limit_bounds;
+    clamp.bounds = limit_bounds;*/
 }
 
 pub fn apply_clamps<T>(mut query: Query<(AttributeQueryData<T>, &Clamp<T>), Changed<T>>)

@@ -1,6 +1,6 @@
 use crate::Spawnable;
 use crate::condition::{EvalContext, GameplayContextMut};
-use crate::expression::Expr;
+use crate::expression::{Expr, ExprNode};
 use crate::inspector::pretty_type_name;
 use crate::math::AbsDiff;
 use crate::modifier::calculator::{AttributeCalculator, ModOp};
@@ -13,12 +13,12 @@ use std::any::type_name;
 use std::fmt::Debug;
 use std::fmt::Display;
 
-#[derive(Component, Clone, Debug)]
+#[derive(Component, Debug)]
 //#[reflect(AccessModifier)]
 #[require(ModifierMarker)]
 pub struct AttributeModifier<T: Attribute> {
     //#[reflect(ignore)]
-    pub expression: Expr<T::Property>,
+    pub expression: Expr<T::ExprType>,
     pub who: Who,
     pub operation: ModOp,
 }
@@ -27,7 +27,7 @@ impl<T> AttributeModifier<T>
 where
     T: Attribute + 'static,
 {
-    pub fn new(value: Expr<T::Property>, modifier: ModOp, who: Who) -> Self {
+    pub fn new(value: Expr<T::ExprType>, modifier: ModOp, who: Who) -> Self {
         Self {
             expression: value,
             who,
@@ -102,11 +102,21 @@ impl<T: Attribute> Spawnable for AttributeModifier<T> {
     fn spawn(&self, commands: &mut EntityCommands) {
         commands.insert((
             AttributeModifier::<T> {
-                expression: self.expression.clone(),
+                expression: Expr(self.expression.0.clone()),
                 who: self.who,
                 operation: self.operation,
             },
             Name::new(format!("{}", self)),
         ));
+    }
+}
+
+impl<T: Attribute> Clone for AttributeModifier<T> {
+    fn clone(&self) -> Self {
+        AttributeModifier {
+            expression: Expr(self.expression.0.clone()),
+            who: self.who,
+            operation: self.operation,
+        }
     }
 }

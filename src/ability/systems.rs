@@ -4,11 +4,11 @@ use crate::ability::{
 };
 use crate::assets::AbilityDef;
 use crate::condition::{BoxCondition, EvalContext, GameplayContextMut};
+use crate::expression::ExpressionError::AttributeNotFound;
 use crate::{AttributesMut, AttributesRef};
 use bevy::asset::Assets;
 use bevy::prelude::*;
 use std::time::Duration;
-use crate::expression::ExpressionError::AttributeError;
 
 pub fn tick_ability_cooldown(mut query: Query<&mut AbilityCooldown>, time: Res<Time>) {
     query.par_iter_mut().for_each(|mut cooldown| {

@@ -15,7 +15,7 @@ use std::ops::{Bound, RangeBounds};
 
 pub type StackCondition = AttributeCondition<Stacks>;
 
-#[derive(TypePath, Serialize)]
+#[derive(TypePath)]
 pub struct AttributeCondition<T: Attribute> {
     who: Who,
     bounds: (Bound<T::Property>, Bound<T::Property>),

@@ -142,18 +142,14 @@ impl ActorBuilder {
         self
     }
 
-    pub fn clamp_by<S, T>(
-        mut self,
-        limits: impl RangeBounds<f64> + Send + Sync + 'static,
-    ) -> ActorBuilder
+    pub fn clamp_by<T>(self, limits: impl RangeBounds<f64> + Send + Sync + 'static) -> ActorBuilder
     where
-        S: Attribute<Property = T::Property>,
         T: Attribute,
-        f64: AsPrimitive<T::Property>,
+        //f64: AsPrimitive<T::Property>,
     {
         let bounds = (limits.start_bound().cloned(), limits.end_bound().cloned());
 
-        self.builder_actions.push_back(EntityActions::new(
+        /*self.builder_actions.push_back(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
                 let parent_actor = entity_commands.id();
 
@@ -161,7 +157,7 @@ impl ActorBuilder {
                     Observer::new(observe_current_value_change_for_clamp_bounds::<S, T>);
                 observer.watch_entity(parent_actor);
 
-                entity_commands.insert(Clamp::<T>::new(S::src(), bounds));
+                entity_commands.insert(Clamp::<T>::new(T::src(), bounds));
 
                 entity_commands.commands().spawn((
                     observer,
@@ -181,7 +177,7 @@ impl ActorBuilder {
                         entity: parent_actor,
                     })
             },
-        ));
+        ));*/
 
         self
     }

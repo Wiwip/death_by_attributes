@@ -13,7 +13,7 @@ use bevy::prelude::*;
 use std::error::Error;
 use std::fmt::Formatter;
 
-use crate::expression::Expr;
+use crate::expression::{Expr, FloatExprNode};
 pub use builder::AbilityBuilder;
 pub use command::GrantAbilityCommand;
 pub use system_param::AbilityContext;
@@ -72,7 +72,7 @@ impl TryActivateAbility {
 #[derive(Component)]
 pub struct AbilityCooldown {
     timer: Timer,
-    value: Expr<f64>,
+    value: Expr<FloatExprNode<f64>>,
 }
 
 #[derive(Debug)]
