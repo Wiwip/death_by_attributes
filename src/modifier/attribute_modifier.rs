@@ -1,6 +1,5 @@
 use crate::Spawnable;
-use crate::condition::{EvalContext, GameplayContextMut};
-use crate::expression::{Expr, ExprNode};
+use crate::condition::{BevyContext, GameplayContextMut};
 use crate::inspector::pretty_type_name;
 use crate::math::AbsDiff;
 use crate::modifier::calculator::{AttributeCalculator, ModOp};
@@ -12,13 +11,15 @@ use bevy::prelude::*;
 use std::any::type_name;
 use std::fmt::Debug;
 use std::fmt::Display;
+use bevy::reflect::TypeRegistryArc;
+use express_it::expr::Expr;
 
 #[derive(Component, Debug)]
 //#[reflect(AccessModifier)]
 #[require(ModifierMarker)]
 pub struct AttributeModifier<T: Attribute> {
     //#[reflect(ignore)]
-    pub expression: Expr<T::ExprType>,
+    pub expression: Expr<T::Property, T::ExprType>,
     pub who: Who,
     pub operation: ModOp,
 }
@@ -27,7 +28,7 @@ impl<T> AttributeModifier<T>
 where
     T: Attribute + 'static,
 {
-    pub fn new(value: Expr<T::ExprType>, modifier: ModOp, who: Who) -> Self {
+    pub fn new(value: Expr<T::Property, T::ExprType>, modifier: ModOp, who: Who) -> Self {
         Self {
             expression: value,
             who,
@@ -53,11 +54,12 @@ where
 }
 
 impl<T: Attribute> Modifier for AttributeModifier<T> {
-    fn apply_immediate(&self, context: &mut GameplayContextMut) -> bool {
-        let immutable_context = EvalContext {
+    fn apply_immediate(&self, context: &mut GameplayContextMut, type_registry: TypeRegistryArc,) -> bool {
+        let immutable_context = BevyContext {
             source_actor: &context.attribute_ref(Who::Source),
             target_actor: &context.attribute_ref(Who::Target),
             owner: &context.attribute_ref(Who::Owner),
+            type_registry: type_registry.clone(),
         };
 
         let Ok(calc) = AttributeCalculator::<T>::convert(self, &immutable_context) else {
@@ -102,7 +104,7 @@ impl<T: Attribute> Spawnable for AttributeModifier<T> {
     fn spawn(&self, commands: &mut EntityCommands) {
         commands.insert((
             AttributeModifier::<T> {
-                expression: Expr(self.expression.0.clone()),
+                expression: self.expression.clone(),
                 who: self.who,
                 operation: self.operation,
             },
@@ -114,7 +116,7 @@ impl<T: Attribute> Spawnable for AttributeModifier<T> {
 impl<T: Attribute> Clone for AttributeModifier<T> {
     fn clone(&self) -> Self {
         AttributeModifier {
-            expression: Expr(self.expression.0.clone()),
+            expression: self.expression.clone(),
             who: self.who,
             operation: self.operation,
         }

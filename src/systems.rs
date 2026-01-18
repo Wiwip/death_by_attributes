@@ -1,9 +1,8 @@
 use crate::actors::Actor;
 use crate::assets::EffectDef;
 use crate::attributes::{Attribute, AttributeQueryData, AttributeQueryDataReadOnly};
-use crate::condition::EvalContext;
+use crate::condition::BevyContext;
 use crate::effect::{Effect, EffectSource, EffectStatusParam, EffectTarget, EffectTicker};
-use crate::expression::ExprNode;
 use crate::graph::{DependencyGraph, NodeType};
 use crate::modifier::{ApplyAttributeModifierMessage, AttributeCalculator, OwnedModifiers};
 use crate::prelude::*;
@@ -12,6 +11,7 @@ use bevy::prelude::*;
 use petgraph::visit::IntoNeighbors;
 use std::any::type_name;
 use std::marker::PhantomData;
+use bevy::reflect::TypeRegistryArc;
 
 #[derive(EntityEvent)]
 #[entity_event(propagate=&'static EffectTarget, auto_propagate)]
@@ -51,6 +51,7 @@ pub fn update_effect_system<T: Attribute>(
     effects: Query<(&OwnedModifiers, &EffectSource, &EffectTarget)>,
     modifiers: Query<&AttributeModifier<T>>,
     mut commands: Commands,
+    type_registry: Res<AppTypeRegistry>
 ) {
     debug_once!("Ready: update_effect_tree_system::{}", type_name::<T>());
     for actor_entity in actors.iter() {
@@ -70,6 +71,7 @@ pub fn update_effect_system<T: Attribute>(
             &effects,
             &modifiers,
             &mut commands,
+            &type_registry.0.clone(),
         );
 
         // Signal to update the attribute
@@ -94,6 +96,7 @@ fn update_effect_tree_attributes<T: Attribute>(
     effects: &Query<(&OwnedModifiers, &EffectSource, &EffectTarget)>,
     modifiers: &Query<&AttributeModifier<T>>,
     commands: &mut Commands,
+    type_registry: &TypeRegistryArc,
 ) -> AttributeCalculator<T> {
     let Ok(node_type) = nodes.get(current_entity) else {
         error!("{}: Error getting node type.", current_entity);
@@ -131,6 +134,7 @@ fn update_effect_tree_attributes<T: Attribute>(
                         effects,
                         modifiers,
                         commands,
+                       type_registry,
                     )
                 })
                 .fold(AttributeCalculator::default(), |acc, child| {
@@ -163,10 +167,11 @@ fn update_effect_tree_attributes<T: Attribute>(
                     let [source, target, effect] = attribute_refs
                         .get_many([source.0, target.0, current_entity])
                         .unwrap();
-                    let context = EvalContext {
+                    let context = BevyContext {
                         source_actor: &source,
                         target_actor: &target,
                         owner: &effect,
+                        type_registry: type_registry.clone(),
                     };
 
                     let calc = AttributeCalculator::convert(modifier, &context).unwrap_or_default();
@@ -234,6 +239,7 @@ pub fn apply_periodic_effect<T: Attribute>(
     modifiers: Query<&AttributeModifier<T>>,
     mut event_writer: MessageWriter<ApplyAttributeModifierMessage<T>>,
     effect_assets: Res<Assets<EffectDef>>,
+    type_registry: Res<AppTypeRegistry>,
 ) {
     for (effect_ref, effect, timer, owned_modifiers, target, source) in effects.iter() {
         if !timer.just_finished() {
@@ -248,10 +254,11 @@ pub fn apply_periodic_effect<T: Attribute>(
         let source_actor_ref = actors.get(source.0).unwrap();
         let target_actor_ref = actors.get(target.0).unwrap();
 
-        let context = EvalContext {
+        let context = BevyContext {
             target_actor: &target_actor_ref,
             source_actor: &source_actor_ref,
             owner: &effect_ref,
+            type_registry: type_registry.0.clone(),
         };
 
         // Determines whether the effect should activate

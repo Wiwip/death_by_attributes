@@ -3,13 +3,13 @@ use crate::attributes::Attribute;
 use crate::condition::{AttributeCondition, BoxCondition};
 use crate::effect::EffectStackingPolicy;
 use crate::effect::application::EffectApplicationPolicy;
-use crate::expression::{Expr, ExprNode};
 use crate::modifier::{ModOp, Who};
 use crate::mutator::EntityActions;
 use crate::prelude::*;
 use bevy::ecs::system::IntoObserverSystem;
 use bevy::prelude::{Bundle, Entity, EntityCommands, EntityEvent, Name};
 use std::ops::RangeBounds;
+use express_it::expr::Expr;
 
 pub struct EffectBuilder {
     def: EffectDef,
@@ -80,7 +80,7 @@ impl EffectBuilder {
     /// ```
     pub fn modify<T: Attribute>(
         mut self,
-        expr: impl Into<Expr<T::ExprType>>,
+        expr: impl Into<Expr<T::Property, T::ExprType>>,
         modifier: ModOp,
         who: Who,
     ) -> Self {

@@ -12,12 +12,11 @@ use crate::schedule::EffectsSet;
 use bevy::prelude::*;
 use std::error::Error;
 use std::fmt::Formatter;
-
+use express_it::float::FloatExpr;
 pub use builder::AbilityBuilder;
 pub use command::GrantAbilityCommand;
 pub use system_param::AbilityContext;
-use crate::expression::float::FloatExprNode;
-use crate::prelude::Expr;
+
 
 pub struct AbilityPlugin;
 
@@ -73,7 +72,7 @@ impl TryActivateAbility {
 #[derive(Component)]
 pub struct AbilityCooldown {
     timer: Timer,
-    value: Expr<FloatExprNode<f64>>,
+    value: FloatExpr<f64>,
 }
 
 #[derive(Debug)]

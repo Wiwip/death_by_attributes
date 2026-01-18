@@ -48,7 +48,6 @@ mod test {
     use crate::condition::AttributeCondition;
     use crate::context::EffectContext;
     use crate::effect::{Effect, EffectInactive};
-    use crate::expression::*;
     use crate::modifier::{ModOp, Who};
     use crate::prelude::*;
     use crate::registry::ability_registry::AbilityToken;

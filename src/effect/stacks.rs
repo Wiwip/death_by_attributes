@@ -1,9 +1,9 @@
-use crate::ReflectAccessAttribute;
+use express_it::expr::Expr;
+use crate::{attribute_impl, ReflectAccessAttribute};
 use crate::assets::EffectDef;
 use crate::attribute;
 use crate::effect::Effect;
 use crate::effect::timing::EffectDuration;
-use crate::expression::SelectExprNode;
 use crate::prelude::Attribute;
 use bevy::prelude::*;
 use num_traits::AsPrimitive;
@@ -14,10 +14,9 @@ pub enum EffectStackingPolicy {
     RefreshDuration, // The effect overrides previous applications
                      //RefreshDurationWithOverflow, // The effect overrides previous applications
 }
-
 attribute!(EffectIntensity, f32);
 
-attribute!(Stacks, u32);
+attribute_impl!(Stacks, u32);
 
 impl Default for Stacks {
     fn default() -> Self {

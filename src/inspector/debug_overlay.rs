@@ -98,13 +98,13 @@ fn list_attributes(
 ) {
     builder.begin_child("Attributes".to_string());
     // List attributes for printing
-    for (_, component_id, type_id, _) in actor_components.iter() {
+    for (_, _, type_id, _) in actor_components.iter() {
         let Some(type_id) = type_id else {
             continue;
         };
-        let Ok(ptr) = actor_ref.get_by_id(*component_id) else {
+        /*let Ok(ptr) = actor_ref.get_by_id(*component_id) else {
             continue;
-        };
+        };*/
 
         let registry = type_registry.read();
         let reflect_attribute = registry.get_type_data::<ReflectAccessAttribute>(*type_id);
@@ -112,17 +112,20 @@ fn list_attributes(
             continue;
         };
 
-        let registration = registry
-            .get(*type_id)
-            .ok_or(Error::NoTypeRegistration(*type_id))
-            .unwrap();
-        let reflect_from_ptr = registration
-            .data::<ReflectFromPtr>()
-            .ok_or(Error::NoTypeData(*type_id, "ReflectFromPtr"))
-            .unwrap();
+        let Some(type_registration) = registry.get(*type_id) else {
+            error!("Failed to get type registration for entity {:?}", *type_id);
+            continue;
+        };
+        let Some(reflect_component) = type_registration.data::<ReflectComponent>() else {
+            error!("No reflect access attribute found");
+            continue;
+        };
+        let Some(dyn_reflect) = reflect_component.reflect(actor_ref) else {
+            error!("Failed to reflect entity");
+            continue;
+        };
 
-        let value = unsafe { reflect_from_ptr.as_reflect(ptr) };
-        let Some(attribute) = reflect_access_attribute.get(value) else {
+        let Some(attribute) = reflect_access_attribute.get(dyn_reflect) else {
             continue;
         };
 

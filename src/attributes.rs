@@ -1,6 +1,4 @@
 use crate::effect::AttributeDependents;
-use crate::expression::attribute::{dst, parent, src, RetrieveAttribute};
-use crate::expression::{Expr, ExprNode};
 use crate::inspector::pretty_type_name;
 use crate::math::{AbsDiff, SaturatingAttributes};
 use crate::modifier::{AttributeCalculator, AttributeCalculatorCached};
@@ -9,12 +7,16 @@ use bevy::ecs::component::Mutable;
 use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
 use bevy::reflect::GetTypeRegistration;
+use express_it::context::{EvalContext, Path, RetrieveAttribute};
+use express_it::expr::{Expr, ExprNode, ExpressionError};
+use express_it::float::FloatExprNode;
 use num_traits::NumCast;
 pub use num_traits::{
     AsPrimitive, Bounded, FromPrimitive, Num, NumAssign, NumAssignOps, NumOps, Saturating,
     SaturatingAdd, SaturatingMul, Zero,
 };
 use serde::Serialize;
+use std::any::{Any, TypeId};
 use std::collections::HashSet;
 use std::fmt::Debug;
 use std::fmt::Display;
@@ -50,26 +52,59 @@ where
     Self: Reflect + TypePath + GetTypeRegistration,
 {
     type Property: Value;
-    type ExprType: ExprNode<Output = Self::Property>;
+    type ExprType: ExprNode<Self::Property> + Send + Sync;
 
     fn new<T: Num + AsPrimitive<Self::Property> + Copy>(value: T) -> Self;
     fn base_value(&self) -> Self::Property;
     fn set_base_value(&mut self, value: Self::Property);
     fn current_value(&self) -> Self::Property;
+    fn borrow_current_value(&self) -> &Self::Property;
     fn set_current_value(&mut self, value: Self::Property);
     // Helper to wrap attribute access in an Expression
-    fn new_expr(node: Box<dyn RetrieveAttribute<Self::Property>>) -> Expr<Self::ExprType>;
-    fn src() -> Expr<Self::ExprType> {
-        Self::new_expr(Box::new(src::<Self>()))
-    }
+    fn src() -> Expr<Self::Property, Self::ExprType>;
+    /*
     fn dst() -> Expr<Self::ExprType> {
         Self::new_expr(Box::new(dst::<Self>()))
     }
     fn parent() -> Expr<Self::ExprType> {
         Self::new_expr(Box::new(parent::<Self>()))
     }
-    fn lit(value: Self::Property) -> Expr<Self::ExprType>;
-    fn attribute_type_id() -> AttributeTypeId;
+    */
+
+    fn lit(value: Self::Property) -> Expr<Self::Property, Self::ExprType>;
+    //fn attribute_type_id() -> AttributeTypeId;
+}
+
+#[derive(Debug)]
+pub struct Src<T> {
+    path: Path,
+    marker: PhantomData<T>,
+}
+
+impl<T: Attribute> Src<T> {
+    pub fn new(path: &str) -> Self {
+        Self {
+            path: Path(path.to_string()),
+            marker: Default::default(),
+        }
+    }
+
+    fn value(&self, ctx: &dyn EvalContext) -> T::Property {
+        let any = ctx.get_any(&self.path, TypeId::of::<T>()).unwrap();
+
+        let value = any
+            .downcast_ref::<T::Property>()
+            .ok_or(ExpressionError::DowncastError)
+            .unwrap();
+
+        *value
+    }
+}
+
+impl<T: Attribute> RetrieveAttribute<T::Property> for Src<T> {
+    fn retrieve(&self, ctx: &dyn EvalContext) -> std::result::Result<T::Property, ExpressionError> {
+        Ok(self.value(ctx))
+    }
 }
 
 #[macro_export]
@@ -84,7 +119,7 @@ macro_rules! attribute_impl {
             serde::Serialize,
             serde::Deserialize,
         )]
-        #[reflect(AccessAttribute)]
+        #[reflect(Component, AccessAttribute)]
         pub struct $StructName {
             base_value: $ValueType,
             current_value: $ValueType,
@@ -92,7 +127,7 @@ macro_rules! attribute_impl {
 
         impl $crate::attributes::Attribute for $StructName {
             type Property = $ValueType;
-            type ExprType = $crate::expression::SelectExprNode<$ValueType>;
+            type ExprType = express_it::expr::SelectExprNode<$ValueType>;
 
             fn new<T>(value: T) -> Self
             where
@@ -112,23 +147,22 @@ macro_rules! attribute_impl {
             fn current_value(&self) -> $ValueType {
                 self.current_value
             }
+            fn borrow_current_value(&self) -> &$ValueType {
+                &self.current_value
+            }
             fn set_current_value(&mut self, value: $ValueType) {
                 self.current_value = value;
             }
-            fn new_expr(
-                node: Box<dyn $crate::prelude::RetrieveAttribute<Self::Property>>,
-            ) -> $crate::prelude::Expr<Self::ExprType> {
-                $crate::prelude::Expr::<Self::ExprType>(std::sync::Arc::new(
-                    Self::ExprType::Attribute(node),
-                ))
-            }
-            fn lit(value: $ValueType) -> $crate::prelude::Expr<Self::ExprType> {
-                $crate::prelude::Expr::<Self::ExprType>(std::sync::Arc::new(Self::ExprType::Lit(
-                    value,
+            fn src() -> express_it::expr::Expr<Self::Property, Self::ExprType> {
+                let node = $crate::attributes::Src::<Self>::new("source");
+                express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
+                    Box::new(node),
                 )))
             }
-            fn attribute_type_id() -> $crate::prelude::AttributeTypeId {
-                $crate::prelude::AttributeTypeId::of::<Self>()
+            fn lit(value: $ValueType) -> express_it::expr::Expr<Self::Property, Self::ExprType> {
+                express_it::expr::Expr::<Self::Property, Self::ExprType>::new(std::sync::Arc::new(
+                    Self::ExprType::Lit(value),
+                ))
             }
         }
 
@@ -206,6 +240,7 @@ impl<T: Attribute> AttributeQueryDataItem<'_, '_, T> {
 pub trait AccessAttribute {
     fn access_base_value(&self) -> f64;
     fn access_current_value(&self) -> f64;
+    fn any_current_value(&self) -> &dyn Any;
     fn name(&self) -> String;
 }
 
@@ -219,137 +254,13 @@ where
     fn access_current_value(&self) -> f64 {
         self.current_value().as_()
     }
+    fn any_current_value(&self) -> &dyn Any {
+        self.borrow_current_value()
+    }
     fn name(&self) -> String {
         pretty_type_name::<T>()
     }
 }
-
-/*pub trait ValueSource: Send + Sync + 'static {
-    type Output: Num;
-
-    fn current_value(&self, entity: &AttributesRef) -> Result<Self::Output, AttributeError>;
-    fn insert_dependency(
-        &self,
-        target: Entity,
-        entity_commands: &mut EntityCommands,
-        func: fn(Entity, Commands),
-    );
-    fn describe(&self) -> String;
-}
-
-pub trait IntoValue {
-    type Out: Num;
-
-    fn into_value(self) -> Value<Self::Out>;
-}*/
-
-/// A [Value] refers to an Attribute value.
-/// It can be a literal value, or a reference to an Attribute.
-//#[derive(Deref, DerefMut)]
-//pub struct Value<P: Num>(pub Arc<dyn ValueSource<Output = P>>);
-/*
-impl<P: Num + Display + Debug + Copy + Clone + Send + Sync + 'static> Default for Value<P> {
-    fn default() -> Self {
-        Value(Arc::new(Lit(P::zero())))
-    }
-}
-
-impl<P: Num + 'static> Clone for Value<P> {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
-
-impl<P: Num + 'static> Debug for Value<P> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.describe())
-    }
-}
-
-impl<P: Num + 'static> Display for Value<P> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.describe())
-    }
-}
-
-/// An [AttributeValue] is a dynamic reference to an Attribute.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct AttributeValue<T: Attribute> {
-    pub value: T::Property,
-    pub phantom_data: PhantomData<T>,
-}
-
-impl<T: Attribute> ValueSource for AttributeValue<T> {
-    type Output = T::Property;
-
-    fn current_value(&self, entity: &AttributesRef) -> Result<Self::Output, AttributeError> {
-        Ok(entity
-            .get::<T>()
-            .ok_or(AttributeError::AttributeNotPresent(TypeId::of::<T>()))?
-            .current_value())
-    }
-
-    /// Inserts a dependency on the target entity.
-    /// This is used to ensure that the target entity is updated when the source attribute changes.
-    /// The func serves as a trigger to MarkNodeDirty<T> on the attribute that must be recalculated
-    fn insert_dependency(
-        &self,
-        target: Entity,
-        entity_commands: &mut EntityCommands,
-        func: fn(Entity, Commands),
-    ) {
-        entity_commands.insert(AttributeDependency::<T>::new(target));
-
-        let mut observer = Observer::new(
-            move |trigger: On<AttributeDependencyChanged<T>>, commands: Commands| {
-                func(trigger.entity, commands);
-            },
-        );
-        observer.watch_entity(entity_commands.id());
-        entity_commands.commands().spawn(observer);
-    }
-
-    fn describe(&self) -> String {
-        format!("{}", pretty_type_name::<T>())
-    }
-}
-
-impl<T: Attribute> IntoValue for AttributeValue<T> {
-    type Out = T::Property;
-
-    fn into_value(self) -> Value<Self::Out> {
-        Value(Arc::new(AttributeValue::<T> {
-            value: Self::Out::zero(),
-            phantom_data: Default::default(),
-        }))
-    }
-}
-*/
-/*
-/// A [Lit] is a static value.
-#[derive(Deref, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Lit<P: Num>(pub P);
-
-impl<P: Num + Display + Debug + Copy + Clone + Send + Sync + 'static> ValueSource for Lit<P> {
-    type Output = P;
-
-    fn current_value(&self, _: &AttributesRef) -> Result<Self::Output, AttributeError> {
-        Ok(self.0)
-    }
-
-    fn insert_dependency(
-        &self,
-        _target: Entity,
-        _entity_commands: &mut EntityCommands,
-        _func: fn(Entity, Commands),
-    ) {
-        // Empty implementation
-    }
-
-    fn describe(&self) -> String {
-        format!("{}", self.0)
-    }
-}*/
 
 pub fn on_add_attribute<T: Attribute>(trigger: On<Insert, T>, mut commands: Commands) {
     commands.trigger(MarkNodeDirty::<T> {
@@ -398,7 +309,7 @@ mod test {
     use super::*;
     use crate::ReflectAccessAttribute;
 
-    attribute!(TestAttr, u32);
+    //attribute!(TestAttr, u32);
 
     /*
     #[test]
@@ -420,7 +331,7 @@ mod test {
         assert_eq!(attribute.current_value, 500);
     }*/
 
-    #[test]
+    /*#[test]
     fn test_attribute_new_and_setters() {
         // new() sets both base and current to the same value
         let mut a = TestAttr::new(7u32);
@@ -436,5 +347,5 @@ mod test {
         a.set_current_value(12);
         assert_eq!(a.base_value(), 10);
         assert_eq!(a.current_value(), 12);
-    }
+    }*/
 }

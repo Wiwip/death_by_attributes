@@ -1,16 +1,17 @@
+use std::sync::Arc;
 use crate::ability::AbilityCooldown;
 use crate::assets::AbilityDef;
 use crate::attributes::Attribute;
 use crate::condition::{AttributeCondition, BoxCondition};
-use crate::expression::Expr;
 use crate::inspector::pretty_type_name;
 use crate::modifier::{AttributeCalculatorCached, ModOp, Modifier, Who};
 use crate::mutator::EntityActions;
 use crate::prelude::AttributeModifier;
 use bevy::ecs::system::IntoObserverSystem;
 use bevy::prelude::*;
+use bevy::render::render_resource::TextureSampleType::Float;
+use express_it::float::FloatExpr;
 use num_traits::{AsPrimitive, Num};
-use crate::expression::float::FloatExprNode;
 
 pub struct AbilityBuilder {
     name: String,
@@ -52,14 +53,14 @@ impl AbilityBuilder {
         self
     }
 
-    pub fn with_cooldown(mut self, expr: impl Into<Expr<FloatExprNode<f64>>>) -> Self {
+    pub fn with_cooldown(mut self, expr: impl Into<FloatExpr<f64>>) -> Self {
         let val = expr.into();
 
         self.mutators.push(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
                 entity_commands.try_insert(AbilityCooldown {
                     timer: Timer::from_seconds(0.0, TimerMode::Once),
-                    value: Expr(val.clone()),
+                    value: val.clone(),
                 });
             },
         ));

@@ -26,6 +26,7 @@ serde = "1.0"
 serde_json = "1.0"
 num-traits = "0.2"
 smol_str = "0.2.2"
+express-it = { path = "../express-it" }
 
 [dependencies.bevy]
 version = "0.18"

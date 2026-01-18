@@ -3,12 +3,12 @@ use crate::ability::{
     TryActivateAbility,
 };
 use crate::assets::AbilityDef;
-use crate::condition::{BoxCondition, EvalContext, GameplayContextMut};
-use crate::expression::ExpressionError::AttributeNotFound;
+use crate::condition::{BevyContext, BoxCondition, GameplayContextMut};
 use crate::{AttributesMut, AttributesRef};
 use bevy::asset::Assets;
 use bevy::prelude::*;
 use std::time::Duration;
+use bevy_inspector_egui::__macro_exports::bevy_reflect::TypeRegistryArc;
 
 pub fn tick_ability_cooldown(mut query: Query<&mut AbilityCooldown>, time: Res<Time>) {
     query.par_iter_mut().for_each(|mut cooldown| {
@@ -28,6 +28,7 @@ pub fn try_activate_ability_observer(
     abilities: Query<(AttributesRef, &Ability, Option<&AbilityCooldown>)>,
     ability_assets: Res<Assets<AbilityDef>>,
     mut commands: Commands,
+    type_registry: Res<AppTypeRegistry>,
 ) -> Result<(), BevyError> {
     let Ok((source_entity_ref, actor_abilities)) = actors.get(trigger.ability) else {
         warn!("The Actor({}) has no GrantedAbilities", trigger.ability);
@@ -68,6 +69,7 @@ pub fn try_activate_ability_observer(
             &target_entity_ref,
             &ability_spec,
             &trigger.condition,
+            &type_registry.0.clone(),
         )
         .ok()
         .unwrap_or(false);
@@ -94,11 +96,13 @@ fn can_activate_ability(
     target_entity_ref: &AttributesRef,
     ability_def: &AbilityDef,
     conditions: &BoxCondition,
+    type_registry: &TypeRegistryArc,
 ) -> Result<bool, BevyError> {
-    let context = EvalContext {
+    let context = BevyContext {
         target_actor: &target_entity_ref,
         source_actor: &source_entity_ref,
         owner: &ability_entity_ref,
+        type_registry: type_registry.clone(),
     };
     let meet_conditions = conditions.0.eval(&context).unwrap_or(false);
     if !meet_conditions {
@@ -135,6 +139,7 @@ pub(crate) fn reset_ability_cooldown(
     trigger: On<AbilityCooldownReset>,
     mut cooldowns: Query<(&AbilityOf, &mut AbilityCooldown)>,
     query: Query<AttributesRef>,
+    type_registry: Res<AppTypeRegistry>,
 ) -> Result<(), BevyError> {
     let Ok((_parent, mut cooldown)) = cooldowns.get_mut(trigger.ability) else {
         // This event does not affect an ability without a cooldown.
@@ -143,10 +148,11 @@ pub(crate) fn reset_ability_cooldown(
 
     let [source, target, owner] =
         query.get_many([trigger.source, trigger.target, trigger.ability])?;
-    let context = EvalContext {
+    let context = BevyContext {
         target_actor: &source,
         source_actor: &target,
         owner: &owner,
+        type_registry: type_registry.0.clone(),
     };
 
     let cd_value = cooldown.value.eval(&context)?;
@@ -173,6 +179,7 @@ pub(crate) fn activate_ability(
     abilities: Query<&Ability>,
     ability_assets: Res<Assets<AbilityDef>>,
     mut commands: Commands,
+    type_registry: Res<AppTypeRegistry>,
 ) -> Result<(), BevyError> {
     let mut context = GameplayContextMut {
         target_actor: trigger.target,
@@ -188,7 +195,7 @@ pub(crate) fn activate_ability(
         .ok_or("No ability asset.")?;
 
     for modifiers in &ability_spec.cost_modifiers {
-        modifiers.apply_immediate(&mut context);
+        modifiers.apply_immediate(&mut context, type_registry.0.clone());
         /*modifiers.apply_delayed(
             trigger.source,
             trigger.target,

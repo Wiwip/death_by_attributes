@@ -1,6 +1,6 @@
 use crate::AttributesMut;
 use crate::assets::EffectDef;
-use crate::condition::EvalContext;
+use crate::condition::BevyContext;
 use crate::effect::stacks::NotifyAddStackEvent;
 use crate::effect::timing::{EffectDuration, EffectTicker};
 use crate::effect::{
@@ -11,6 +11,7 @@ use crate::modifier::{Modifier, ModifierOf};
 use bevy::asset::{Assets, Handle};
 use bevy::log::debug;
 use bevy::prelude::*;
+use bevy_inspector_egui::__macro_exports::bevy_reflect::TypeRegistryArc;
 use std::cmp::PartialEq;
 
 /// Describes how the effect is applied to entities
@@ -131,6 +132,7 @@ impl ApplyEffectEvent {
         mut actors: &mut Query<(Option<&AppliedEffects>, AttributesMut), Without<Effect>>,
         commands: &mut Commands,
         effect: &EffectDef,
+        type_registry: TypeRegistryArc,
     ) -> Result<(), BevyError> {
         debug!("Applying instant effect to {}", self.targeting.target());
 
@@ -141,10 +143,11 @@ impl ApplyEffectEvent {
             return Ok(());
         };
 
-        let context = EvalContext {
+        let context = BevyContext {
             target_actor: &target_actor_ref,
             source_actor: &source_actor_ref,
             owner: &source_actor_ref, // TODO: Make optional
+            type_registry: type_registry.clone(),
         };
 
         // Determines whether the effect should activate
@@ -185,6 +188,7 @@ impl ApplyEffectEvent {
         actors: &mut Query<(Option<&AppliedEffects>, AttributesMut), Without<Effect>>,
         effects: &mut Query<&Effect>,
         add_stack_event: &mut MessageWriter<NotifyAddStackEvent>,
+        type_registry: TypeRegistryArc,
     ) -> Result<(), BevyError> {
         // We want to know whether an effect with the same handle already points to the actor
         let (optional_effects, _) = actors.get_mut(self.targeting.target())?;
@@ -226,10 +230,11 @@ impl ApplyEffectEvent {
         let (_, source_actor_ref) = actors.get(self.targeting.source())?;
         let (_, target_actor_ref) = actors.get(self.targeting.target())?;
 
-        let context = EvalContext {
+        let context = BevyContext {
             target_actor: &target_actor_ref,
             source_actor: &source_actor_ref,
             owner: &source_actor_ref, // TODO: Should this be the source actor? The effect doesn't exist for instant effects.
+            type_registry,
         };
 
         // Determines whether the effect should activate
@@ -294,13 +299,19 @@ pub(crate) fn apply_effect_event_observer(
     effect_assets: Res<Assets<EffectDef>>,
     mut writer: MessageWriter<NotifyAddStackEvent>,
     mut commands: Commands,
+    type_registry: Res<AppTypeRegistry>,
 ) -> Result<(), BevyError> {
     let effect = effect_assets
         .get(&trigger.handle)
         .ok_or("No effect asset.")?;
 
     if effect.application_policy.should_apply_now() {
-        trigger.apply_instant_effect(&mut actors, &mut commands, effect)?;
+        trigger.apply_instant_effect(
+            &mut actors,
+            &mut commands,
+            effect,
+            type_registry.0.clone(),
+        )?;
     }
 
     if effect.application_policy != EffectApplicationPolicy::Instant {
@@ -310,6 +321,7 @@ pub(crate) fn apply_effect_event_observer(
             &mut actors,
             &mut effects,
             &mut writer,
+            type_registry.0.clone(),
         )?;
     }
 
@@ -330,6 +342,7 @@ mod test {
     use crate::registry::{Registry, RegistryMut};
     use crate::{AttributesPlugin, attribute, init_attribute};
     use bevy::ecs::system::RunSystemOnce;
+    use express_it::context::RetrieveAttribute;
 
     attribute!(TestA, f32);
     attribute!(TestB, f64);

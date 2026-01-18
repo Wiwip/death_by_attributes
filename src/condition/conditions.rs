@@ -1,7 +1,7 @@
 use crate::ability::Ability;
 use crate::assets::AbilityDef;
 use crate::attributes::Attribute;
-use crate::condition::{Condition, EvalContext};
+use crate::condition::{Condition, BevyContext};
 use crate::effect::Stacks;
 use crate::inspector::pretty_type_name;
 use crate::modifier::Who;
@@ -51,7 +51,7 @@ impl<T: Attribute> std::fmt::Debug for AttributeCondition<T> {
 }
 
 impl<T: Attribute> Condition for AttributeCondition<T> {
-    fn eval(&self, context: &EvalContext) -> Result<bool, BevyError> {
+    fn eval(&self, context: &BevyContext) -> Result<bool, BevyError> {
         let attributes = context.attribute_ref(self.who);
 
         match attributes.get::<T>() {
@@ -95,7 +95,7 @@ impl<T: Attribute> std::fmt::Display for AttributeCondition<T> {
 pub struct ChanceCondition(pub f32);
 
 impl Condition for ChanceCondition {
-    fn eval(&self, _: &EvalContext) -> Result<bool, BevyError> {
+    fn eval(&self, _: &BevyContext) -> Result<bool, BevyError> {
         Ok(rand::random::<f32>() < self.0)
     }
 }
@@ -117,7 +117,7 @@ where
     C1: Condition,
     C2: Condition,
 {
-    fn eval(&self, value: &EvalContext) -> Result<bool, BevyError> {
+    fn eval(&self, value: &BevyContext) -> Result<bool, BevyError> {
         Ok(self.c1.eval(value)? && self.c2.eval(value)?)
     }
 }
@@ -133,7 +133,7 @@ where
     C1: Condition,
     C2: Condition,
 {
-    fn eval(&self, context: &EvalContext) -> Result<bool, BevyError> {
+    fn eval(&self, context: &BevyContext) -> Result<bool, BevyError> {
         Ok(self.c1.eval(context)? || self.c2.eval(context)?)
     }
 }
@@ -142,7 +142,7 @@ where
 pub struct Not<C>(C);
 
 impl<C: Condition> Condition for Not<C> {
-    fn eval(&self, context: &EvalContext) -> Result<bool, BevyError> {
+    fn eval(&self, context: &BevyContext) -> Result<bool, BevyError> {
         Ok(!self.0.eval(context)?)
     }
 }
@@ -175,7 +175,7 @@ impl<C: Component> TagCondition<C> {
 }
 
 impl<C: Component> Condition for TagCondition<C> {
-    fn eval(&self, context: &EvalContext) -> Result<bool, BevyError> {
+    fn eval(&self, context: &BevyContext) -> Result<bool, BevyError> {
         let entity = context.attribute_ref(self.who);
         Ok(entity.contains::<C>())
     }
@@ -198,7 +198,7 @@ impl AbilityCondition {
 }
 
 impl Condition for AbilityCondition {
-    fn eval(&self, context: &EvalContext) -> Result<bool, BevyError> {
+    fn eval(&self, context: &BevyContext) -> Result<bool, BevyError> {
         Ok(context
             .owner
             .get::<Ability>()

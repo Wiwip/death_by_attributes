@@ -9,7 +9,7 @@ use crate::prelude::*;
 use bevy::prelude::{Commands, Component, Entity, EntityCommands, Reflect, reflect_trait};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter};
-
+use bevy::reflect::TypeRegistryArc;
 pub use attribute_modifier::AttributeModifier;
 pub use calculator::{AttributeCalculator, AttributeCalculatorCached, ModOp};
 pub use events::{ApplyAttributeModifierMessage, apply_modifier_events};
@@ -20,7 +20,7 @@ pub type ModifierFn = dyn Fn(&mut EntityCommands, Entity) + Send + Sync;
 pub struct ModifierMarker;
 
 pub trait Modifier: Spawnable + Send + Sync {
-    fn apply_immediate(&self, context: &mut GameplayContextMut) -> bool;
+    fn apply_immediate(&self, context: &mut GameplayContextMut, type_registry: TypeRegistryArc,) -> bool;
     fn apply_delayed(
         &self,
         source: Entity,

@@ -1,15 +1,15 @@
 use crate::attributes::AttributeQueryData;
-use crate::expression::Expr;
 use crate::prelude::*;
 use crate::{AttributesRef, CurrentValueChanged};
 use bevy::prelude::*;
 use num_traits::{AsPrimitive, Bounded, Num};
 use std::collections::Bound;
 use std::ops::RangeBounds;
+use express_it::expr::Expr;
 
 #[derive(Component, Debug, Clone)]
 pub struct Clamp<T: Attribute> {
-    pub(crate) expression: Expr<T::ExprType>,
+    pub(crate) expression: Expr<T::Property, T::ExprType>,
     pub(crate) limits: (Bound<T::Property>, Bound<T::Property>),
     pub(crate) bounds: (Bound<T::Property>, Bound<T::Property>),
 }
@@ -20,7 +20,7 @@ where
     f64: AsPrimitive<T::Property>,
 {
     pub fn new(
-        expression: Expr<T::ExprType>,
+        expression: Expr<T::Property, T::ExprType>,
         limits: impl RangeBounds<f64> + Send + Sync + Copy + 'static,
     ) -> Self {
         Self {

@@ -14,7 +14,6 @@ pub mod attributes;
 pub mod condition;
 pub mod context;
 pub mod effect;
-pub mod expression;
 pub mod graph;
 pub mod inspector;
 pub mod math;
@@ -56,12 +55,9 @@ pub mod prelude {
         AccessAttribute, Attribute, AttributeTypeId, ReflectAccessAttribute,
     };
     pub use crate::condition::{Condition, ConditionExt};
-    pub use crate::expression::Expr;
-    pub use crate::expression::attribute::RetrieveAttribute;
     pub use crate::modifier::{AccessModifier, AttributeModifier, Modifier};
 }
 
-use crate::expression::ExprNode;
 pub use num_traits;
 
 pub struct AttributesPlugin;

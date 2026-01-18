@@ -1,6 +1,6 @@
 use crate::AttributesRef;
 use crate::assets::EffectDef;
-use crate::condition::EvalContext;
+use crate::condition::BevyContext;
 use crate::effect::{Effect, EffectInactive, EffectSource, EffectTarget, EffectTicker};
 use bevy::asset::Assets;
 use bevy::ecs::relationship::Relationship;
@@ -20,6 +20,7 @@ pub fn evaluate_effect_conditions(
     >,
     parents: Query<AttributesRef>,
     effects: Res<Assets<EffectDef>>,
+    type_registry: Res<AppTypeRegistry>,
     mut commands: Commands,
 ) {
     for (effect_entity_ref, effect, source, target, status) in query.iter_mut() {
@@ -49,10 +50,11 @@ pub fn evaluate_effect_conditions(
             continue;
         };
 
-        let context = EvalContext {
+        let context = BevyContext {
             target_actor: &target_actor_ref,
             source_actor: &source_actor_ref,
             owner: &effect_entity_ref,
+            type_registry: type_registry.0.clone(),
         };
 
         // Determines whether the effect should activate
