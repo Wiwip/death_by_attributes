@@ -1,12 +1,12 @@
 use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
-use root_attribute::actors::ActorBuilder;
-use root_attribute::assets::ActorDef;
-use root_attribute::context::EffectContext;
-use root_attribute::effect::{Effect, EffectApplicationPolicy, EffectBuilder};
-use root_attribute::modifier::{ModOp, Who};
-use root_attribute::prelude::*;
-use root_attribute::{AttributesPlugin, attribute, init_attribute};
+use vitality::actors::ActorBuilder;
+use vitality::assets::ActorDef;
+use vitality::context::EffectContext;
+use vitality::effect::{Effect, EffectApplicationPolicy, EffectBuilder};
+use vitality::modifier::{ModOp, Who};
+use vitality::prelude::*;
+use vitality::{AttributesPlugin, attribute, init_attribute};
 
 attribute!(TestA, u32);
 

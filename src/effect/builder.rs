@@ -60,7 +60,7 @@ impl EffectBuilder {
     ///
     /// # Example
     /// ```
-    /// # use root_attribute::prelude::*;
+    /// # use vitality::prelude::*;
     /// attribute!(Health, u32);
     /// attribute!(Damage, u32);
     ///
@@ -99,7 +99,7 @@ impl EffectBuilder {
     /// # Examples
     ///
     /// ```
-    /// # use root_attribute::prelude::*;
+    /// # use vitality::prelude::*;
     /// attribute!(Health, f32);
     /// attribute!(Damage, f32);
     ///

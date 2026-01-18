@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use criterion::*;
-use root_attribute::attribute;
-use root_attribute::prelude::ReflectAccessAttribute;
+use vitality::attribute;
+use vitality::prelude::ReflectAccessAttribute;
 
 criterion_group!(benches, criterion_benchmark);
 criterion_main!(benches);
