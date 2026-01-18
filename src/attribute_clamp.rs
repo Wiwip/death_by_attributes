@@ -1,15 +1,11 @@
 use crate::attributes::AttributeQueryData;
-use crate::condition::EvalContext;
-use crate::expression::{Expr, ExprNode};
-use crate::inspector::pretty_type_name;
+use crate::expression::Expr;
 use crate::prelude::*;
 use crate::{AttributesRef, CurrentValueChanged};
-use bevy::ecs::entity_disabling::Internal;
 use bevy::prelude::*;
 use num_traits::{AsPrimitive, Bounded, Num};
 use std::collections::Bound;
 use std::ops::RangeBounds;
-use std::process::Output;
 
 #[derive(Component, Debug, Clone)]
 pub struct Clamp<T: Attribute> {
@@ -38,7 +34,7 @@ where
 /// When the Source attribute changes, we update the bounds of the target attribute
 pub fn observe_current_value_change_for_clamp_bounds<S: Attribute, T: Attribute>(
     trigger: On<CurrentValueChanged<S>>,
-    mut set: ParamSet<(Query<AttributesRef>, Query<&mut Clamp<T>, Allow<Internal>>)>,
+    mut set: ParamSet<(Query<AttributesRef>, Query<&mut Clamp<T>>)>,
 ) {
     /*let source_value: T::ExprType = {
         let binding = set.p0();
