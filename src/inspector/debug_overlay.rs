@@ -102,9 +102,6 @@ fn list_attributes(
         let Some(type_id) = type_id else {
             continue;
         };
-        /*let Ok(ptr) = actor_ref.get_by_id(*component_id) else {
-            continue;
-        };*/
 
         let registry = type_registry.read();
         let reflect_attribute = registry.get_type_data::<ReflectAccessAttribute>(*type_id);
@@ -211,32 +208,33 @@ fn list_modifiers_for_effect(
     modifier_components: &mut Vec<(String, ComponentId, Option<TypeId>, usize)>,
 ) {
     // List attributes for printing
-    for (_name, component_id, type_id, _) in modifier_components.iter() {
+    for (name, _, type_id, _) in modifier_components.iter() {
         let Some(type_id) = type_id else {
-            continue;
-        };
-        let Ok(ptr) = modifier_ref.get_by_id(*component_id) else {
+            error!("Failed to get type registration for entity {:?} / {}", *type_id, name);
             continue;
         };
 
         let registry = type_registry.read();
         let reflect_attribute = registry.get_type_data::<ReflectAccessModifier>(*type_id);
         let Some(reflect_access_modifier) = reflect_attribute else {
+            // No reflect access modifier found, but normal since not all components are an AttributeModifier
             continue;
         };
 
-        let registration = registry
-            .get(*type_id)
-            .ok_or(Error::NoTypeRegistration(*type_id))
-            .unwrap();
-        let reflect_from_ptr = registration
-            .data::<ReflectFromPtr>()
-            .ok_or(Error::NoTypeData(*type_id, "ReflectFromPtr"))
-            .unwrap();
+        let Some(type_registration) = registry.get(*type_id) else {
+            error!("Failed to get type registration for entity {:?}", *type_id);
+            continue;
+        };
+        let Some(reflect_component) = type_registration.data::<ReflectComponent>() else {
+            error!("No reflect access attribute found");
+            continue;
+        };
+        let Some(dyn_reflect) = reflect_component.reflect(modifier_ref) else {
+            error!("Failed to reflect entity");
+            continue;
+        };
 
-        // SAFETY: Confirm assumptions here.
-        let value = unsafe { reflect_from_ptr.as_reflect(ptr) };
-        let Some(modifier) = reflect_access_modifier.get(value) else {
+        let Some(modifier) = reflect_access_modifier.get(dyn_reflect) else {
             continue;
         };
 

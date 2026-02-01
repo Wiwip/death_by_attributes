@@ -3,12 +3,14 @@ use crate::ability::{
     TryActivateAbility,
 };
 use crate::assets::AbilityDef;
-use crate::condition::{BevyContext, BoxCondition, GameplayContextMut};
+use crate::condition::{BevyContext, GameplayContextMut};
 use crate::{AttributesMut, AttributesRef};
 use bevy::asset::Assets;
 use bevy::prelude::*;
-use std::time::Duration;
 use bevy_inspector_egui::__macro_exports::bevy_reflect::TypeRegistryArc;
+use express_it::expr::ExprNode;
+use express_it::logic::BoolExpr;
+use std::time::Duration;
 
 pub fn tick_ability_cooldown(mut query: Query<&mut AbilityCooldown>, time: Res<Time>) {
     query.par_iter_mut().for_each(|mut cooldown| {
@@ -95,7 +97,7 @@ fn can_activate_ability(
     source_entity_ref: &AttributesRef,
     target_entity_ref: &AttributesRef,
     ability_def: &AbilityDef,
-    conditions: &BoxCondition,
+    conditions: &BoolExpr,
     type_registry: &TypeRegistryArc,
 ) -> Result<bool, BevyError> {
     let context = BevyContext {
@@ -104,12 +106,12 @@ fn can_activate_ability(
         owner: &ability_entity_ref,
         type_registry: type_registry.clone(),
     };
-    let meet_conditions = conditions.0.eval(&context).unwrap_or(false);
+
+    let meet_conditions = conditions.eval(&context).unwrap_or(false);
     if !meet_conditions {
         debug!(
-            "Ability({}) conditions[{:?}] not met for: {}.",
+            "Ability({}) conditions not met for: {}.",
             ability_entity_ref.id(),
-            conditions,
             ability_def.name
         );
         return Ok(false);
@@ -118,7 +120,7 @@ fn can_activate_ability(
     let can_activate = ability_def
         .cost
         .iter()
-        .all(|condition| condition.0.eval(&context).unwrap_or(false));
+        .all(|condition| condition.eval(&context).unwrap_or(false));
 
     if !can_activate {
         debug!("Insufficient resources to activate ability!");

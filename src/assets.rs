@@ -1,8 +1,8 @@
-use crate::condition::BoxCondition;
 use crate::effect::{EffectApplicationPolicy, EffectStackingPolicy};
 use crate::modifier::{Modifier, ModifierFn};
 use crate::mutator::EntityActions;
 use bevy::prelude::*;
+use express_it::logic::BoolExpr;
 use std::collections::VecDeque;
 
 #[derive(Asset, TypePath)]
@@ -22,8 +22,8 @@ pub struct EffectDef {
     pub effect_fn: Vec<Box<ModifierFn>>,
     pub modifiers: Vec<Box<dyn Modifier>>,
 
-    pub attach_conditions: Vec<BoxCondition>,
-    pub activate_conditions: Vec<BoxCondition>,
+    pub attach_conditions: Vec<BoolExpr>,
+    pub activate_conditions: Vec<BoolExpr>,
 
     pub on_actor_triggers: Vec<EntityActions>,
     pub on_effect_triggers: Vec<EntityActions>,
@@ -36,7 +36,7 @@ pub struct AbilityDef {
 
     pub mutators: Vec<EntityActions>,
     pub observers: Vec<EntityActions>,
-    pub cost: Vec<BoxCondition>,
-    pub execution_conditions: Vec<BoxCondition>,
+    pub cost: Vec<BoolExpr>,
+    pub execution_conditions: Vec<BoolExpr>,
     pub cost_modifiers: Vec<Box<dyn Modifier>>,
 }

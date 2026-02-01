@@ -38,7 +38,7 @@ impl<'w, 's> AbilityContext<'w, 's> {
         Ok(ability_id)
     }
 
-    pub fn try_activate_by_tag<T: Component>(&mut self, entity: Entity) {
+    pub fn try_activate_by_tag<T: Component + Reflect>(&mut self, entity: Entity) {
         self.commands.trigger(TryActivateAbility::by_tag::<T>(
             entity,
             TargetData::SelfCast,

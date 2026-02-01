@@ -1,29 +1,21 @@
 use crate::ReflectAccessAttribute;
 use crate::condition::systems::evaluate_effect_conditions;
 use bevy::app::{App, Plugin};
-use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
 use bevy_inspector_egui::__macro_exports::bevy_reflect::TypeRegistryArc;
-use express_it::context::{EvalContext, Path, RetrieveAttribute};
+use express_it::context::{EvalContext, Path};
 use express_it::expr::ExpressionError;
-use express_it::float::FloatBinaryOp;
-use num_traits::{AsPrimitive, Float, Num};
 use std::any::{Any, TypeId};
-use std::fmt::Debug;
-use bevy::reflect::ReflectFromPtr;
-use bevy_inspector_egui::restricted_world_view::Error;
 
 mod conditions;
 mod systems;
 
-use crate::{AttributesMut, AttributesRef, attribute};
-
 use crate::attributes::Attribute;
 use crate::modifier::Who;
 use crate::schedule::EffectsSet;
+use crate::{AttributesMut, AttributesRef, attribute};
 pub use conditions::{
-    AbilityCondition, And, AttributeCondition, ChanceCondition, ConditionExt, Not, Or,
-    StackCondition, TagCondition,
+    AbilityCondition, ChanceCondition, HasComponent, IsAttributeWithinBounds, StackCondition,
 };
 
 pub struct ConditionPlugin;
@@ -37,19 +29,6 @@ impl Plugin for ConditionPlugin {
             evaluate_effect_conditions.in_set(EffectsSet::Prepare),
         );
         //app.add_systems(Update, evaluate_effect_conditions.in_set(EffectsSet::Notify));
-    }
-}
-
-pub trait Condition: Debug + Send + Sync {
-    fn eval(&self, context: &BevyContext) -> Result<bool, BevyError>;
-}
-
-#[derive(Debug)]
-pub struct BoxCondition(pub Box<dyn Condition>);
-
-impl BoxCondition {
-    pub fn new<C: Condition + 'static>(condition: C) -> Self {
-        Self(Box::new(condition))
     }
 }
 
@@ -111,34 +90,36 @@ impl EvalContext for BevyContext<'_> {
         path: &Path,
         type_id: TypeId,
     ) -> std::result::Result<&dyn Any, ExpressionError> {
+        let actor = if path.0 == "src" {
+            self.source_actor
+        } else if path.0 == "dst" {
+            self.target_actor
+        } else if path.0 == "parent" {
+            self.owner
+        } else {
+            return Err(ExpressionError::InvalidPath);
+        };
 
         let registry = self.type_registry.read();
-        println!("Registrations: {}", registry.iter().count());
-        let reflect_attribute = registry.get_type_data::<ReflectAccessAttribute>(type_id);
-        let Some(reflect_access_attribute) = reflect_attribute else {
-            return Err(ExpressionError::FailedReflect("Failed to get type data.".into()));
-        };
-
         let Some(type_registration) = registry.get(type_id) else {
-            error!("Failed to get type registration for entity {:?}", type_id);
-            return Err(ExpressionError::FailedReflect("Failed to get type registration".into()));
+            return Err(ExpressionError::FailedReflect(
+                "Failed to get type registration".into(),
+            ));
         };
         let Some(reflect_component) = type_registration.data::<ReflectComponent>() else {
-            error!("No reflect access attribute found");
-            return Err(ExpressionError::FailedReflect("No reflect access attribute found".into()));
+            return Err(ExpressionError::FailedReflect(
+                "No reflect access attribute found".into(),
+            ));
         };
-        let Some(dyn_reflect) = reflect_component.reflect(self.source_actor) else {
-            error!("Failed to reflect entity");
-            return Err(ExpressionError::FailedReflect("Failed to reflect entity".into()));
+        let Some(dyn_reflect) = reflect_component.reflect(actor) else {
+            return Err(ExpressionError::FailedReflect(
+                "The entity has no component the requested type.".into(),
+            ));
         };
-
-        let Some(attribute) = reflect_access_attribute.get(dyn_reflect) else {
-            return Err(ExpressionError::FailedReflect("reflect_access_attribute.get(dyn_reflect)".into()));
-        };
-
-        Ok(attribute.any_current_value())
+        Ok(dyn_reflect.as_any())
     }
 }
+
 /*
 #[cfg(test)]
 mod test {

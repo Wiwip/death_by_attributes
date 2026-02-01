@@ -154,7 +154,7 @@ impl ApplyEffectEvent {
         let should_apply = effect
             .activate_conditions
             .iter()
-            .all(|condition| condition.0.eval(&context).unwrap_or(false));
+            .all(|condition| condition.eval(&context).unwrap_or(false));
 
         if !should_apply {
             return Ok(());
@@ -241,7 +241,7 @@ impl ApplyEffectEvent {
         let should_be_applied = effect
             .attach_conditions
             .iter()
-            .all(|condition| condition.0.eval(&context).unwrap_or(true));
+            .all(|condition| condition.eval(&context).unwrap_or(true));
 
         if !should_be_applied {
             return Ok(());
@@ -333,7 +333,7 @@ mod test {
     use super::*;
     use crate::actors::ActorBuilder;
     use crate::assets::ActorDef;
-    use crate::condition::AttributeCondition;
+    use crate::condition::IsAttributeWithinBounds;
     use crate::context::EffectContext;
     use crate::effect::builder::EffectBuilder;
     use crate::modifier::{ModOp, Who};
@@ -378,7 +378,7 @@ mod test {
             CONDITION_EFFECT,
             Effect::permanent()
                 .name("Condition Effect".into())
-                .activate_while(AttributeCondition::<TestA>::target(150.0..))
+                .activate_while(IsAttributeWithinBounds::<TestA>::target(150.0..))
                 .build(),
         );
     }

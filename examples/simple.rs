@@ -5,11 +5,13 @@ use bevy::window::PresentMode;
 use bevy_egui::EguiPlugin;
 use bevy_inspector_egui::DefaultInspectorConfigPlugin;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
+use std::fmt::Debug;
+use std::time::Duration;
 use vitality::ability::{AbilityBuilder, AbilityExecute, TargetData, TryActivateAbility};
 use vitality::actors::ActorBuilder;
 use vitality::assets::{AbilityDef, EffectDef};
 use vitality::attributes::ReflectAccessAttribute;
-use vitality::condition::AttributeCondition;
+use vitality::condition::IsAttributeWithinBounds;
 use vitality::context::EffectContext;
 use vitality::effect::{Effect, EffectBuilder, EffectStackingPolicy};
 use vitality::graph::DependencyGraph;
@@ -17,9 +19,7 @@ use vitality::inspector::ActorInspectorPlugin;
 use vitality::inspector::debug_overlay::DebugOverlayMarker;
 use vitality::modifier::{ModOp, Who};
 use vitality::prelude::*;
-use vitality::{AttributesPlugin, attribute, init_attribute};
-use std::fmt::Debug;
-use std::time::Duration;
+use vitality::{AttributesPlugin, attribute, init_attribute, tag};
 
 attribute!(Strength, u32);
 attribute!(Agility, u32);
@@ -43,7 +43,7 @@ attribute!(TestU8Attribute, u8);
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(LogPlugin {
-            filter: "error,root_attribute=debug".into(),
+            filter: "error,vitality=debug".into(),
             level: bevy::log::Level::DEBUG,
             ..default()
         }))
@@ -128,7 +128,7 @@ fn setup_effects(mut commands: Commands, mut ctx: EffectContext) {
             .name("MagicPower Buff".into())
             .modify::<MagicPower>(Intelligence::src(), ModOp::Add, Who::Target)
             .modify::<MagicPower>(5u32, ModOp::Add, Who::Target)
-            .activate_while(AttributeCondition::<Health>::new(..=500, Who::Source))
+            .activate_while(IsAttributeWithinBounds::<Health>::new(..=500, Who::Source))
             .with_stacking_policy(EffectStackingPolicy::Add {
                 count: 1,
                 max_stack: 10,
@@ -150,7 +150,7 @@ fn setup_effects(mut commands: Commands, mut ctx: EffectContext) {
     let regen = ctx.add_effect(
         Effect::permanent_ticking(1.0)
             .name("Regen".into())
-            .modify::<Health>(HealthRegen::src(), ModOp::Add, Who::Target)
+            .modify::<Health>(HealthRegen::src() + 5, ModOp::Add, Who::Target)
             .modify::<Mana>(ManaRegen::src(), ModOp::Add, Who::Target)
             .build(),
     );
@@ -172,11 +172,8 @@ fn setup_effects(mut commands: Commands, mut ctx: EffectContext) {
     });
 }
 
-#[derive(Component, Default)]
-struct Fire;
-
-#[derive(Component, Default)]
-struct Frost;
+tag!(Fire);
+tag!(Frost);
 
 fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Commands) {
     let fireball = effects.add(
@@ -185,6 +182,20 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
             .with_cooldown(1.0)
             .with_cost::<Mana>(12)
             .with_tag::<Fire>()
+            .add_execution(
+                |trigger: On<AbilityExecute>,
+                 source: Query<(&Health, &MaxHealth)>,
+                 _ctx: EffectContext| {
+                    if let Ok((health, _)) = source.get(trigger.source) {
+                        println!(
+                            "Fireball! {}: {}: H: {}",
+                            trigger.ability,
+                            trigger.source,
+                            health.current_value()
+                        );
+                    }
+                },
+            )
             .build(),
     );
 

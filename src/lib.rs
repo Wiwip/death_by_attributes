@@ -54,7 +54,6 @@ pub mod prelude {
     pub use crate::attributes::{
         AccessAttribute, Attribute, AttributeTypeId, ReflectAccessAttribute,
     };
-    pub use crate::condition::{Condition, ConditionExt};
     pub use crate::modifier::{AccessModifier, AttributeModifier, Modifier};
 }
 
@@ -104,7 +103,7 @@ impl AttributesPlugin {
 
 pub fn init_attribute<T: Attribute>(app: &mut App) {
     app.register_type::<T>();
-    //app.register_type::<AttributeModifier<T>>();
+    app.register_type::<AttributeModifier<T>>();
     app.register_type::<AttributeCalculatorCached<T>>();
     app.register_type_data::<T, ReflectAccessAttribute>();
     app.add_message::<ApplyAttributeModifierMessage<T>>();

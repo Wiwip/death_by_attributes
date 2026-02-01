@@ -14,11 +14,12 @@ use std::fmt::Display;
 use bevy::reflect::TypeRegistryArc;
 use express_it::expr::Expr;
 
-#[derive(Component, Debug)]
-//#[reflect(AccessModifier)]
+#[derive(Component, Debug, Reflect)]
+#[reflect(Component, from_reflect = false)]
+#[reflect(AccessModifier)]
 #[require(ModifierMarker)]
 pub struct AttributeModifier<T: Attribute> {
-    //#[reflect(ignore)]
+    #[reflect(ignore)]
     pub expression: Expr<T::Property, T::ExprType>,
     pub who: Who,
     pub operation: ModOp,
@@ -47,7 +48,7 @@ where
             "Mod<{}>({}{}) {}",
             pretty_type_name::<T>(),
             self.operation,
-            "_", //self.expression,
+            "expr", //self.expression,
             self.who,
         )
     }

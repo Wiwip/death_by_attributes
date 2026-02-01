@@ -1,23 +1,24 @@
-use std::sync::Arc;
 use crate::ability::AbilityCooldown;
 use crate::assets::AbilityDef;
 use crate::attributes::Attribute;
-use crate::condition::{AttributeCondition, BoxCondition};
+use crate::condition::IsAttributeWithinBounds;
 use crate::inspector::pretty_type_name;
 use crate::modifier::{AttributeCalculatorCached, ModOp, Modifier, Who};
 use crate::mutator::EntityActions;
 use crate::prelude::AttributeModifier;
 use bevy::ecs::system::IntoObserverSystem;
 use bevy::prelude::*;
-use bevy::render::render_resource::TextureSampleType::Float;
+use express_it::expr::Expr;
 use express_it::float::FloatExpr;
+use express_it::logic::{BoolExpr, BoolExprNode, CompareExpr};
 use num_traits::{AsPrimitive, Num};
+use std::sync::Arc;
 
 pub struct AbilityBuilder {
     name: String,
     mutators: Vec<EntityActions>,
     triggers: Vec<EntityActions>,
-    cost_condition: Vec<BoxCondition>,
+    cost_condition: Vec<BoolExpr>,
     cost_mods: Vec<Box<dyn Modifier>>,
 }
 
@@ -44,12 +45,15 @@ impl AbilityBuilder {
         self
     }
 
-    pub fn with_cost<T: Attribute>(mut self, cost: T::Property) -> Self {
+    pub fn with_cost<T: Attribute>(mut self, cost: T::Property) -> Self
+    where
+        Expr<T::Property, T::ExprType>: CompareExpr,
+    {
         let mutator = AttributeModifier::<T>::new(T::lit(cost), ModOp::Sub, Who::Source);
         self.cost_mods.push(Box::new(mutator));
 
-        let condition = AttributeCondition::<T>::source(cost..);
-        self.cost_condition.push(BoxCondition::new(condition));
+        let cost_expr = T::lit(cost).le(T::src());
+        self.cost_condition.push(cost_expr);
         self
     }
 

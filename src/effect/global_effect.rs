@@ -45,7 +45,7 @@ mod test {
     use crate::ability::AbilityBuilder;
     use crate::actors::{Actor, ActorBuilder};
     use crate::assets::{AbilityDef, ActorDef};
-    use crate::condition::AttributeCondition;
+    use crate::condition::IsAttributeWithinBounds;
     use crate::context::EffectContext;
     use crate::effect::{Effect, EffectInactive};
     use crate::modifier::{ModOp, Who};
@@ -91,7 +91,7 @@ mod test {
             CONDITION_EFFECT,
             Effect::permanent()
                 .name("Condition Effect".into())
-                .activate_while(AttributeCondition::<TestAttribute>::target(150.0..))
+                .activate_while(IsAttributeWithinBounds::<TestAttribute>::target(150.0..))
                 .insert(ConditionTag)
                 .build(),
         );

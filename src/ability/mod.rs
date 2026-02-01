@@ -7,12 +7,15 @@ use crate::ability::systems::{
     activate_ability, reset_ability_cooldown, tick_ability_cooldown, try_activate_ability_observer,
 };
 use crate::assets::AbilityDef;
-use crate::condition::{AbilityCondition, BoxCondition, TagCondition};
+use crate::condition::{AbilityCondition, HasComponent};
 use crate::schedule::EffectsSet;
 use bevy::prelude::*;
 use std::error::Error;
 use std::fmt::Formatter;
+use std::sync::Arc;
+use express_it::expr::Expr;
 use express_it::float::FloatExpr;
+use express_it::logic::{BoolExpr, BoolExprNode};
 pub use builder::AbilityBuilder;
 pub use command::GrantAbilityCommand;
 pub use system_param::AbilityContext;
@@ -44,28 +47,32 @@ pub struct GrantedAbilities(Vec<Entity>);
 #[derive(Component)]
 pub struct Ability(pub(crate) Handle<AbilityDef>);
 
-#[derive(EntityEvent, Debug)]
+#[derive(EntityEvent)]
 pub struct TryActivateAbility {
     #[event_target]
     ability: Entity,
-    condition: BoxCondition,
+    condition: BoolExpr,
     target_data: TargetData,
 }
 
 impl TryActivateAbility {
-    pub fn by_tag<T: Component>(target: Entity, target_data: TargetData) -> Self {
+    pub fn by_tag<T: Component + Reflect>(target: Entity, target_data: TargetData) -> Self {
+        let node = BoolExprNode::Boxed(Box::new(HasComponent::<T>::effect()));
+        let expr = Expr::new(Arc::new(node));
+
         Self {
             ability: target,
-            condition: BoxCondition::new(TagCondition::<T>::effect()),
+            condition: expr,
             target_data,
         }
     }
     pub fn by_def(target: Entity, handle: AssetId<AbilityDef>, target_data: TargetData) -> Self {
-        Self {
+        unimplemented!()
+        /*Self {
             ability: target,
             condition: BoxCondition::new(AbilityCondition::new(handle)),
             target_data,
-        }
+        }*/
     }
 }
 

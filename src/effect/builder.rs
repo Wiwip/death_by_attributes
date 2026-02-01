@@ -1,6 +1,6 @@
 use crate::assets::EffectDef;
 use crate::attributes::Attribute;
-use crate::condition::{AttributeCondition, BoxCondition};
+use crate::condition::{IsAttributeWithinBounds};
 use crate::effect::EffectStackingPolicy;
 use crate::effect::application::EffectApplicationPolicy;
 use crate::modifier::{ModOp, Who};
@@ -9,7 +9,9 @@ use crate::prelude::*;
 use bevy::ecs::system::IntoObserverSystem;
 use bevy::prelude::{Bundle, Entity, EntityCommands, EntityEvent, Name};
 use std::ops::RangeBounds;
-use express_it::expr::Expr;
+use std::sync::Arc;
+use express_it::expr::{Expr, ExprNode};
+use express_it::logic::{BoolExpr, BoolExprNode};
 
 pub struct EffectBuilder {
     def: EffectDef,
@@ -109,17 +111,17 @@ impl EffectBuilder {
     ///     .attach_if(ChanceCondition(0.10))
     ///     .build()
     /// ```
-    pub fn attach_if(mut self, condition: impl Condition + 'static) -> Self {
+    pub fn attach_if(mut self, condition: impl Into<BoolExpr>) -> Self {
         self.def
             .attach_conditions
-            .push(BoxCondition::new(condition));
+            .push(condition.into());
         self
     }
 
-    pub fn activate_while(mut self, condition: impl Condition + 'static) -> Self {
+    pub fn activate_while(mut self, condition: impl Into<BoolExpr>) -> Self {
         self.def
             .activate_conditions
-            .push(BoxCondition::new(condition));
+            .push(condition.into());
         self
     }
 
@@ -151,10 +153,11 @@ impl EffectBuilder {
         mut self,
         range: impl RangeBounds<T::Property> + Send + Sync + 'static,
     ) -> Self {
-        let predicate = AttributeCondition::<T>::new(range, Who::Source);
+        let predicate = IsAttributeWithinBounds::<T>::new(range, Who::Source);
+        let node = BoolExprNode::Boxed(Box::new(predicate));
         self.def
             .activate_conditions
-            .push(BoxCondition::new(predicate));
+            .push(Expr::new(Arc::new(node)));
         self
     }
 
@@ -162,10 +165,12 @@ impl EffectBuilder {
         mut self,
         range: impl RangeBounds<T::Property> + Send + Sync + 'static,
     ) -> Self {
-        let predicate = AttributeCondition::<T>::new(range, Who::Target);
+        let predicate = IsAttributeWithinBounds::<T>::new(range, Who::Target);
+        let node = BoolExprNode::Boxed(Box::new(predicate));
+
         self.def
             .activate_conditions
-            .push(BoxCondition::new(predicate));
+            .push(Expr::new(Arc::new(node)));
         self
     }
 

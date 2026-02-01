@@ -6,6 +6,7 @@ use bevy::asset::Assets;
 use bevy::ecs::relationship::Relationship;
 use bevy::log::error;
 use bevy::prelude::*;
+use express_it::expr::ExprNode;
 
 pub fn evaluate_effect_conditions(
     mut query: Query<
@@ -61,7 +62,7 @@ pub fn evaluate_effect_conditions(
         let should_be_active = effect
             .activate_conditions
             .iter()
-            .all(|condition| condition.0.eval(&context).unwrap_or(false));
+            .all(|condition| condition.inner.eval(&context).unwrap_or(false));
 
         let is_inactive = status.is_some();
         if should_be_active && is_inactive {
@@ -82,7 +83,7 @@ mod test {
     use crate::ability::AbilityBuilder;
     use crate::actors::{Actor, ActorBuilder};
     use crate::assets::{AbilityDef, ActorDef};
-    use crate::condition::AttributeCondition;
+    use crate::condition::IsAttributeWithinBounds;
     use crate::context::EffectContext;
     use crate::effect::{Effect, EffectInactive};
     use crate::modifier::{ModOp, Who};
@@ -129,7 +130,7 @@ mod test {
             CONDITION_EFFECT,
             Effect::permanent()
                 .name("Condition Effect".into())
-                .activate_while(AttributeCondition::<TestA>::target(150.0..))
+                .activate_while(IsAttributeWithinBounds::<TestA>::target(150.0..))
                 .insert(ConditionTag)
                 .build(),
         );

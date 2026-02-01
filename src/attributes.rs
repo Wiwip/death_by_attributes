@@ -29,7 +29,7 @@ use std::sync::Arc;
 pub trait Value
 where
     Self: Num + NumOps + NumAssign + NumAssignOps + NumCast,
-    Self: Copy + Clone + Debug + Display,
+    Self: Default + Copy + Clone + Debug + Display,
     Self: Send + Sync,
     Self: SaturatingAttributes<Output = Self> + Sum + Bounded + AbsDiff + PartialOrd,
     Self: FromPrimitive + AsPrimitive<f64> + Reflect,
@@ -39,7 +39,7 @@ where
 impl<T> Value for T
 where
     Self: Num + NumOps + NumAssign + NumAssignOps + NumCast,
-    Self: Copy + Clone + Debug + Display,
+    Self: Default + Copy + Clone + Debug + Display,
     Self: Send + Sync,
     Self: SaturatingAttributes<Output = Self> + Sum + Bounded + AbsDiff + PartialOrd,
     Self: FromPrimitive + AsPrimitive<f64> + Reflect,
@@ -62,26 +62,18 @@ where
     fn set_current_value(&mut self, value: Self::Property);
     // Helper to wrap attribute access in an Expression
     fn src() -> Expr<Self::Property, Self::ExprType>;
-    /*
-    fn dst() -> Expr<Self::ExprType> {
-        Self::new_expr(Box::new(dst::<Self>()))
-    }
-    fn parent() -> Expr<Self::ExprType> {
-        Self::new_expr(Box::new(parent::<Self>()))
-    }
-    */
-
+    fn dst() -> Expr<Self::Property, Self::ExprType>;
+    fn parent() -> Expr<Self::Property, Self::ExprType>;
     fn lit(value: Self::Property) -> Expr<Self::Property, Self::ExprType>;
-    //fn attribute_type_id() -> AttributeTypeId;
 }
 
 #[derive(Debug)]
-pub struct Src<T> {
+pub struct AttributeValue<T> {
     path: Path,
     marker: PhantomData<T>,
 }
 
-impl<T: Attribute> Src<T> {
+impl<T: Attribute> AttributeValue<T> {
     pub fn new(path: &str) -> Self {
         Self {
             path: Path(path.to_string()),
@@ -89,21 +81,20 @@ impl<T: Attribute> Src<T> {
         }
     }
 
-    fn value(&self, ctx: &dyn EvalContext) -> T::Property {
-        let any = ctx.get_any(&self.path, TypeId::of::<T>()).unwrap();
+    fn value(&self, ctx: &dyn EvalContext) -> Result<T::Property, ExpressionError> {
+        let any = ctx.get_any(&self.path, TypeId::of::<T>())?;
 
         let value = any
-            .downcast_ref::<T::Property>()
-            .ok_or(ExpressionError::DowncastError)
-            .unwrap();
+            .downcast_ref::<T>()
+            .ok_or(ExpressionError::DowncastError)?;
 
-        *value
+        Ok(value.current_value())
     }
 }
 
-impl<T: Attribute> RetrieveAttribute<T::Property> for Src<T> {
+impl<T: Attribute> RetrieveAttribute<T::Property> for AttributeValue<T> {
     fn retrieve(&self, ctx: &dyn EvalContext) -> std::result::Result<T::Property, ExpressionError> {
-        Ok(self.value(ctx))
+        self.value(ctx)
     }
 }
 
@@ -154,7 +145,19 @@ macro_rules! attribute_impl {
                 self.current_value = value;
             }
             fn src() -> express_it::expr::Expr<Self::Property, Self::ExprType> {
-                let node = $crate::attributes::Src::<Self>::new("source");
+                let node = $crate::attributes::AttributeValue::<Self>::new("src");
+                express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
+                    Box::new(node),
+                )))
+            }
+            fn dst() -> express_it::expr::Expr<Self::Property, Self::ExprType> {
+                let node = $crate::attributes::AttributeValue::<Self>::new("dst");
+                express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
+                    Box::new(node),
+                )))
+            }
+            fn parent() -> express_it::expr::Expr<Self::Property, Self::ExprType> {
+                let node = $crate::attributes::AttributeValue::<Self>::new("parent");
                 express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
                     Box::new(node),
                 )))
@@ -181,6 +184,24 @@ macro_rules! attribute {
     };
     ( $StructName:ident, $ValueType:ty  ) => {
         $crate::attribute_impl!($StructName, $ValueType);
+    };
+}
+
+#[macro_export]
+macro_rules! tag {
+    ( $StructName:ident ) => {
+        #[derive(
+            bevy::prelude::Component,
+            bevy::prelude::Reflect,
+            Default,
+            Copy,
+            Clone,
+            Debug,
+            serde::Serialize,
+            serde::Deserialize,
+        )]
+        #[reflect(Component)]
+        pub struct $StructName;
     };
 }
 
@@ -302,50 +323,4 @@ pub fn on_change_notify_attribute_parents<T: Attribute>(
             phantom_data: Default::default(),
         });
     }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use crate::ReflectAccessAttribute;
-
-    //attribute!(TestAttr, u32);
-
-    /*
-    #[test]
-    fn test_serialize() {
-        let attribute = TestAttribute::new(10);
-        let json_attribute = serde_json::to_string(&attribute).unwrap();
-        let check_json_attribute = r#"{"base_value":{"bits":10},"current_value":{"bits":10}}"#;
-
-        assert_eq!(json_attribute, check_json_attribute);
-    }
-
-    #[test]
-    fn test_deserialize() {
-        let json_attribute = r#"{"base_value":{"bits":50},"current_value":{"bits":500}}"#;
-
-        let attribute: TestAttribute = serde_json::from_str(json_attribute).unwrap();
-
-        assert_eq!(attribute.base_value, 50);
-        assert_eq!(attribute.current_value, 500);
-    }*/
-
-    /*#[test]
-    fn test_attribute_new_and_setters() {
-        // new() sets both base and current to the same value
-        let mut a = TestAttr::new(7u32);
-        assert_eq!(a.base_value(), 7);
-        assert_eq!(a.current_value(), 7);
-
-        // set_base_value should only change the base
-        a.set_base_value(10);
-        assert_eq!(a.base_value(), 10);
-        assert_eq!(a.current_value(), 7);
-
-        // set_current_value should only change the current
-        a.set_current_value(12);
-        assert_eq!(a.base_value(), 10);
-        assert_eq!(a.current_value(), 12);
-    }*/
 }

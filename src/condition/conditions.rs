@@ -1,27 +1,30 @@
-use crate::ability::Ability;
 use crate::assets::AbilityDef;
 use crate::attributes::Attribute;
-use crate::condition::{Condition, BevyContext};
 use crate::effect::Stacks;
 use crate::inspector::pretty_type_name;
 use crate::modifier::Who;
 use bevy::asset::AssetId;
-use bevy::log::error;
-use bevy::prelude::{BevyError, Component, TypePath};
+use bevy::prelude::{Component, TypePath};
+use bevy::reflect::Reflect;
+use express_it::context::{EvalContext, Path};
+use express_it::expr::{Expr, ExprNode, ExpressionError};
+use express_it::logic::{BoolExpr, BoolExprNode};
 use serde::Serialize;
+use std::any::TypeId;
 use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::ops::{Bound, RangeBounds};
+use std::sync::Arc;
 
-pub type StackCondition = AttributeCondition<Stacks>;
+pub type StackCondition = IsAttributeWithinBounds<Stacks>;
 
 #[derive(TypePath)]
-pub struct AttributeCondition<T: Attribute> {
+pub struct IsAttributeWithinBounds<T: Attribute> {
     who: Who,
     bounds: (Bound<T::Property>, Bound<T::Property>),
 }
 
-impl<T: Attribute> AttributeCondition<T> {
+impl<T: Attribute> IsAttributeWithinBounds<T> {
     pub fn new(range: impl RangeBounds<T::Property>, who: Who) -> Self {
         Self {
             who,
@@ -30,15 +33,15 @@ impl<T: Attribute> AttributeCondition<T> {
     }
 
     pub fn target(range: impl RangeBounds<T::Property> + Send + Sync + 'static) -> Self {
-        AttributeCondition::<T>::new(range, Who::Target)
+        IsAttributeWithinBounds::<T>::new(range, Who::Target)
     }
 
     pub fn source(range: impl RangeBounds<T::Property> + Send + Sync + 'static) -> Self {
-        AttributeCondition::<T>::new(range, Who::Source)
+        IsAttributeWithinBounds::<T>::new(range, Who::Source)
     }
 }
 
-impl<T: Attribute> std::fmt::Debug for AttributeCondition<T> {
+impl<T: Attribute> std::fmt::Debug for IsAttributeWithinBounds<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -50,21 +53,28 @@ impl<T: Attribute> std::fmt::Debug for AttributeCondition<T> {
     }
 }
 
-impl<T: Attribute> Condition for AttributeCondition<T> {
-    fn eval(&self, context: &BevyContext) -> Result<bool, BevyError> {
-        let attributes = context.attribute_ref(self.who);
+impl<T: Attribute> ExprNode<bool> for IsAttributeWithinBounds<T> {
+    fn eval(&self, ctx: &dyn EvalContext) -> Result<bool, ExpressionError> {
+        let path = match self.who {
+            Who::Target => Path("dst".into()),
+            Who::Source => Path("src".into()),
+            Who::Owner => Path("parent".into()),
+        };
+        let any = ctx.get_any(&path, TypeId::of::<T>())?;
+        let attribute = any.downcast_ref::<T>().unwrap();
 
-        match attributes.get::<T>() {
-            Some(value) => Ok(self.bounds.contains(&value.current_value())),
-            None => {
-                error!("Error evaluating attribute condition:{}", self);
-                Ok(false)
-            }
-        }
+        Ok(self.bounds.contains(&attribute.current_value()))
     }
 }
 
-impl<T: Attribute> std::fmt::Display for AttributeCondition<T> {
+impl<T: Attribute> Into<BoolExpr> for IsAttributeWithinBounds<T> {
+    fn into(self) -> BoolExpr {
+        let node = BoolExprNode::Boxed(Box::new(self));
+        Expr::new(Arc::new(node))
+    }
+}
+
+impl<T: Attribute> std::fmt::Display for IsAttributeWithinBounds<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let (start, end) = &self.bounds;
 
@@ -94,8 +104,8 @@ impl<T: Attribute> std::fmt::Display for AttributeCondition<T> {
 #[derive(Serialize)]
 pub struct ChanceCondition(pub f32);
 
-impl Condition for ChanceCondition {
-    fn eval(&self, _: &BevyContext) -> Result<bool, BevyError> {
+impl ExprNode<bool> for ChanceCondition {
+    fn eval(&self, _: &dyn EvalContext) -> Result<bool, ExpressionError> {
         Ok(rand::random::<f32>() < self.0)
     }
 }
@@ -106,54 +116,13 @@ impl std::fmt::Debug for ChanceCondition {
     }
 }
 
-#[derive(Debug, Serialize)]
-pub struct And<C1, C2> {
-    c1: C1,
-    c2: C2,
-}
-
-impl<C1, C2> Condition for And<C1, C2>
-where
-    C1: Condition,
-    C2: Condition,
-{
-    fn eval(&self, value: &BevyContext) -> Result<bool, BevyError> {
-        Ok(self.c1.eval(value)? && self.c2.eval(value)?)
-    }
-}
-
-#[derive(Debug, Serialize)]
-pub struct Or<C1, C2> {
-    c1: C1,
-    c2: C2,
-}
-
-impl<C1, C2> Condition for Or<C1, C2>
-where
-    C1: Condition,
-    C2: Condition,
-{
-    fn eval(&self, context: &BevyContext) -> Result<bool, BevyError> {
-        Ok(self.c1.eval(context)? || self.c2.eval(context)?)
-    }
-}
-
-#[derive(Debug, Serialize)]
-pub struct Not<C>(C);
-
-impl<C: Condition> Condition for Not<C> {
-    fn eval(&self, context: &BevyContext) -> Result<bool, BevyError> {
-        Ok(!self.0.eval(context)?)
-    }
-}
-
 #[derive(Serialize)]
-pub struct TagCondition<C: Component> {
+pub struct HasComponent<C: Component> {
     who: Who,
     phantom_data: PhantomData<C>,
 }
 
-impl<C: Component> TagCondition<C> {
+impl<C: Component> HasComponent<C> {
     pub fn new(target: Who) -> Self {
         Self {
             who: target,
@@ -174,14 +143,14 @@ impl<C: Component> TagCondition<C> {
     }
 }
 
-impl<C: Component> Condition for TagCondition<C> {
-    fn eval(&self, context: &BevyContext) -> Result<bool, BevyError> {
-        let entity = context.attribute_ref(self.who);
-        Ok(entity.contains::<C>())
+impl<C: Component + Reflect> ExprNode<bool> for HasComponent<C> {
+    fn eval(&self, ctx: &dyn EvalContext) -> Result<bool, ExpressionError> {
+        let any = ctx.get_any(&Path("parent".into()), TypeId::of::<C>());
+        Ok(any.is_ok())
     }
 }
 
-impl<C: Component> std::fmt::Debug for TagCondition<C> {
+impl<C: Component> std::fmt::Debug for HasComponent<C> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "Has Tag {} on {}", pretty_type_name::<C>(), self.who)
     }
@@ -197,13 +166,14 @@ impl AbilityCondition {
     }
 }
 
-impl Condition for AbilityCondition {
-    fn eval(&self, context: &BevyContext) -> Result<bool, BevyError> {
-        Ok(context
-            .owner
-            .get::<Ability>()
-            .map(|ability| ability.0.id() == self.asset)
-            .unwrap_or(false))
+impl ExprNode<bool> for AbilityCondition {
+    fn eval(&self, context: &dyn EvalContext) -> Result<bool, ExpressionError> {
+        /*Ok(context
+        .get_any()
+        .get::<Ability>()
+        .map(|ability| ability.0.id() == self.asset)
+        .unwrap_or(false))*/
+        unimplemented!()
     }
 }
 
@@ -212,25 +182,3 @@ impl std::fmt::Debug for AbilityCondition {
         write!(f, "Is Ability {}", self.asset)
     }
 }
-
-pub trait ConditionExt: Condition + Sized {
-    fn and<C: Condition>(self, other: C) -> And<Self, C> {
-        And {
-            c1: self,
-            c2: other,
-        }
-    }
-
-    fn or<C: Condition>(self, other: C) -> Or<Self, C> {
-        Or {
-            c1: self,
-            c2: other,
-        }
-    }
-
-    fn not(self) -> Not<Self> {
-        Not(self)
-    }
-}
-
-impl<T: Condition> ConditionExt for T {}
