@@ -6,15 +6,19 @@ use crate::modifier::Who;
 use bevy::asset::AssetId;
 use bevy::prelude::{Component, TypePath};
 use bevy::reflect::Reflect;
-use express_it::context::{EvalContext, Path};
+use express_it::context::{AttributeKey, EvalContext};
 use express_it::expr::{Expr, ExprNode, ExpressionError};
 use express_it::logic::{BoolExpr, BoolExprNode};
 use serde::Serialize;
-use std::any::TypeId;
+use std::any::{Any, TypeId};
 use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::ops::{Bound, RangeBounds};
 use std::sync::Arc;
+
+pub trait BevyEvalContext: EvalContext {
+    fn get_any_component(&self, path: &str) -> Result<&dyn Any, ExpressionError>;
+}
 
 pub type StackCondition = IsAttributeWithinBounds<Stacks>;
 
@@ -56,11 +60,12 @@ impl<T: Attribute> std::fmt::Debug for IsAttributeWithinBounds<T> {
 impl<T: Attribute> ExprNode<bool> for IsAttributeWithinBounds<T> {
     fn eval(&self, ctx: &dyn EvalContext) -> Result<bool, ExpressionError> {
         let path = match self.who {
-            Who::Target => Path("dst".into()),
-            Who::Source => Path("src".into()),
-            Who::Owner => Path("parent".into()),
+            Who::Target => AttributeKey::new("dst", TypeId::of::<T>()),
+            Who::Source => AttributeKey::new("src", TypeId::of::<T>()),
+            Who::Owner => AttributeKey::new("parent", TypeId::of::<T>()),
         };
-        let any = ctx.get_any(&path, TypeId::of::<T>())?;
+
+        let any = ctx.get_any(&path)?;
         let attribute = any.downcast_ref::<T>().unwrap();
 
         Ok(self.bounds.contains(&attribute.current_value()))
@@ -145,7 +150,7 @@ impl<C: Component> HasComponent<C> {
 
 impl<C: Component + Reflect> ExprNode<bool> for HasComponent<C> {
     fn eval(&self, ctx: &dyn EvalContext) -> Result<bool, ExpressionError> {
-        let any = ctx.get_any(&Path("parent".into()), TypeId::of::<C>());
+        let any = ctx.get_any_component("parent", TypeId::of::<C>());
         Ok(any.is_ok())
     }
 }

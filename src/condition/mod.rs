@@ -1,9 +1,8 @@
-use crate::ReflectAccessAttribute;
 use crate::condition::systems::evaluate_effect_conditions;
 use bevy::app::{App, Plugin};
 use bevy::prelude::*;
 use bevy_inspector_egui::__macro_exports::bevy_reflect::TypeRegistryArc;
-use express_it::context::{EvalContext, Path};
+use express_it::context::{AttributeKey, EvalContext};
 use express_it::expr::ExpressionError;
 use std::any::{Any, TypeId};
 
@@ -13,7 +12,7 @@ mod systems;
 use crate::attributes::Attribute;
 use crate::modifier::Who;
 use crate::schedule::EffectsSet;
-use crate::{AttributesMut, AttributesRef, attribute};
+use crate::{AttributesMut, AttributesRef};
 pub use conditions::{
     AbilityCondition, ChanceCondition, HasComponent, IsAttributeWithinBounds, StackCondition,
 };
@@ -85,19 +84,54 @@ impl BevyContext<'_> {
 }
 
 impl EvalContext for BevyContext<'_> {
-    fn get_any(
-        &self,
-        path: &Path,
-        type_id: TypeId,
-    ) -> std::result::Result<&dyn Any, ExpressionError> {
-        let actor = if path.0 == "src" {
-            self.source_actor
-        } else if path.0 == "dst" {
-            self.target_actor
-        } else if path.0 == "parent" {
-            self.owner
-        } else {
-            return Err(ExpressionError::InvalidPath);
+    fn get_any(&self, path: &AttributeKey) -> std::result::Result<&dyn Any, ExpressionError> {
+        let Some((scope, remainder)) = path.name.split_once('.') else  {
+            return Err(ExpressionError::InvalidPath)
+        };
+
+        let actor = match scope {
+            "src" => self.source_actor,
+            "dst" => self.target_actor,
+            "parent" => self.owner,
+            _ => return Err(ExpressionError::InvalidPath),
+        };
+
+        let registry = self.type_registry.read();
+        let Some(type_registration) = registry.get(path.type_id) else {
+            return Err(ExpressionError::FailedReflect(
+                "Failed to get type registration".into(),
+            ));
+        };
+        let Some(reflect_component) = type_registration.data::<ReflectComponent>() else {
+            return Err(ExpressionError::FailedReflect(
+                "No reflect access attribute found".into(),
+            ));
+        };
+        let Some(dyn_reflect) = reflect_component.reflect(actor) else {
+            return Err(ExpressionError::FailedReflect(
+                "The entity has no component the requested type.".into(),
+            ));
+        };
+
+        let dyn_partial_reflect = dyn_reflect.reflect_path(remainder).map_err(|err| {
+            ExpressionError::FailedReflect(format!("Invalid reflect path: {err}").into())
+        })?;
+
+        let dyn_path_reflect = dyn_partial_reflect.try_as_reflect().ok_or_else(|| {
+            ExpressionError::FailedReflect(
+                "Reflect value does not support further reflection".into(),
+            )
+        })?;
+
+        Ok(dyn_path_reflect.as_any())
+    }
+
+    fn get_any_component(&self, path: &str, type_id: TypeId) -> std::result::Result<&dyn Any, ExpressionError> {
+        let actor = match path {
+            "src" => self.source_actor,
+            "dst" => self.target_actor,
+            "parent" => self.owner,
+            _ => return Err(ExpressionError::InvalidPath),
         };
 
         let registry = self.type_registry.read();
@@ -116,7 +150,8 @@ impl EvalContext for BevyContext<'_> {
                 "The entity has no component the requested type.".into(),
             ));
         };
-        Ok(dyn_reflect.as_any())
+
+        Ok(dyn_reflect.as_any()) // Component (Attribute), not a primitive
     }
 }
 

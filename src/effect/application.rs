@@ -342,7 +342,6 @@ mod test {
     use crate::registry::{Registry, RegistryMut};
     use crate::{AttributesPlugin, attribute, init_attribute};
     use bevy::ecs::system::RunSystemOnce;
-    use express_it::context::RetrieveAttribute;
 
     attribute!(TestA, f32);
     attribute!(TestB, f64);

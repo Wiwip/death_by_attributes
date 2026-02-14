@@ -7,7 +7,7 @@ use bevy::ecs::component::Mutable;
 use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
 use bevy::reflect::GetTypeRegistration;
-use express_it::context::{EvalContext, Path, RetrieveAttribute};
+use express_it::context::{AttributeKey, EvalContext, };
 use express_it::expr::{Expr, ExprNode, ExpressionError};
 use express_it::float::FloatExprNode;
 use num_traits::NumCast;
@@ -67,9 +67,9 @@ where
     fn lit(value: Self::Property) -> Expr<Self::Property, Self::ExprType>;
 }
 
-#[derive(Debug)]
+/*#[derive(Debug)]
 pub struct AttributeValue<T> {
-    path: Path,
+    path: AttributeKey,
     marker: PhantomData<T>,
 }
 
@@ -96,7 +96,7 @@ impl<T: Attribute> RetrieveAttribute<T::Property> for AttributeValue<T> {
     fn retrieve(&self, ctx: &dyn EvalContext) -> std::result::Result<T::Property, ExpressionError> {
         self.value(ctx)
     }
-}
+}*/
 
 #[macro_export]
 macro_rules! attribute_impl {
@@ -145,21 +145,18 @@ macro_rules! attribute_impl {
                 self.current_value = value;
             }
             fn src() -> express_it::expr::Expr<Self::Property, Self::ExprType> {
-                let node = $crate::attributes::AttributeValue::<Self>::new("src");
                 express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
-                    Box::new(node),
+                    express_it::context::AttributeKey::new("src.current_value", std::any::TypeId::of::<Self>())
                 )))
             }
             fn dst() -> express_it::expr::Expr<Self::Property, Self::ExprType> {
-                let node = $crate::attributes::AttributeValue::<Self>::new("dst");
                 express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
-                    Box::new(node),
+                    express_it::context::AttributeKey::new("dst.current_value", std::any::TypeId::of::<Self>())
                 )))
             }
             fn parent() -> express_it::expr::Expr<Self::Property, Self::ExprType> {
-                let node = $crate::attributes::AttributeValue::<Self>::new("parent");
                 express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
-                    Box::new(node),
+                    express_it::context::AttributeKey::new("parent.current_value", std::any::TypeId::of::<Self>())
                 )))
             }
             fn lit(value: $ValueType) -> express_it::expr::Expr<Self::Property, Self::ExprType> {
