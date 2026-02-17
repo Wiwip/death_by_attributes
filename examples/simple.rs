@@ -5,6 +5,7 @@ use bevy::window::PresentMode;
 use bevy_egui::EguiPlugin;
 use bevy_inspector_egui::DefaultInspectorConfigPlugin;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
+use express_it::frame::LazyPlan;
 use std::fmt::Debug;
 use std::time::Duration;
 use vitality::ability::{AbilityBuilder, AbilityExecute, TargetData, TryActivateAbility};
@@ -219,6 +220,7 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
                     }
                 },
             )
+            .on_execute(LazyPlan::new().step(MaxHealth::add(Who::Source, Mana::src())))
             .build(),
     );
     commands.insert_resource(AbilityDatabase {

@@ -1,12 +1,11 @@
-use crate::condition::BevyContext;
 use crate::math::SaturatingAttributes;
 use crate::prelude::{Attribute, AttributeModifier};
 use bevy::prelude::*;
-use num_traits::{AsPrimitive, Bounded, FromPrimitive, Num, Zero};
+use express_it::context::ReadContext;
+use express_it::expr::ExpressionError;
+use num_traits::{AsPrimitive, Bounded, FromPrimitive, Zero};
 use serde::Serialize;
 use std::fmt::{Debug, Display, Formatter};
-use express_it::context::EvalContext;
-use express_it::expr::ExpressionError;
 
 #[derive(Debug, Clone, Copy, Reflect, Serialize)]
 pub enum ModOp {
@@ -117,7 +116,7 @@ impl<T: Attribute> AttributeCalculator<T> {
 
     pub fn convert(
         modifier: &AttributeModifier<T>,
-        context: &dyn EvalContext,
+        context: &dyn ReadContext,
     ) -> Result<Self, ExpressionError> {
         let value = modifier.expression.eval_dyn(context)?;
 

@@ -1,5 +1,4 @@
-use crate::Spawnable;
-use crate::condition::{BevyContext, GameplayContextMut};
+use crate::condition::{BevyContext, BevyContextMut};
 use crate::inspector::pretty_type_name;
 use crate::math::AbsDiff;
 use crate::modifier::calculator::{AttributeCalculator, ModOp};
@@ -7,12 +6,13 @@ use crate::modifier::events::ApplyAttributeModifierMessage;
 use crate::modifier::{Modifier, ModifierMarker};
 use crate::modifier::{ReflectAccessModifier, Who};
 use crate::prelude::*;
+use crate::{TypeIdBindings, Spawnable, AppTypeIdBindings};
 use bevy::prelude::*;
+use bevy::reflect::TypeRegistryArc;
+use express_it::expr::Expr;
 use std::any::type_name;
 use std::fmt::Debug;
 use std::fmt::Display;
-use bevy::reflect::TypeRegistryArc;
-use express_it::expr::Expr;
 
 #[derive(Component, Debug, Reflect)]
 #[reflect(Component, from_reflect = false)]
@@ -55,23 +55,24 @@ where
 }
 
 impl<T: Attribute> Modifier for AttributeModifier<T> {
-    fn apply_immediate(&self, context: &mut GameplayContextMut, type_registry: TypeRegistryArc,) -> bool {
+    fn apply_immediate(&self, context: &mut BevyContextMut, type_registry: TypeRegistryArc, type_bindings: AppTypeIdBindings) -> bool {
         let immutable_context = BevyContext {
-            source_actor: &context.attribute_ref(Who::Source),
-            target_actor: &context.attribute_ref(Who::Target),
-            owner: &context.attribute_ref(Who::Owner),
+            source_actor: &context.source_actor.as_readonly(),
+            target_actor: &context.source_actor.as_readonly(),
+            owner: &context.owner.as_readonly(),
             type_registry: type_registry.clone(),
+            type_bindings: type_bindings.clone(),
         };
 
         let Ok(calc) = AttributeCalculator::<T>::convert(self, &immutable_context) else {
             return false;
         };
-        let Some(attribute) = context.attribute_ref(Who::Target).get::<T>() else {
+        let Some(attribute) = immutable_context.attribute_ref(Who::Target).get::<T>() else {
             return false;
         };
         let new_val = calc.eval(attribute.base_value());
 
-        let mut attributes_mut = context.attribute_mut(self.who);
+        let attributes_mut = context.attribute_mut(self.who);
         // Apply the modifier
         if let Some(mut attribute) = attributes_mut.get_mut::<T>() {
             // Ensure that the modifier meaningfully changed the value before we trigger the event.

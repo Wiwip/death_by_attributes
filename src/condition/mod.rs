@@ -1,18 +1,20 @@
 use crate::condition::systems::evaluate_effect_conditions;
 use bevy::app::{App, Plugin};
+use bevy::log::tracing_subscriber::registry;
+use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy_inspector_egui::__macro_exports::bevy_reflect::TypeRegistryArc;
-use express_it::context::{AttributeKey, EvalContext};
+use express_it::context::{Accessor, ReadContext, ScopeId, WriteContext};
 use express_it::expr::ExpressionError;
 use std::any::{Any, TypeId};
 
 mod conditions;
 mod systems;
 
-use crate::attributes::Attribute;
 use crate::modifier::Who;
+use crate::prelude::AttributeModifier;
 use crate::schedule::EffectsSet;
-use crate::{AttributesMut, AttributesRef};
+use crate::{AppTypeIdBindings, AttributesMut, AttributesRef, TypeIdBindings};
 pub use conditions::{
     AbilityCondition, ChanceCondition, HasComponent, IsAttributeWithinBounds, StackCondition,
 };
@@ -31,41 +33,108 @@ impl Plugin for ConditionPlugin {
     }
 }
 
-pub struct GameplayContextMut<'w, 's> {
-    pub source_actor: Entity,
-    pub target_actor: Entity,
-    pub owner: Entity,
+pub struct BevyContextMut<'w, 's> {
+    pub source_actor: &'w mut AttributesMut<'w, 's>,
+    pub target_actor: Option<&'w mut AttributesMut<'w, 's>>,
+    pub owner: &'w mut AttributesMut<'w, 's>,
 
-    pub actors: Query<'w, 's, AttributesMut<'static, 'static>>,
+    pub type_registry: TypeRegistryArc,
+    pub type_bindings: AppTypeIdBindings,
 }
 
-impl GameplayContextMut<'_, '_> {
+impl<'w, 's> BevyContextMut<'w, 's> {
     pub fn entity(&self, who: Who) -> Entity {
         match who {
-            Who::Target => self.target_actor,
+            Who::Target => match &self.target_actor {
+                None => self.source_actor.id(),
+                Some(actor) => actor.id(),
+            },
+            Who::Source => self.source_actor.id(),
+            Who::Owner => self.owner.id(),
+        }
+    }
+
+    pub fn attribute_mut(&mut self, who: Who) -> &mut AttributesMut<'w, 's> {
+        match who {
+            Who::Target => {
+                if let Some(target) = self.target_actor.as_deref_mut() {
+                    target
+                } else {
+                    self.source_actor
+                }
+            }
             Who::Source => self.source_actor,
             Who::Owner => self.owner,
         }
     }
+}
 
-    pub fn attribute_ref(&self, who: Who) -> AttributesRef<'_> {
-        self.actors.get(self.entity(who)).unwrap()
-    }
+impl WriteContext for BevyContextMut<'_, '_> {
+    fn write(
+        &mut self,
+        access: &dyn Accessor,
+        value: Box<dyn Any + Send + Sync>,
+    ) -> Result<(), ExpressionError> {
+        let who: Who = access
+            .scope()
+            .0
+            .try_into()
+            .map_err(|_| ExpressionError::InvalidPath)
+            .unwrap();
 
-    pub fn attribute_mut(&mut self, who: Who) -> AttributesMut<'_, '_> {
-        self.actors.get_mut(self.entity(who)).unwrap()
+        let any_to_reflect = {
+            let bindings = self.type_bindings.internal.read().unwrap();
+            *bindings.convert.get(&access.path()).unwrap()
+        };
+
+        let type_id = *self
+            .type_bindings
+            .internal
+            .read()
+            .unwrap()
+            .map
+            .get(&access.path())
+            .expect("InvalidPath");
+
+        let arc_type_registry = self.type_registry.clone();
+        let registry = arc_type_registry.read();
+        let type_registration = registry
+            .get(type_id)
+            .expect("Failed to get type registration");
+        let reflect_component = type_registration
+            .data::<ReflectComponent>()
+            .expect("No reflect access attribute found");
+
+        let actor = self.attribute_mut(who);
+        let mut dyn_reflect =
+            reflect_component
+                .reflect_mut(actor)
+                .ok_or(ExpressionError::FailedReflect(
+                    "The entity has no component the requested type.".into(),
+                ))?;
+
+        let dyn_partial_reflect = dyn_reflect
+            .reflect_path_mut("current_value")
+            .map_err(|err| {
+                ExpressionError::FailedReflect(format!("Invalid reflect path: {err}").into())
+            })?;
+
+        let value_reflect = any_to_reflect(&*value);
+        dyn_partial_reflect.apply(value_reflect);
+        Ok(())
     }
 }
 
-pub struct BevyContext<'w> {
-    pub source_actor: &'w AttributesRef<'w>,
-    pub target_actor: &'w AttributesRef<'w>,
-    pub owner: &'w AttributesRef<'w>,
+pub struct BevyContext<'w, 's> {
+    pub source_actor: &'w AttributesRef<'w, 's>,
+    pub target_actor: &'w AttributesRef<'w, 's>,
+    pub owner: &'w AttributesRef<'w, 's>,
 
     pub type_registry: TypeRegistryArc,
+    pub type_bindings: AppTypeIdBindings,
 }
 
-impl BevyContext<'_> {
+impl BevyContext<'_, '_> {
     pub fn entity(&self, who: Who) -> Entity {
         match who {
             Who::Target => self.target_actor.id(),
@@ -74,7 +143,7 @@ impl BevyContext<'_> {
         }
     }
 
-    pub fn attribute_ref(&self, who: Who) -> &AttributesRef<'_> {
+    pub fn attribute_ref(&self, who: Who) -> &AttributesRef<'_, '_> {
         match who {
             Who::Target => self.target_actor,
             Who::Source => self.source_actor,
@@ -83,21 +152,26 @@ impl BevyContext<'_> {
     }
 }
 
-impl EvalContext for BevyContext<'_> {
-    fn get_any(&self, path: &AttributeKey) -> std::result::Result<&dyn Any, ExpressionError> {
-        let Some((scope, remainder)) = path.name.split_once('.') else  {
-            return Err(ExpressionError::InvalidPath)
-        };
+impl ReadContext for BevyContext<'_, '_> {
+    fn get_any(&self, access: &dyn Accessor) -> Result<&dyn Any, ExpressionError> {
+        let who: Who = access
+            .scope()
+            .0
+            .try_into()
+            .map_err(|_| ExpressionError::InvalidPath)?;
+        let actor = self.attribute_ref(who);
 
-        let actor = match scope {
-            "src" => self.source_actor,
-            "dst" => self.target_actor,
-            "parent" => self.owner,
-            _ => return Err(ExpressionError::InvalidPath),
-        };
+        let type_id = *self
+            .type_bindings
+            .internal
+            .read()
+            .unwrap()
+            .map
+            .get(&access.path())
+            .ok_or(ExpressionError::InvalidPath)?;
 
         let registry = self.type_registry.read();
-        let Some(type_registration) = registry.get(path.type_id) else {
+        let Some(type_registration) = registry.get(type_id) else {
             return Err(ExpressionError::FailedReflect(
                 "Failed to get type registration".into(),
             ));
@@ -113,7 +187,7 @@ impl EvalContext for BevyContext<'_> {
             ));
         };
 
-        let dyn_partial_reflect = dyn_reflect.reflect_path(remainder).map_err(|err| {
+        let dyn_partial_reflect = dyn_reflect.reflect_path("current_value").map_err(|err| {
             ExpressionError::FailedReflect(format!("Invalid reflect path: {err}").into())
         })?;
 
@@ -123,16 +197,19 @@ impl EvalContext for BevyContext<'_> {
             )
         })?;
 
-        Ok(dyn_path_reflect.as_any())
+        Ok(dyn_path_reflect)
     }
 
-    fn get_any_component(&self, path: &str, type_id: TypeId) -> std::result::Result<&dyn Any, ExpressionError> {
-        let actor = match path {
-            "src" => self.source_actor,
-            "dst" => self.target_actor,
-            "parent" => self.owner,
-            _ => return Err(ExpressionError::InvalidPath),
-        };
+    fn get_any_component(
+        &self,
+        scope: ScopeId,
+        type_id: TypeId,
+    ) -> std::result::Result<&dyn Any, ExpressionError> {
+        let who: Who = scope
+            .0
+            .try_into()
+            .map_err(|_| ExpressionError::InvalidPath)?;
+        let actor = self.attribute_ref(who);
 
         let registry = self.type_registry.read();
         let Some(type_registration) = registry.get(type_id) else {

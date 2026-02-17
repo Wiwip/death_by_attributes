@@ -1,7 +1,6 @@
 use crate::ability::AbilityCooldown;
 use crate::assets::AbilityDef;
 use crate::attributes::Attribute;
-use crate::condition::IsAttributeWithinBounds;
 use crate::inspector::pretty_type_name;
 use crate::modifier::{AttributeCalculatorCached, ModOp, Modifier, Who};
 use crate::mutator::EntityActions;
@@ -10,9 +9,9 @@ use bevy::ecs::system::IntoObserverSystem;
 use bevy::prelude::*;
 use express_it::expr::Expr;
 use express_it::float::FloatExpr;
-use express_it::logic::{BoolExpr, BoolExprNode, CompareExpr};
+use express_it::frame::LazyPlan;
+use express_it::logic::{BoolExpr, CompareExpr};
 use num_traits::{AsPrimitive, Num};
-use std::sync::Arc;
 
 pub struct AbilityBuilder {
     name: String,
@@ -20,6 +19,7 @@ pub struct AbilityBuilder {
     triggers: Vec<EntityActions>,
     cost_condition: Vec<BoolExpr>,
     cost_mods: Vec<Box<dyn Modifier>>,
+    on_execute: Vec<LazyPlan>,
 }
 
 impl AbilityBuilder {
@@ -30,6 +30,7 @@ impl AbilityBuilder {
             triggers: vec![],
             cost_condition: vec![],
             cost_mods: vec![],
+            on_execute: vec![],
         }
     }
 
@@ -83,6 +84,11 @@ impl AbilityBuilder {
         self
     }
 
+    pub fn on_execute(mut self, plan: LazyPlan) -> Self {
+        self.on_execute.push(plan);
+        self
+    }
+
     pub fn add_trigger<E: EntityEvent, B: Bundle, M>(
         mut self,
         observer: impl IntoObserverSystem<E, B, M> + Clone + Send + Sync + 'static,
@@ -124,6 +130,8 @@ impl AbilityBuilder {
             cost: self.cost_condition,
             execution_conditions: vec![],
             cost_modifiers: self.cost_mods,
+
+            on_execute: self.on_execute,
         }
     }
 }

@@ -1,4 +1,4 @@
-use crate::AttributesRef;
+use crate::{TypeIdBindings, AttributesRef, AppTypeIdBindings};
 use crate::assets::EffectDef;
 use crate::condition::BevyContext;
 use crate::effect::{Effect, EffectInactive, EffectSource, EffectTarget, EffectTicker};
@@ -22,6 +22,7 @@ pub fn evaluate_effect_conditions(
     parents: Query<AttributesRef>,
     effects: Res<Assets<EffectDef>>,
     type_registry: Res<AppTypeRegistry>,
+    type_bindings: Res<AppTypeIdBindings>,
     mut commands: Commands,
 ) {
     for (effect_entity_ref, effect, source, target, status) in query.iter_mut() {
@@ -56,6 +57,7 @@ pub fn evaluate_effect_conditions(
             source_actor: &source_actor_ref,
             owner: &effect_entity_ref,
             type_registry: type_registry.0.clone(),
+            type_bindings: type_bindings.clone(),
         };
 
         // Determines whether the effect should activate

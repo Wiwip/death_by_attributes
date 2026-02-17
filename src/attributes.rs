@@ -7,9 +7,10 @@ use bevy::ecs::component::Mutable;
 use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
 use bevy::reflect::GetTypeRegistration;
-use express_it::context::{AttributeKey, EvalContext, };
+use express_it::context::ScopeId;
 use express_it::expr::{Expr, ExprNode, ExpressionError};
 use express_it::float::FloatExprNode;
+use express_it::frame::Assignment;
 use num_traits::NumCast;
 pub use num_traits::{
     AsPrimitive, Bounded, FromPrimitive, Num, NumAssign, NumAssignOps, NumOps, Saturating,
@@ -52,7 +53,8 @@ where
     Self: Reflect + TypePath + GetTypeRegistration,
 {
     type Property: Value;
-    type ExprType: ExprNode<Self::Property> + Send + Sync;
+    type ExprType: ExprNode<Self::Property>;
+    const ID: u64;
 
     fn new<T: Num + AsPrimitive<Self::Property> + Copy>(value: T) -> Self;
     fn base_value(&self) -> Self::Property;
@@ -65,38 +67,16 @@ where
     fn dst() -> Expr<Self::Property, Self::ExprType>;
     fn parent() -> Expr<Self::Property, Self::ExprType>;
     fn lit(value: Self::Property) -> Expr<Self::Property, Self::ExprType>;
+    // Expression helpers
+    fn set(
+        scope: impl Into<ScopeId>,
+        expr: Expr<Self::Property, Self::ExprType>,
+    ) -> Assignment<Self::Property, Self::ExprType>;
+    fn add(
+        scope: impl Into<ScopeId>,
+        expr: Expr<Self::Property, Self::ExprType>,
+    ) -> Assignment<Self::Property, Self::ExprType>;
 }
-
-/*#[derive(Debug)]
-pub struct AttributeValue<T> {
-    path: AttributeKey,
-    marker: PhantomData<T>,
-}
-
-impl<T: Attribute> AttributeValue<T> {
-    pub fn new(path: &str) -> Self {
-        Self {
-            path: Path(path.to_string()),
-            marker: Default::default(),
-        }
-    }
-
-    fn value(&self, ctx: &dyn EvalContext) -> Result<T::Property, ExpressionError> {
-        let any = ctx.get_any(&self.path, TypeId::of::<T>())?;
-
-        let value = any
-            .downcast_ref::<T>()
-            .ok_or(ExpressionError::DowncastError)?;
-
-        Ok(value.current_value())
-    }
-}
-
-impl<T: Attribute> RetrieveAttribute<T::Property> for AttributeValue<T> {
-    fn retrieve(&self, ctx: &dyn EvalContext) -> std::result::Result<T::Property, ExpressionError> {
-        self.value(ctx)
-    }
-}*/
 
 #[macro_export]
 macro_rules! attribute_impl {
@@ -119,6 +99,8 @@ macro_rules! attribute_impl {
         impl $crate::attributes::Attribute for $StructName {
             type Property = $ValueType;
             type ExprType = express_it::expr::SelectExprNode<$ValueType>;
+
+            const ID: u64 = express_it::context::fnv1a64(stringify!($StructName));
 
             fn new<T>(value: T) -> Self
             where
@@ -146,23 +128,54 @@ macro_rules! attribute_impl {
             }
             fn src() -> express_it::expr::Expr<Self::Property, Self::ExprType> {
                 express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
-                    express_it::context::AttributeKey::new("src.current_value", std::any::TypeId::of::<Self>())
+                    express_it::context::Path::from_id($crate::modifier::Who::Source, Self::ID),
                 )))
             }
             fn dst() -> express_it::expr::Expr<Self::Property, Self::ExprType> {
                 express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
-                    express_it::context::AttributeKey::new("dst.current_value", std::any::TypeId::of::<Self>())
+                    express_it::context::Path::from_id($crate::modifier::Who::Target, Self::ID),
                 )))
             }
             fn parent() -> express_it::expr::Expr<Self::Property, Self::ExprType> {
                 express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
-                    express_it::context::AttributeKey::new("parent.current_value", std::any::TypeId::of::<Self>())
+                    express_it::context::Path::from_id($crate::modifier::Who::Owner, Self::ID),
                 )))
             }
             fn lit(value: $ValueType) -> express_it::expr::Expr<Self::Property, Self::ExprType> {
                 express_it::expr::Expr::<Self::Property, Self::ExprType>::new(std::sync::Arc::new(
                     Self::ExprType::Lit(value),
                 ))
+            }
+            fn set(
+                scope: impl Into<express_it::context::ScopeId>,
+                expr: express_it::expr::Expr<Self::Property, Self::ExprType>,
+            ) -> express_it::frame::Assignment<Self::Property, Self::ExprType> {
+                express_it::frame::Assignment {
+                    path: express_it::context::Path::from_id(
+                        $crate::modifier::Who::Owner,
+                        Self::ID,
+                    ),
+                    expr,
+                }
+            }
+            fn add(
+                scope: impl Into<express_it::context::ScopeId>,
+                expr: express_it::expr::Expr<Self::Property, Self::ExprType>,
+            ) -> express_it::frame::Assignment<Self::Property, Self::ExprType> {
+                let get_expr = express_it::expr::Expr::new(std::sync::Arc::new(
+                    Self::ExprType::Attribute(express_it::context::Path::from_id(
+                        scope.into(),
+                        Self::ID,
+                    )),
+                ));
+
+                express_it::frame::Assignment {
+                    path: express_it::context::Path::from_id(
+                        $crate::modifier::Who::Owner,
+                        Self::ID,
+                    ),
+                    expr: get_expr + expr,
+                }
             }
         }
 

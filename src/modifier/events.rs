@@ -1,10 +1,10 @@
-use crate::AttributesMut;
 use crate::condition::BevyContext;
 use crate::inspector::pretty_type_name;
 use crate::math::AbsDiff;
 use crate::modifier::calculator::AttributeCalculator;
 use crate::prelude::*;
 use crate::systems::MarkNodeDirty;
+use crate::{AppTypeIdBindings, AttributesMut, TypeIdBindings};
 use bevy::prelude::*;
 use bevy::reflect::TypeRegistryArc;
 
@@ -21,9 +21,16 @@ pub fn apply_modifier_events<T: Attribute>(
     mut attributes: Query<AttributesMut>,
     mut commands: Commands,
     type_registry: Res<AppTypeRegistry>,
+    type_bindings: Res<AppTypeIdBindings>,
 ) {
     for ev in event_reader.read() {
-        let has_changed = apply_modifier(&ev, &mut attributes, type_registry.0.clone()).unwrap_or(false);
+        let has_changed = apply_modifier(
+            &ev,
+            &mut attributes,
+            type_registry.0.clone(),
+            type_bindings.clone(),
+        )
+        .unwrap_or(false);
 
         if has_changed {
             commands.trigger(MarkNodeDirty::<T> {
@@ -38,6 +45,7 @@ pub fn apply_modifier<T: Attribute>(
     trigger: &ApplyAttributeModifierMessage<T>,
     attributes: &mut Query<AttributesMut>,
     type_registry: TypeRegistryArc,
+    type_bindings: AppTypeIdBindings,
 ) -> Result<bool, BevyError> {
     let query = [trigger.source_entity, trigger.target_entity];
     let [source, target] = attributes.get_many(query)?;
@@ -47,6 +55,7 @@ pub fn apply_modifier<T: Attribute>(
         target_actor: &target,
         owner: &source,
         type_registry,
+        type_bindings,
     };
 
     let base_value = target

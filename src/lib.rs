@@ -1,10 +1,11 @@
 extern crate core;
 
 use bevy::prelude::*;
-use std::any::TypeId;
+use std::any::{Any, TypeId};
 use std::error::Error;
 use std::fmt::Formatter;
 use std::marker::PhantomData;
+use std::sync::{Arc, RwLock};
 
 pub mod ability;
 pub mod actors;
@@ -49,6 +50,7 @@ use crate::systems::{
     apply_periodic_effect, mark_node_dirty_observer, update_attribute, update_effect_system,
 };
 use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
+use bevy::platform::collections::HashMap;
 
 pub mod prelude {
     pub use crate::attributes::{
@@ -63,22 +65,23 @@ pub struct AttributesPlugin;
 
 impl Plugin for AttributesPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((
-            AbilityPlugin,
-            ConditionPlugin,
-            EffectsPlugin,
-            GlobalEffectPlugin,
-            RegistryPlugin,
-        ))
-        .add_plugins(init_attribute::<Stacks>)
-        .init_schedule(PreUpdate)
-        .init_schedule(PostUpdate)
-        .init_asset::<ActorDef>()
-        .init_asset::<EffectDef>()
-        .init_asset::<AbilityDef>()
-        .register_type::<AppliedEffects>()
-        .register_type::<EffectTarget>()
-        .register_type::<NodeType>();
+        app.init_resource::<AppTypeIdBindings>()
+            .add_plugins((
+                AbilityPlugin,
+                ConditionPlugin,
+                EffectsPlugin,
+                GlobalEffectPlugin,
+                RegistryPlugin,
+            ))
+            .add_plugins(init_attribute::<Stacks>)
+            .init_schedule(PreUpdate)
+            .init_schedule(PostUpdate)
+            .init_asset::<ActorDef>()
+            .init_asset::<EffectDef>()
+            .init_asset::<AbilityDef>()
+            .register_type::<AppliedEffects>()
+            .register_type::<EffectTarget>()
+            .register_type::<NodeType>();
 
         app.configure_sets(
             Update,
@@ -101,12 +104,55 @@ impl AttributesPlugin {
     }
 }
 
+#[derive(Resource, Clone, Default)]
+pub struct AppTypeIdBindings {
+    pub internal: Arc<RwLock<TypeIdBindings>>,
+}
+
+#[derive(Default)]
+pub struct TypeIdBindings {
+    map: HashMap<u64, TypeId>,
+    convert: HashMap<u64, fn(&dyn Any) -> &dyn Reflect>,
+}
+
+impl TypeIdBindings {
+    fn add<T: Attribute>(&mut self) {
+        let previous = self.map.insert(T::ID, TypeId::of::<T>());
+
+        if let Some(existing) = previous {
+            if existing != TypeId::of::<T>() {
+                error!(
+                    "Attribute type ID collision for {} (id: {}). Previously bound to {:?}.",
+                    pretty_type_name::<T>(),
+                    T::ID,
+                    existing
+                );
+            }
+        }
+
+        self.convert.insert(T::ID, |any: &dyn Any| -> &dyn Reflect {
+            let value = any.downcast_ref::<T>().unwrap();
+            value.as_reflect()
+        });
+    }
+
+    fn any_to_reflect(&self, any: Box<dyn Any>) {}
+}
+
 pub fn init_attribute<T: Attribute>(app: &mut App) {
     app.register_type::<T>();
     app.register_type::<AttributeModifier<T>>();
     app.register_type::<AttributeCalculatorCached<T>>();
     app.register_type_data::<T, ReflectAccessAttribute>();
     app.add_message::<ApplyAttributeModifierMessage<T>>();
+
+    // Register u64->TypeId bindings for expressions
+    app.world_mut()
+        .resource_mut::<AppTypeIdBindings>()
+        .internal
+        .write()
+        .unwrap()
+        .add::<T>();
 
     app.add_systems(
         Update,
@@ -163,9 +209,9 @@ pub type AttributesMut<'w, 's> = EntityMutExcept<
     ),
 >;
 
-pub type AttributesRef<'w> = EntityRefExcept<
+pub type AttributesRef<'w, 's> = EntityRefExcept<
     'w,
-    'w,
+    's,
     (
         // We exclude anything related to effects
         ChildOf,
@@ -185,7 +231,6 @@ pub type AttributesRef<'w> = EntityRefExcept<
 
 pub trait Spawnable: Send + Sync {
     fn spawn(&self, commands: &mut EntityCommands);
-    //fn who(&self) -> Who;
 }
 
 #[derive(Component, Copy, Clone, Debug)]

@@ -6,12 +6,12 @@ use crate::effect::{Effect, EffectSource, EffectStatusParam, EffectTarget, Effec
 use crate::graph::{DependencyGraph, NodeType};
 use crate::modifier::{ApplyAttributeModifierMessage, AttributeCalculator, OwnedModifiers};
 use crate::prelude::*;
-use crate::{AttributesRef, CurrentValueChanged, Dirty};
+use crate::{TypeIdBindings, AttributesRef, CurrentValueChanged, Dirty, AppTypeIdBindings};
 use bevy::prelude::*;
+use bevy::reflect::TypeRegistryArc;
 use petgraph::visit::IntoNeighbors;
 use std::any::type_name;
 use std::marker::PhantomData;
-use bevy::reflect::TypeRegistryArc;
 
 #[derive(EntityEvent)]
 #[entity_event(propagate=&'static EffectTarget, auto_propagate)]
@@ -51,7 +51,8 @@ pub fn update_effect_system<T: Attribute>(
     effects: Query<(&OwnedModifiers, &EffectSource, &EffectTarget)>,
     modifiers: Query<&AttributeModifier<T>>,
     mut commands: Commands,
-    type_registry: Res<AppTypeRegistry>
+    type_registry: Res<AppTypeRegistry>,
+    type_bindings: Res<AppTypeIdBindings>,
 ) {
     debug_once!("Ready: update_effect_tree_system::{}", type_name::<T>());
     for actor_entity in actors.iter() {
@@ -72,6 +73,7 @@ pub fn update_effect_system<T: Attribute>(
             &modifiers,
             &mut commands,
             &type_registry.0.clone(),
+            &type_bindings,
         );
 
         // Signal to update the attribute
@@ -97,6 +99,7 @@ fn update_effect_tree_attributes<T: Attribute>(
     modifiers: &Query<&AttributeModifier<T>>,
     commands: &mut Commands,
     type_registry: &TypeRegistryArc,
+    type_bindings: &AppTypeIdBindings,
 ) -> AttributeCalculator<T> {
     let Ok(node_type) = nodes.get(current_entity) else {
         error!("{}: Error getting node type.", current_entity);
@@ -134,7 +137,8 @@ fn update_effect_tree_attributes<T: Attribute>(
                         effects,
                         modifiers,
                         commands,
-                       type_registry,
+                        type_registry,
+                        type_bindings,
                     )
                 })
                 .fold(AttributeCalculator::default(), |acc, child| {
@@ -172,6 +176,7 @@ fn update_effect_tree_attributes<T: Attribute>(
                         target_actor: &target,
                         owner: &effect,
                         type_registry: type_registry.clone(),
+                        type_bindings: type_bindings.clone(),
                     };
 
                     let calc = AttributeCalculator::convert(modifier, &context).unwrap_or_default();
@@ -240,6 +245,7 @@ pub fn apply_periodic_effect<T: Attribute>(
     mut event_writer: MessageWriter<ApplyAttributeModifierMessage<T>>,
     effect_assets: Res<Assets<EffectDef>>,
     type_registry: Res<AppTypeRegistry>,
+    type_bindings: Res<AppTypeIdBindings>,
 ) {
     for (effect_ref, effect, timer, owned_modifiers, target, source) in effects.iter() {
         if !timer.just_finished() {
@@ -259,6 +265,7 @@ pub fn apply_periodic_effect<T: Attribute>(
             source_actor: &source_actor_ref,
             owner: &effect_ref,
             type_registry: type_registry.0.clone(),
+            type_bindings: type_bindings.clone(),
         };
 
         // Determines whether the effect should activate

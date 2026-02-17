@@ -4,6 +4,7 @@ use crate::mutator::EntityActions;
 use bevy::prelude::*;
 use express_it::logic::BoolExpr;
 use std::collections::VecDeque;
+use express_it::frame::LazyPlan;
 
 #[derive(Asset, TypePath)]
 pub struct ActorDef {
@@ -39,4 +40,6 @@ pub struct AbilityDef {
     pub cost: Vec<BoolExpr>,
     pub execution_conditions: Vec<BoolExpr>,
     pub cost_modifiers: Vec<Box<dyn Modifier>>,
+
+    pub on_execute: Vec<LazyPlan>,
 }

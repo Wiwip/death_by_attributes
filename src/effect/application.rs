@@ -1,4 +1,4 @@
-use crate::AttributesMut;
+use crate::{TypeIdBindings, AttributesMut, AppTypeIdBindings};
 use crate::assets::EffectDef;
 use crate::condition::BevyContext;
 use crate::effect::stacks::NotifyAddStackEvent;
@@ -133,6 +133,7 @@ impl ApplyEffectEvent {
         commands: &mut Commands,
         effect: &EffectDef,
         type_registry: TypeRegistryArc,
+        type_bindings: AppTypeIdBindings,
     ) -> Result<(), BevyError> {
         debug!("Applying instant effect to {}", self.targeting.target());
 
@@ -148,6 +149,7 @@ impl ApplyEffectEvent {
             source_actor: &source_actor_ref,
             owner: &source_actor_ref, // TODO: Make optional
             type_registry: type_registry.clone(),
+            type_bindings,
         };
 
         // Determines whether the effect should activate
@@ -189,6 +191,7 @@ impl ApplyEffectEvent {
         effects: &mut Query<&Effect>,
         add_stack_event: &mut MessageWriter<NotifyAddStackEvent>,
         type_registry: TypeRegistryArc,
+        type_bindings: AppTypeIdBindings,
     ) -> Result<(), BevyError> {
         // We want to know whether an effect with the same handle already points to the actor
         let (optional_effects, _) = actors.get_mut(self.targeting.target())?;
@@ -235,6 +238,7 @@ impl ApplyEffectEvent {
             source_actor: &source_actor_ref,
             owner: &source_actor_ref, // TODO: Should this be the source actor? The effect doesn't exist for instant effects.
             type_registry,
+            type_bindings,
         };
 
         // Determines whether the effect should activate
@@ -300,6 +304,7 @@ pub(crate) fn apply_effect_event_observer(
     mut writer: MessageWriter<NotifyAddStackEvent>,
     mut commands: Commands,
     type_registry: Res<AppTypeRegistry>,
+    type_bindings: Res<AppTypeIdBindings>,
 ) -> Result<(), BevyError> {
     let effect = effect_assets
         .get(&trigger.handle)
@@ -311,6 +316,7 @@ pub(crate) fn apply_effect_event_observer(
             &mut commands,
             effect,
             type_registry.0.clone(),
+            type_bindings.clone(),
         )?;
     }
 
@@ -322,6 +328,7 @@ pub(crate) fn apply_effect_event_observer(
             &mut effects,
             &mut writer,
             type_registry.0.clone(),
+            type_bindings.clone(),
         )?;
     }
 
