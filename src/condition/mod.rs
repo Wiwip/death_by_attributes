@@ -79,8 +79,7 @@ impl WriteContext for BevyContextMut<'_, '_> {
             .scope()
             .0
             .try_into()
-            .map_err(|_| ExpressionError::InvalidPath)
-            .unwrap();
+            .map_err(|_| ExpressionError::InvalidPath)?;
 
         let any_to_reflect = {
             let bindings = self.type_bindings.internal.read().unwrap();
@@ -106,15 +105,18 @@ impl WriteContext for BevyContextMut<'_, '_> {
             .expect("No reflect access attribute found");
 
         let actor = self.attribute_mut(who);
-        let mut dyn_reflect =
-            reflect_component
-                .reflect_mut(actor)
-                .ok_or(ExpressionError::FailedReflect(
-                    "The entity has no component the requested type.".into(),
-                ))?;
+        let mut dyn_reflect = reflect_component.reflect_mut(actor).ok_or_else(|| {
+            let short_name = type_registration
+                .type_info()
+                .type_path_table()
+                .short_path()
+                .to_string();
+            debug!("Requested type not present on actor: {}/{}", short_name, who);
+            ExpressionError::FailedReflect("The entity has no component the requested type.".into())
+        })?;
 
         let dyn_partial_reflect = dyn_reflect
-            .reflect_path_mut("current_value")
+            .reflect_path_mut("base_value")
             .map_err(|err| {
                 ExpressionError::FailedReflect(format!("Invalid reflect path: {err}").into())
             })?;
@@ -182,6 +184,12 @@ impl ReadContext for BevyContext<'_, '_> {
             ));
         };
         let Some(dyn_reflect) = reflect_component.reflect(actor) else {
+            let short_name = type_registration
+                .type_info()
+                .type_path_table()
+                .short_path()
+                .to_string();
+            debug!("Requested type not present on actor: {}", short_name);
             return Err(ExpressionError::FailedReflect(
                 "The entity has no component the requested type.".into(),
             ));

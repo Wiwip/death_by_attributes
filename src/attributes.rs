@@ -8,16 +8,14 @@ use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
 use bevy::reflect::GetTypeRegistration;
 use express_it::context::ScopeId;
-use express_it::expr::{Expr, ExprNode, ExpressionError};
-use express_it::float::FloatExprNode;
+use express_it::expr::{Expr, ExprNode};
 use express_it::frame::Assignment;
 use num_traits::NumCast;
 pub use num_traits::{
     AsPrimitive, Bounded, FromPrimitive, Num, NumAssign, NumAssignOps, NumOps, Saturating,
     SaturatingAdd, SaturatingMul, Zero,
 };
-use serde::Serialize;
-use std::any::{Any, TypeId};
+use std::any::{Any};
 use std::collections::HashSet;
 use std::fmt::Debug;
 use std::fmt::Display;
@@ -25,7 +23,6 @@ use std::hash::Hasher;
 use std::hash::{DefaultHasher, Hash};
 use std::iter::Sum;
 use std::marker::PhantomData;
-use std::sync::Arc;
 
 pub trait Value
 where
@@ -73,7 +70,7 @@ where
         expr: Expr<Self::Property, Self::ExprType>,
     ) -> Assignment<Self::Property, Self::ExprType>;
     fn add(
-        scope: impl Into<ScopeId>,
+        scope: impl Into<ScopeId> + Copy,
         expr: Expr<Self::Property, Self::ExprType>,
     ) -> Assignment<Self::Property, Self::ExprType>;
 }
@@ -152,14 +149,14 @@ macro_rules! attribute_impl {
             ) -> express_it::frame::Assignment<Self::Property, Self::ExprType> {
                 express_it::frame::Assignment {
                     path: express_it::context::Path::from_id(
-                        $crate::modifier::Who::Owner,
+                        scope,
                         Self::ID,
                     ),
                     expr,
                 }
             }
             fn add(
-                scope: impl Into<express_it::context::ScopeId>,
+                scope: impl Into<express_it::context::ScopeId> + std::marker::Copy,
                 expr: express_it::expr::Expr<Self::Property, Self::ExprType>,
             ) -> express_it::frame::Assignment<Self::Property, Self::ExprType> {
                 let get_expr = express_it::expr::Expr::new(std::sync::Arc::new(
@@ -171,7 +168,7 @@ macro_rules! attribute_impl {
 
                 express_it::frame::Assignment {
                     path: express_it::context::Path::from_id(
-                        $crate::modifier::Who::Owner,
+                        scope.into(),
                         Self::ID,
                     ),
                     expr: get_expr + expr,

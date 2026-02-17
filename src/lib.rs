@@ -131,12 +131,10 @@ impl TypeIdBindings {
         }
 
         self.convert.insert(T::ID, |any: &dyn Any| -> &dyn Reflect {
-            let value = any.downcast_ref::<T>().unwrap();
+            let value = any.downcast_ref::<T::Property>().unwrap();
             value.as_reflect()
         });
     }
-
-    fn any_to_reflect(&self, any: Box<dyn Any>) {}
 }
 
 pub fn init_attribute<T: Attribute>(app: &mut App) {
