@@ -44,19 +44,19 @@ pub fn apply_modifier_events<T: Attribute>(
 pub fn apply_modifier<T: Attribute>(
     trigger: &ApplyAttributeModifierMessage<T>,
     attributes: &mut Query<AttributesMut>,
-    type_registry: TypeRegistryArc,
-    type_bindings: AppTypeIdBindings,
+    _type_registry: TypeRegistryArc,
+    _type_bindings: AppTypeIdBindings,
 ) -> Result<bool, BevyError> {
     let query = [trigger.source_entity, trigger.target_entity];
-    let [source, target] = attributes.get_many(query)?;
+    let [_source, target] = attributes.get_many(query)?;
 
-    let context = BevyContext {
+    /*let context = BevyContext {
         source_actor: &source,
         target_actor: &target,
         owner: &source,
         type_registry,
         type_bindings,
-    };
+    };*/
 
     let base_value = target
         .get::<T>()
@@ -67,7 +67,7 @@ pub fn apply_modifier<T: Attribute>(
         ))?
         .current_value();
 
-    let Ok(calculator) = AttributeCalculator::<T>::convert(&trigger.modifier, &context) else {
+    let Ok(calculator) = AttributeCalculator::<T>::convert(&trigger.modifier) else {
         return Err(format!(
             "Could not convert modifier {} to calculator.",
             trigger.modifier

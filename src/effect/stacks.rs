@@ -1,11 +1,11 @@
-use express_it::expr::Expr;
-use crate::{attribute_impl, ReflectAccessAttribute};
 use crate::assets::EffectDef;
 use crate::attribute;
 use crate::effect::Effect;
 use crate::effect::timing::EffectDuration;
 use crate::prelude::Attribute;
+use crate::{ReflectAccessAttribute, attribute_impl};
 use bevy::prelude::*;
+use express_it::expr::Expr;
 use num_traits::AsPrimitive;
 
 pub enum EffectStackingPolicy {

@@ -2,16 +2,21 @@ use crate::actors::Actor;
 use crate::assets::EffectDef;
 use crate::attributes::{Attribute, AttributeQueryData, AttributeQueryDataReadOnly};
 use crate::condition::BevyContext;
-use crate::effect::{Effect, EffectSource, EffectStatusParam, EffectTarget, EffectTicker};
+use crate::effect::{
+    AttributeDependency, AttributeDependents, Effect, EffectSource, EffectStatusParam,
+    EffectTarget, EffectTicker,
+};
 use crate::graph::{DependencyGraph, NodeType};
+use crate::modifier::attribute_modifier::RecalculateExpression;
 use crate::modifier::{ApplyAttributeModifierMessage, AttributeCalculator, OwnedModifiers};
 use crate::prelude::*;
-use crate::{TypeIdBindings, AttributesRef, CurrentValueChanged, Dirty, AppTypeIdBindings};
+use crate::{AppTypeIdBindings, AttributesRef, CurrentValueChanged, Dirty, TypeIdBindings};
 use bevy::prelude::*;
 use bevy::reflect::TypeRegistryArc;
 use petgraph::visit::IntoNeighbors;
 use std::any::type_name;
 use std::marker::PhantomData;
+use crate::inspector::pretty_type_name;
 
 #[derive(EntityEvent)]
 #[entity_event(propagate=&'static EffectTarget, auto_propagate)]
@@ -106,19 +111,20 @@ fn update_effect_tree_attributes<T: Attribute>(
         return AttributeCalculator::default();
     };
     let Ok(status) = statuses.get(current_entity) else {
+        debug!("{}: Error getting status.", current_entity);
         return AttributeCalculator::default();
     };
     if status.is_periodic() || status.is_inactive() {
         return AttributeCalculator::default();
     }
-    if !dirty_nodes.contains(current_entity) {
+    /*if !dirty_nodes.contains(current_entity) {
         match attributes.get(current_entity) {
             Ok(attribute) => {
                 return attribute.calculator_cache.calculator;
             }
             _ => {} // Continue traversing the tree.
         }
-    }
+    }*/
 
     let node_calculator = match node_type {
         NodeType::Actor => {
@@ -148,7 +154,7 @@ fn update_effect_tree_attributes<T: Attribute>(
             calculator
         }
         NodeType::Effect => {
-            let Ok((modifier_entities, source, target)) = effects.get(current_entity) else {
+            let Ok((modifier_entities, _source, _target)) = effects.get(current_entity) else {
                 error!("{}: Error getting effect type.", current_entity);
                 return AttributeCalculator::default();
             };
@@ -168,18 +174,7 @@ fn update_effect_tree_attributes<T: Attribute>(
                         return None;
                     }
 
-                    let [source, target, effect] = attribute_refs
-                        .get_many([source.0, target.0, current_entity])
-                        .unwrap();
-                    let context = BevyContext {
-                        source_actor: &source,
-                        target_actor: &target,
-                        owner: &effect,
-                        type_registry: type_registry.clone(),
-                        type_bindings: type_bindings.clone(),
-                    };
-
-                    let calc = AttributeCalculator::convert(modifier, &context).unwrap_or_default();
+                    let calc = AttributeCalculator::convert(modifier).unwrap_or_default();
 
                     Some(calc)
                 })
@@ -192,7 +187,7 @@ fn update_effect_tree_attributes<T: Attribute>(
     };
 
     // Signal to update the attribute
-    commands.trigger(UpdateAttributeSignal {
+    commands.trigger(UpdateAttributeSignal::<T> {
         entity: current_entity,
         calculator: node_calculator,
     });
@@ -211,10 +206,10 @@ pub struct UpdateAttributeSignal<T: Attribute> {
 
 pub fn update_attribute<T: Attribute>(
     trigger: On<UpdateAttributeSignal<T>>,
-    mut attributes: Query<AttributeQueryData<T>>,
+    mut attributes: Query<(AttributeQueryData<T>, Option<&AttributeDependents<T>>)>,
     mut commands: Commands,
 ) {
-    if let Ok(mut attribute) = attributes.get_mut(trigger.event_target()) {
+    if let Ok((mut attribute, dependencies)) = attributes.get_mut(trigger.event_target()) {
         attribute.calculator_cache.calculator = trigger.event().calculator;
 
         let old_value = attribute.attribute.current_value();
@@ -227,6 +222,12 @@ pub fn update_attribute<T: Attribute>(
                 old: old_value,
                 new: attribute.attribute.current_value(),
             });
+            // Notify dependencies
+            if let Some(dependencies) = dependencies {
+                dependencies.iter().for_each(|dep| {
+                    commands.trigger(RecalculateExpression { modifier_entity: dep })
+                })
+            }
         }
     };
 }

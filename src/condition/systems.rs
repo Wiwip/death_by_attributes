@@ -1,7 +1,7 @@
-use crate::{TypeIdBindings, AttributesRef, AppTypeIdBindings};
 use crate::assets::EffectDef;
 use crate::condition::BevyContext;
 use crate::effect::{Effect, EffectInactive, EffectSource, EffectTarget, EffectTicker};
+use crate::{AppTypeIdBindings, AttributesRef, TypeIdBindings};
 use bevy::asset::Assets;
 use bevy::ecs::relationship::Relationship;
 use bevy::log::error;

@@ -2,13 +2,11 @@ use crate::ability::AbilityCooldown;
 use crate::assets::AbilityDef;
 use crate::attributes::Attribute;
 use crate::inspector::pretty_type_name;
-use crate::modifier::{AttributeCalculatorCached, ModOp, Modifier, Who};
+use crate::modifier::{AttributeCalculatorCached, Who};
 use crate::mutator::EntityActions;
-use crate::prelude::AttributeModifier;
 use bevy::ecs::system::IntoObserverSystem;
 use bevy::prelude::*;
 use express_it::expr::Expr;
-use express_it::float::FloatExpr;
 use express_it::frame::LazyPlan;
 use express_it::logic::{BoolExpr, CompareExpr};
 use num_traits::{AsPrimitive, Num};
@@ -18,7 +16,7 @@ pub struct AbilityBuilder {
     mutators: Vec<EntityActions>,
     triggers: Vec<EntityActions>,
     cost_condition: Vec<BoolExpr>,
-    cost_mods: Vec<Box<dyn Modifier>>,
+    cost_modifiers: LazyPlan,
     on_execute: Vec<LazyPlan>,
 }
 
@@ -29,7 +27,7 @@ impl AbilityBuilder {
             mutators: Default::default(),
             triggers: vec![],
             cost_condition: vec![],
-            cost_mods: vec![],
+            cost_modifiers: LazyPlan::new(),
             on_execute: vec![],
         }
     }
@@ -48,17 +46,17 @@ impl AbilityBuilder {
 
     pub fn with_cost<T: Attribute>(mut self, cost: T::Property) -> Self
     where
-        Expr<T::Property, T::ExprType>: CompareExpr,
+        Expr<T::Property>: CompareExpr,
     {
-        let mutator = AttributeModifier::<T>::new(T::lit(cost), ModOp::Sub, Who::Source);
-        self.cost_mods.push(Box::new(mutator));
+        let cost_expr = T::sub(Who::Source, T::lit(cost));
+        self.cost_modifiers = self.cost_modifiers.step(cost_expr);
 
         let cost_expr = T::lit(cost).le(T::src());
         self.cost_condition.push(cost_expr);
         self
     }
 
-    pub fn with_cooldown(mut self, expr: impl Into<FloatExpr<f64>>) -> Self {
+    pub fn with_cooldown(mut self, expr: impl Into<Expr<f64>>) -> Self {
         let val = expr.into();
 
         self.mutators.push(EntityActions::new(
@@ -127,9 +125,9 @@ impl AbilityBuilder {
             description: "".to_string(),
             mutators: self.mutators,
             observers: self.triggers,
-            cost: self.cost_condition,
+            cost_condition: self.cost_condition,
             execution_conditions: vec![],
-            cost_modifiers: self.cost_mods,
+            cost_modifiers: self.cost_modifiers,
 
             on_execute: self.on_execute,
         }

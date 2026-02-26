@@ -1,17 +1,18 @@
-mod attribute_modifier;
+pub mod attribute_modifier;
 mod calculator;
 mod events;
 
 use crate::condition::BevyContextMut;
 use crate::inspector::pretty_type_name;
 use crate::prelude::*;
-use crate::{TypeIdBindings, Spawnable, AppTypeIdBindings};
+use crate::{AppTypeIdBindings, Spawnable, TypeIdBindings};
 pub use attribute_modifier::AttributeModifier;
 use bevy::prelude::{Commands, Component, Entity, EntityCommands, Reflect, reflect_trait};
 use bevy::reflect::TypeRegistryArc;
 pub use calculator::{AttributeCalculator, AttributeCalculatorCached, ModOp};
 pub use events::{ApplyAttributeModifierMessage, apply_modifier_events};
 use express_it::context::ScopeId;
+use express_it::frame::LazyPlan;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter};
 
@@ -20,7 +21,7 @@ pub type ModifierFn = dyn Fn(&mut EntityCommands, Entity) + Send + Sync;
 #[derive(Component, Default, Copy, Clone, Debug, Reflect)]
 pub struct ModifierMarker;
 
-pub trait Modifier: Spawnable + Send + Sync {
+/*pub trait Modifier: Spawnable + Send + Sync {
     fn apply_immediate(
         &self,
         context: &mut BevyContextMut,
@@ -34,7 +35,7 @@ pub trait Modifier: Spawnable + Send + Sync {
         effect: Entity,
         commands: &mut Commands,
     );
-}
+}*/
 
 #[reflect_trait] // Generates a `ReflectMyTrait` type
 pub trait AccessModifier {

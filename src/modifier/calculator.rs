@@ -1,7 +1,6 @@
 use crate::math::SaturatingAttributes;
 use crate::prelude::{Attribute, AttributeModifier};
 use bevy::prelude::*;
-use express_it::context::ReadContext;
 use express_it::expr::ExpressionError;
 use num_traits::{AsPrimitive, Bounded, FromPrimitive, Zero};
 use serde::Serialize;
@@ -116,9 +115,9 @@ impl<T: Attribute> AttributeCalculator<T> {
 
     pub fn convert(
         modifier: &AttributeModifier<T>,
-        context: &dyn ReadContext,
+        //context: &dyn ReadContext,
     ) -> Result<Self, ExpressionError> {
-        let value = modifier.expression.eval_dyn(context)?;
+        let value = modifier.value; //.eval_dyn(context)?;
 
         let calculator = match modifier.operation {
             ModOp::Set => Self {

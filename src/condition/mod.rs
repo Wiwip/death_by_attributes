@@ -111,15 +111,16 @@ impl WriteContext for BevyContextMut<'_, '_> {
                 .type_path_table()
                 .short_path()
                 .to_string();
-            debug!("Requested type not present on actor: {}/{}", short_name, who);
+            debug!(
+                "Requested type not present on actor: {}/{}",
+                short_name, who
+            );
             ExpressionError::FailedReflect("The entity has no component the requested type.".into())
         })?;
 
-        let dyn_partial_reflect = dyn_reflect
-            .reflect_path_mut("base_value")
-            .map_err(|err| {
-                ExpressionError::FailedReflect(format!("Invalid reflect path: {err}").into())
-            })?;
+        let dyn_partial_reflect = dyn_reflect.reflect_path_mut("base_value").map_err(|err| {
+            ExpressionError::FailedReflect(format!("Invalid reflect path: {err}").into())
+        })?;
 
         let value_reflect = any_to_reflect(&*value);
         dyn_partial_reflect.apply(value_reflect);

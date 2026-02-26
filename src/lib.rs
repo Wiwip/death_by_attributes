@@ -1,5 +1,6 @@
 extern crate core;
 
+use crate::effect::{AttributeDependency, Stacks};
 use bevy::prelude::*;
 use std::any::{Any, TypeId};
 use std::error::Error;
@@ -29,25 +30,26 @@ use crate::ability::{Ability, AbilityCooldown, AbilityOf, AbilityPlugin, Granted
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::attribute_clamp::apply_clamps;
 use crate::attributes::{
-    ReflectAccessAttribute, on_add_attribute, on_change_notify_attribute_dependencies,
+    AttributeId, ReflectAccessAttribute, on_add_attribute, on_change_notify_attribute_dependencies,
     on_change_notify_attribute_parents,
 };
 use crate::condition::ConditionPlugin;
 use crate::effect::global_effect::GlobalEffectPlugin;
 use crate::effect::{
     AppliedEffects, Effect, EffectDuration, EffectSource, EffectSources, EffectTarget,
-    EffectTicker, EffectsPlugin, Stacks,
+    EffectTicker, EffectsPlugin,
 };
 use crate::graph::NodeType;
 use crate::inspector::pretty_type_name;
 use crate::modifier::{
-    ApplyAttributeModifierMessage, AttributeCalculatorCached, apply_modifier_events,
+    ApplyAttributeModifierMessage, AttributeCalculatorCached, ModifierOf, apply_modifier_events,
 };
 use crate::prelude::*;
 use crate::registry::RegistryPlugin;
 use crate::schedule::EffectsSet;
 use crate::systems::{
-    apply_periodic_effect, mark_node_dirty_observer, update_attribute, update_effect_system,
+    MarkNodeDirty, apply_periodic_effect, mark_node_dirty_observer, update_attribute,
+    update_effect_system,
 };
 use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
 use bevy::platform::collections::HashMap;
@@ -56,9 +58,10 @@ pub mod prelude {
     pub use crate::attributes::{
         AccessAttribute, Attribute, AttributeTypeId, ReflectAccessAttribute,
     };
-    pub use crate::modifier::{AccessModifier, AttributeModifier, Modifier};
+    pub use crate::modifier::{AccessModifier, AttributeModifier};
 }
 
+use crate::modifier::attribute_modifier::{update_modifier_when_dependencies_changed, RecalculateExpression};
 pub use num_traits;
 
 pub struct AttributesPlugin;
@@ -111,8 +114,9 @@ pub struct AppTypeIdBindings {
 
 #[derive(Default)]
 pub struct TypeIdBindings {
-    map: HashMap<u64, TypeId>,
-    convert: HashMap<u64, fn(&dyn Any) -> &dyn Reflect>,
+    map: HashMap<AttributeId, TypeId>,
+    convert: HashMap<AttributeId, fn(&dyn Any) -> &dyn Reflect>,
+    insert_dependency_map: HashMap<AttributeId, fn(Entity, &mut EntityCommands)>,
 }
 
 impl TypeIdBindings {
@@ -134,6 +138,11 @@ impl TypeIdBindings {
             let value = any.downcast_ref::<T::Property>().unwrap();
             value.as_reflect()
         });
+
+        let func = |entity, commands: &mut EntityCommands| {
+            commands.insert(AttributeDependency::<T>::new(entity));
+        };
+        self.insert_dependency_map.insert(T::ID, func);
     }
 }
 
@@ -180,6 +189,7 @@ pub fn init_attribute<T: Attribute>(app: &mut App) {
     app.add_observer(mark_node_dirty_observer::<T>);
     app.add_observer(on_add_attribute::<T>);
     app.add_observer(update_attribute::<T>);
+    app.add_observer(update_modifier_when_dependencies_changed::<T>);
 
     debug!(
         "Registered Systems for attribute: {}.",
@@ -204,6 +214,7 @@ pub type AttributesMut<'w, 's> = EntityMutExcept<
         GrantedAbilities,
         AbilityOf,
         AbilityCooldown,
+        ModifierOf,
     ),
 >;
 
@@ -224,6 +235,7 @@ pub type AttributesRef<'w, 's> = EntityRefExcept<
         GrantedAbilities,
         AbilityOf,
         AbilityCooldown,
+        ModifierOf,
     ),
 >;
 

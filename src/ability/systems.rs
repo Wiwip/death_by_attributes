@@ -120,7 +120,7 @@ fn can_activate_ability(
     }
 
     let can_activate = ability_def
-        .cost
+        .cost_condition
         .iter()
         .all(|condition| condition.eval(&context).unwrap_or(false));
 
@@ -218,6 +218,17 @@ pub(crate) fn activate_ability(
             output.flush_into(&mut context);
         }
 
+        let [source, owner] = actors.get_many([trigger.source, trigger.ability])?;
+        let immutable_context = BevyContext {
+            source_actor: &source,
+            target_actor: &source,
+            owner: &owner,
+            type_registry: type_registry.0.clone(),
+            type_bindings: type_bindings.clone(),
+        };
+
+        let plan_results = ability_spec.cost_modifiers.eval(&immutable_context);
+
         let [mut source, mut owner] = actors.get_many_mut([trigger.source, trigger.ability])?;
         let mut context = BevyContextMut {
             source_actor: &mut source,
@@ -226,9 +237,12 @@ pub(crate) fn activate_ability(
             type_registry: type_registry.0.clone(),
             type_bindings: type_bindings.clone(),
         };
-        for modifiers in &ability_spec.cost_modifiers {
+
+        plan_results.flush_into(&mut context);
+
+        /*for modifiers in &ability_spec.cost_modifiers {
             modifiers.apply_immediate(&mut context, type_registry.0.clone(), type_bindings.clone());
-        }
+        }*/
     } else {
         for plan in &ability_spec.on_execute {
             let [source, target, owner] =
@@ -255,18 +269,27 @@ pub(crate) fn activate_ability(
             output.flush_into(&mut context);
         }
 
-        let [mut source, mut target, mut owner] =
-            actors.get_many_mut([trigger.source, trigger.target, trigger.ability])?;
+        let [source, owner] = actors.get_many([trigger.source, trigger.ability])?;
+        let immutable_context = BevyContext {
+            source_actor: &source,
+            target_actor: &source,
+            owner: &owner,
+            type_registry: type_registry.0.clone(),
+            type_bindings: type_bindings.clone(),
+        };
+
+        let plan_results = ability_spec.cost_modifiers.eval(&immutable_context);
+
+        let [mut source, mut owner] = actors.get_many_mut([trigger.source, trigger.ability])?;
         let mut context = BevyContextMut {
             source_actor: &mut source,
-            target_actor: Some(&mut target),
+            target_actor: None,
             owner: &mut owner,
             type_registry: type_registry.0.clone(),
             type_bindings: type_bindings.clone(),
         };
-        for modifiers in &ability_spec.cost_modifiers {
-            modifiers.apply_immediate(&mut context, type_registry.0.clone(), type_bindings.clone());
-        }
+
+        plan_results.flush_into(&mut context);
     };
 
     // Activate the ability

@@ -10,16 +10,14 @@ use crate::assets::AbilityDef;
 use crate::condition::{AbilityCondition, HasComponent};
 use crate::schedule::EffectsSet;
 use bevy::prelude::*;
+pub use builder::AbilityBuilder;
+pub use command::GrantAbilityCommand;
+use express_it::expr::Expr;
+use express_it::logic::{BoolExpr, BoolExprNode};
 use std::error::Error;
 use std::fmt::Formatter;
 use std::sync::Arc;
-use express_it::expr::Expr;
-use express_it::float::FloatExpr;
-use express_it::logic::{BoolExpr, BoolExprNode};
-pub use builder::AbilityBuilder;
-pub use command::GrantAbilityCommand;
 pub use system_param::AbilityContext;
-
 
 pub struct AbilityPlugin;
 
@@ -79,7 +77,7 @@ impl TryActivateAbility {
 #[derive(Component)]
 pub struct AbilityCooldown {
     timer: Timer,
-    value: FloatExpr<f64>,
+    value: Expr<f64>,
 }
 
 #[derive(Debug)]

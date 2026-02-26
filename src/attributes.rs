@@ -1,4 +1,4 @@
-use crate::effect::AttributeDependents;
+
 use crate::inspector::pretty_type_name;
 use crate::math::{AbsDiff, SaturatingAttributes};
 use crate::modifier::{AttributeCalculator, AttributeCalculatorCached};
@@ -6,16 +6,16 @@ use crate::systems::MarkNodeDirty;
 use bevy::ecs::component::Mutable;
 use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
-use bevy::reflect::GetTypeRegistration;
+use bevy::reflect::{GetTypeRegistration, Typed};
 use express_it::context::ScopeId;
-use express_it::expr::{Expr, ExprNode};
+use express_it::expr::{Expr, ExprNode, SelectExprNodeImpl};
 use express_it::frame::Assignment;
 use num_traits::NumCast;
 pub use num_traits::{
     AsPrimitive, Bounded, FromPrimitive, Num, NumAssign, NumAssignOps, NumOps, Saturating,
     SaturatingAdd, SaturatingMul, Zero,
 };
-use std::any::{Any};
+use std::any::Any;
 use std::collections::HashSet;
 use std::fmt::Debug;
 use std::fmt::Display;
@@ -23,35 +23,40 @@ use std::hash::Hasher;
 use std::hash::{DefaultHasher, Hash};
 use std::iter::Sum;
 use std::marker::PhantomData;
+use crate::effect::AttributeDependents;
 
 pub trait Value
 where
     Self: Num + NumOps + NumAssign + NumAssignOps + NumCast,
-    Self: Default + Copy + Clone + Debug + Display,
-    Self: Send + Sync,
+    Self: Default + Copy + Debug + Display,
+    Self: GetTypeRegistration + Typed + Send + Sync,
     Self: SaturatingAttributes<Output = Self> + Sum + Bounded + AbsDiff + PartialOrd,
     Self: FromPrimitive + AsPrimitive<f64> + Reflect,
+    Self: SelectExprNodeImpl<Property = Self>,
 {
 }
 
 impl<T> Value for T
 where
     Self: Num + NumOps + NumAssign + NumAssignOps + NumCast,
-    Self: Default + Copy + Clone + Debug + Display,
-    Self: Send + Sync,
+    Self: Default + Copy + Debug + Display,
+    Self: GetTypeRegistration + Typed + Send + Sync,
     Self: SaturatingAttributes<Output = Self> + Sum + Bounded + AbsDiff + PartialOrd,
     Self: FromPrimitive + AsPrimitive<f64> + Reflect,
+    Self: SelectExprNodeImpl<Property = Self>,
 {
 }
 
+pub type AttributeId = u64;
+
 pub trait Attribute
 where
-    Self: Component<Mutability = Mutable> + Copy + Clone + Debug + Display,
+    Self: Component<Mutability = Mutable> + Copy + Debug + Display,
     Self: Reflect + TypePath + GetTypeRegistration,
 {
     type Property: Value;
     type ExprType: ExprNode<Self::Property>;
-    const ID: u64;
+    const ID: AttributeId;
 
     fn new<T: Num + AsPrimitive<Self::Property> + Copy>(value: T) -> Self;
     fn base_value(&self) -> Self::Property;
@@ -60,20 +65,25 @@ where
     fn borrow_current_value(&self) -> &Self::Property;
     fn set_current_value(&mut self, value: Self::Property);
     // Helper to wrap attribute access in an Expression
-    fn src() -> Expr<Self::Property, Self::ExprType>;
-    fn dst() -> Expr<Self::Property, Self::ExprType>;
-    fn parent() -> Expr<Self::Property, Self::ExprType>;
-    fn lit(value: Self::Property) -> Expr<Self::Property, Self::ExprType>;
+    fn src() -> Expr<Self::Property>;
+    fn dst() -> Expr<Self::Property>;
+    fn parent() -> Expr<Self::Property>;
+    fn scoped(scope: impl Into<ScopeId>) -> Expr<Self::Property>;
+    fn lit(value: Self::Property) -> Expr<Self::Property>;
     // Expression helpers
-    fn set(
-        scope: impl Into<ScopeId>,
-        expr: Expr<Self::Property, Self::ExprType>,
-    ) -> Assignment<Self::Property, Self::ExprType>;
+    fn set(scope: impl Into<ScopeId>, expr: Expr<Self::Property>) -> Assignment<Self::Property>;
     fn add(
         scope: impl Into<ScopeId> + Copy,
-        expr: Expr<Self::Property, Self::ExprType>,
-    ) -> Assignment<Self::Property, Self::ExprType>;
+        expr: Expr<Self::Property>,
+    ) -> Assignment<Self::Property>;
+    fn sub(
+        scope: impl Into<ScopeId> + Copy,
+        expr: Expr<Self::Property>,
+    ) -> Assignment<Self::Property>;
 }
+
+// Move expression-related functions to this subtrait.
+pub trait ExprAttribute: Attribute {}
 
 #[macro_export]
 macro_rules! attribute_impl {
@@ -123,55 +133,68 @@ macro_rules! attribute_impl {
             fn set_current_value(&mut self, value: $ValueType) {
                 self.current_value = value;
             }
-            fn src() -> express_it::expr::Expr<Self::Property, Self::ExprType> {
+            fn src() -> express_it::expr::Expr<Self::Property> {
                 express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
                     express_it::context::Path::from_id($crate::modifier::Who::Source, Self::ID),
                 )))
             }
-            fn dst() -> express_it::expr::Expr<Self::Property, Self::ExprType> {
+            fn dst() -> express_it::expr::Expr<Self::Property> {
                 express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
                     express_it::context::Path::from_id($crate::modifier::Who::Target, Self::ID),
                 )))
             }
-            fn parent() -> express_it::expr::Expr<Self::Property, Self::ExprType> {
+            fn parent() -> express_it::expr::Expr<Self::Property> {
                 express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
                     express_it::context::Path::from_id($crate::modifier::Who::Owner, Self::ID),
                 )))
             }
-            fn lit(value: $ValueType) -> express_it::expr::Expr<Self::Property, Self::ExprType> {
-                express_it::expr::Expr::<Self::Property, Self::ExprType>::new(std::sync::Arc::new(
+            fn scoped(
+                scope: impl Into<express_it::context::ScopeId>,
+            ) -> express_it::expr::Expr<Self::Property> {
+                express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
+                    express_it::context::Path::from_id(scope.into(), Self::ID),
+                )))
+            }
+            fn lit(value: $ValueType) -> express_it::expr::Expr<Self::Property> {
+                express_it::expr::Expr::<Self::Property>::new(std::sync::Arc::new(
                     Self::ExprType::Lit(value),
                 ))
             }
             fn set(
                 scope: impl Into<express_it::context::ScopeId>,
-                expr: express_it::expr::Expr<Self::Property, Self::ExprType>,
-            ) -> express_it::frame::Assignment<Self::Property, Self::ExprType> {
+                expr: express_it::expr::Expr<Self::Property>,
+            ) -> express_it::frame::Assignment<Self::Property> {
                 express_it::frame::Assignment {
-                    path: express_it::context::Path::from_id(
-                        scope,
-                        Self::ID,
-                    ),
+                    path: express_it::context::Path::from_id(scope, Self::ID),
                     expr,
                 }
             }
             fn add(
                 scope: impl Into<express_it::context::ScopeId> + std::marker::Copy,
-                expr: express_it::expr::Expr<Self::Property, Self::ExprType>,
-            ) -> express_it::frame::Assignment<Self::Property, Self::ExprType> {
-                let get_expr = express_it::expr::Expr::new(std::sync::Arc::new(
-                    Self::ExprType::Attribute(express_it::context::Path::from_id(
-                        scope.into(),
-                        Self::ID,
-                    )),
-                ));
+                expr: express_it::expr::Expr<Self::Property>,
+            ) -> express_it::frame::Assignment<Self::Property> {
+                let get_expr =
+                    express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
+                        express_it::context::Path::from_id(scope.into(), Self::ID),
+                    )));
 
                 express_it::frame::Assignment {
-                    path: express_it::context::Path::from_id(
-                        scope.into(),
-                        Self::ID,
-                    ),
+                    path: express_it::context::Path::from_id(scope.into(), Self::ID),
                     expr: get_expr + expr,
+                }
+            }
+            fn sub(
+                scope: impl Into<express_it::context::ScopeId> + std::marker::Copy,
+                expr: express_it::expr::Expr<Self::Property>,
+            ) -> express_it::frame::Assignment<Self::Property> {
+                let get_expr =
+                    express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
+                        express_it::context::Path::from_id(scope.into(), Self::ID),
+                    )));
+
+                express_it::frame::Assignment {
+                    path: express_it::context::Path::from_id(scope.into(), Self::ID),
+                    expr: get_expr - expr,
                 }
             }
         }

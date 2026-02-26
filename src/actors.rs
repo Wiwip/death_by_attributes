@@ -1,6 +1,7 @@
 use crate::ability::{AbilityOf, GrantAbilityCommand};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
-use crate::attribute_clamp::{convert_bounds, Clamp};
+use crate::attribute_clamp::Clamp;
+use crate::attributes::AttributeId;
 use crate::effect::{ApplyEffectEvent, EffectTargeting};
 use crate::graph::NodeType;
 use crate::modifier::AttributeCalculatorCached;
@@ -9,9 +10,10 @@ use crate::prelude::*;
 use crate::GrantedAbilities;
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
+use express_it::expr::Expr;
 use num_traits::{AsPrimitive, Num};
-use std::collections::VecDeque;
-use std::ops::RangeBounds;
+use std::any::Any;
+use std::collections::{HashMap, VecDeque};
 
 #[allow(dead_code)]
 #[derive(Component, Clone, Debug)]
@@ -82,6 +84,9 @@ pub struct ActorBuilder {
     builder_actions: VecDeque<EntityActions>,
     abilities: Vec<Handle<AbilityDef>>,
     effects: Vec<Handle<EffectDef>>,
+
+    // The value is actually Box<(Expr<T>, Expr<T>)>, but hidden behind 'Any'.
+    clamp_exprs: HashMap<AttributeId, Box<dyn Any + Send + Sync>>,
 }
 
 impl ActorBuilder {
@@ -91,6 +96,7 @@ impl ActorBuilder {
             builder_actions: VecDeque::new(),
             abilities: vec![],
             effects: vec![],
+            clamp_exprs: Default::default(),
         }
     }
 
@@ -116,65 +122,71 @@ impl ActorBuilder {
         self
     }
 
-    pub fn clamp<T>(
-        mut self,
-        limits: impl RangeBounds<f64> + Clone + Send + Sync + 'static,
+    /*pub fn clamp<T>(
+        self,
+        _limits: impl RangeBounds<f64> + Clone + Send + Sync + 'static,
     ) -> ActorBuilder
     where
         T: Attribute,
         f64: AsPrimitive<T::Property>,
     {
-        self.builder_actions.push_back(EntityActions::new(
+        unimplemented!();
+        /*self.builder_actions.push_back(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
                 let limits = convert_bounds::<f64, T>(limits.clone());
 
-                entity_commands.insert(Clamp::<T> {
+                /*entity_commands.insert(Clamp::<T> {
                     expression: T::src(),
                     limits,
                     bounds: limits,
-                });
+                });*/
             },
         ));
 
         self
-    }
+        */
+    }*/
 
-    pub fn clamp_by<T>(self, limits: impl RangeBounds<f64> + Send + Sync + 'static) -> ActorBuilder
+    pub fn clamp<T>(
+        mut self,
+        min_expr: impl Into<Expr<T::Property>> + Send + Sync + 'static,
+        max_expr: impl Into<Expr<T::Property>> + Send + Sync + 'static,
+    ) -> ActorBuilder
     where
         T: Attribute,
         //f64: AsPrimitive<T::Property>,
     {
-        let bounds = (limits.start_bound().cloned(), limits.end_bound().cloned());
+        self.clamp_exprs
+            .insert(T::ID, Box::new((min_expr, max_expr)));
 
-        /*self.builder_actions.push_back(EntityActions::new(
+        self.builder_actions.push_back(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
                 let parent_actor = entity_commands.id();
 
-                let mut observer =
-                    Observer::new(observe_current_value_change_for_clamp_bounds::<S, T>);
-                observer.watch_entity(parent_actor);
+                //let mut observer = Observer::new(observe_current_value_change_for_clamp_bounds::<S, T>);
+                //observer.watch_entity(parent_actor);
 
-                entity_commands.insert(Clamp::<T>::new(T::src(), bounds));
+                entity_commands.insert(Clamp::<T>::new());
 
-                entity_commands.commands().spawn((
+                /*entity_commands.commands().spawn((
                     observer,
                     Name::new(format!(
                         "Clamp<{}, {}> Observer",
                         pretty_type_name::<S>(),
                         pretty_type_name::<T>(),
                     )),
-                ));
+                ));*/
 
-                entity_commands
-                    .commands()
-                    .trigger(CurrentValueChanged::<S> {
-                        phantom_data: Default::default(),
-                        old: S::Property::zero(),
-                        new: S::Property::zero(),
-                        entity: parent_actor,
-                    })
+                /*entity_commands
+                .commands()
+                .trigger(CurrentValueChanged::<S> {
+                    phantom_data: Default::default(),
+                    old: S::Property::zero(),
+                    new: S::Property::zero(),
+                    entity: parent_actor,
+                })*/
             },
-        ));*/
+        ));
 
         self
     }
@@ -200,6 +212,7 @@ impl ActorBuilder {
             builder_actions: self.builder_actions,
             abilities: self.abilities,
             effects: self.effects,
+            clamp_exprs: self.clamp_exprs,
         }
     }
 }

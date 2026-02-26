@@ -1,17 +1,17 @@
+use std::collections::HashSet;
 use crate::assets::EffectDef;
 use crate::attributes::Attribute;
-use crate::condition::{IsAttributeWithinBounds};
+use crate::condition::IsAttributeWithinBounds;
 use crate::effect::EffectStackingPolicy;
 use crate::effect::application::EffectApplicationPolicy;
-use crate::modifier::{ModOp, Who};
+use crate::modifier::{AttributeModifier, ModOp, Who};
 use crate::mutator::EntityActions;
-use crate::prelude::*;
 use bevy::ecs::system::IntoObserverSystem;
 use bevy::prelude::{Bundle, Entity, EntityCommands, EntityEvent, Name};
-use std::ops::RangeBounds;
-use std::sync::Arc;
 use express_it::expr::{Expr, ExprNode};
 use express_it::logic::{BoolExpr, BoolExprNode};
+use std::ops::RangeBounds;
+use std::sync::Arc;
 
 pub struct EffectBuilder {
     def: EffectDef,
@@ -24,11 +24,11 @@ impl EffectBuilder {
                 application_policy: application,
                 stacking_policy: EffectStackingPolicy::None,
                 effect_fn: vec![],
-                modifiers: vec![],
                 activate_conditions: vec![],
                 attach_conditions: vec![],
                 on_actor_triggers: vec![],
                 on_effect_triggers: vec![],
+                persistent_modifiers: vec![],
             },
         }
     }
@@ -82,17 +82,19 @@ impl EffectBuilder {
     /// ```
     pub fn modify<T: Attribute>(
         mut self,
-        expr: impl Into<Expr<T::Property, T::ExprType>>,
-        modifier: ModOp,
+        expr: impl Into<Expr<T::Property>>,
+        op: ModOp,
         who: Who,
     ) -> Self {
+        let expr = expr.into();
         self.def
-            .modifiers
-            .push(Box::new(AttributeModifier::<T>::new(
-                expr.into(),
-                modifier,
+            .persistent_modifiers
+            .push(Box::new(AttributeModifier::<T> {
+                expr: expr.clone(),
+                value: T::Property::default(),
                 who,
-            )));
+                operation: op,
+            }));
         self
     }
 
@@ -112,16 +114,12 @@ impl EffectBuilder {
     ///     .build()
     /// ```
     pub fn attach_if(mut self, condition: impl Into<BoolExpr>) -> Self {
-        self.def
-            .attach_conditions
-            .push(condition.into());
+        self.def.attach_conditions.push(condition.into());
         self
     }
 
     pub fn activate_while(mut self, condition: impl Into<BoolExpr>) -> Self {
-        self.def
-            .activate_conditions
-            .push(condition.into());
+        self.def.activate_conditions.push(condition.into());
         self
     }
 
@@ -155,9 +153,7 @@ impl EffectBuilder {
     ) -> Self {
         let predicate = IsAttributeWithinBounds::<T>::new(range, Who::Source);
         let node = BoolExprNode::Boxed(Box::new(predicate));
-        self.def
-            .activate_conditions
-            .push(Expr::new(Arc::new(node)));
+        self.def.activate_conditions.push(Expr::new(Arc::new(node)));
         self
     }
 
@@ -168,9 +164,7 @@ impl EffectBuilder {
         let predicate = IsAttributeWithinBounds::<T>::new(range, Who::Target);
         let node = BoolExprNode::Boxed(Box::new(predicate));
 
-        self.def
-            .activate_conditions
-            .push(Expr::new(Arc::new(node)));
+        self.def.activate_conditions.push(Expr::new(Arc::new(node)));
         self
     }
 

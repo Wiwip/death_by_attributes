@@ -1,26 +1,36 @@
-use crate::condition::{BevyContext, BevyContextMut};
+use crate::condition::BevyContext;
+use crate::effect::{EffectSource, EffectTarget};
 use crate::inspector::pretty_type_name;
-use crate::math::AbsDiff;
-use crate::modifier::calculator::{AttributeCalculator, ModOp};
-use crate::modifier::events::ApplyAttributeModifierMessage;
-use crate::modifier::{Modifier, ModifierMarker};
+use crate::modifier::calculator::ModOp;
+use crate::modifier::{ModifierMarker, ModifierOf};
 use crate::modifier::{ReflectAccessModifier, Who};
 use crate::prelude::*;
-use crate::{TypeIdBindings, Spawnable, AppTypeIdBindings};
+use crate::systems::MarkNodeDirty;
+use crate::{AppTypeIdBindings, AttributesRef, TypeIdBindings};
 use bevy::prelude::*;
-use bevy::reflect::TypeRegistryArc;
-use express_it::expr::Expr;
-use std::any::type_name;
-use std::fmt::Debug;
+use express_it::expr::{Expr, ExprNode, SelectExprNodeImpl};
+use std::collections::HashSet;
 use std::fmt::Display;
+use std::marker::PhantomData;
 
-#[derive(Component, Debug, Reflect)]
+pub trait PersistentModifier: Send + Sync {
+    fn spawn_persistent_modifier(
+        &self,
+        actor_entity: Entity,
+        ctx: &BevyContext,
+        type_bindings: &TypeIdBindings,
+        commands: &mut EntityCommands,
+    );
+}
+
+#[derive(Component, Clone, Reflect)]
 #[reflect(Component, from_reflect = false)]
 #[reflect(AccessModifier)]
 #[require(ModifierMarker)]
 pub struct AttributeModifier<T: Attribute> {
     #[reflect(ignore)]
-    pub expression: Expr<T::Property, T::ExprType>,
+    pub expr: Expr<T::Property>,
+    pub value: T::Property,
     pub who: Who,
     pub operation: ModOp,
 }
@@ -29,12 +39,56 @@ impl<T> AttributeModifier<T>
 where
     T: Attribute + 'static,
 {
-    pub fn new(value: Expr<T::Property, T::ExprType>, modifier: ModOp, who: Who) -> Self {
+    pub fn new(value: T::Property, modifier: ModOp, who: Who, expr: Expr<T::Property>) -> Self {
         Self {
-            expression: value,
+            expr,
+            value,
             who,
             operation: modifier,
         }
+    }
+}
+
+impl<T> PersistentModifier for AttributeModifier<T>
+where
+    T: Attribute,
+    T::Property: SelectExprNodeImpl<Property = T::Property>,
+{
+    fn spawn_persistent_modifier(
+        &self,
+        actor_entity: Entity,
+        ctx: &BevyContext,
+        type_bindings: &TypeIdBindings,
+        commands: &mut EntityCommands,
+    ) {
+        let Ok(value) = self.expr.eval_dyn(ctx) else {
+            error!(
+                "{}: Could not resolve expression to spawn persistent modifier.",
+                commands.id()
+            );
+            return;
+        };
+
+        let modifier = AttributeModifier::<T> {
+            expr: self.expr.clone(),
+            value,
+            who: self.who,
+            operation: self.operation,
+        };
+        let display = modifier.to_string();
+
+        // Spawn the observer. Watches the actor for attribute value changes.
+        let mut dependencies = HashSet::default();
+        self.expr.inner.get_dependencies(&mut dependencies);
+        for dependency in dependencies {
+            let attr_dep = type_bindings
+                .insert_dependency_map
+                .get(&dependency.id)
+                .unwrap();
+            attr_dep(actor_entity, commands);
+        }
+
+        commands.insert((modifier, Name::new(format!("{}", display))));
     }
 }
 
@@ -48,14 +102,59 @@ where
             "Mod<{}>({}{}) {}",
             pretty_type_name::<T>(),
             self.operation,
-            "expr", //self.expression,
+            self.value,
             self.who,
         )
     }
 }
 
-impl<T: Attribute> Modifier for AttributeModifier<T> {
-    fn apply_immediate(&self, context: &mut BevyContextMut, type_registry: TypeRegistryArc, type_bindings: AppTypeIdBindings) -> bool {
+#[derive(EntityEvent)]
+pub struct RecalculateExpression {
+    #[event_target]
+    pub modifier_entity: Entity,
+}
+
+/// When the attribute changes, update the values of dependent AttributeModifier<T>.
+pub fn update_modifier_when_dependencies_changed<T: Attribute>(
+    trigger: On<RecalculateExpression>,
+    mut modifiers: Query<(&mut AttributeModifier<T>, &ModifierOf)>,
+    effects: Query<(&EffectSource, &EffectTarget)>,
+    actors: Query<AttributesRef, Without<AttributeModifier<T>>>,
+    type_registry: Res<AppTypeRegistry>,
+    type_bindings: Res<AppTypeIdBindings>,
+    mut commands: Commands,
+) {
+    let Ok((mut modifier, effect_id)) = modifiers.get_mut(trigger.modifier_entity) else {
+        //error!("{}: Missing AttributeModifier<{}>", trigger.modifier_entity, pretty_type_name::<T>());
+        return;
+    };
+    let (source, target) = effects.get(effect_id.0).unwrap();
+    let [source_ref, target_ref] = actors.get_many([source.0, target.0]).unwrap();
+
+    let context = BevyContext {
+        target_actor: &target_ref,
+        source_actor: &source_ref,
+        owner: &source_ref,
+        type_registry: type_registry.0.clone(),
+        type_bindings: type_bindings.clone(),
+    };
+
+    let new_val = modifier.expr.eval_dyn(&context).unwrap();
+    modifier.value = new_val;
+
+    commands.trigger(MarkNodeDirty::<T> {
+        entity: effect_id.0,
+        phantom_data: Default::default(),
+    });
+}
+
+/*impl<T: Attribute> Modifier for AttributeModifier<T> {
+    fn apply_immediate(
+        &self,
+        context: &mut BevyContextMut,
+        type_registry: TypeRegistryArc,
+        type_bindings: AppTypeIdBindings,
+    ) -> bool {
         let immutable_context = BevyContext {
             source_actor: &context.source_actor.as_readonly(),
             target_actor: &context.source_actor.as_readonly(),
@@ -100,27 +199,17 @@ impl<T: Attribute> Modifier for AttributeModifier<T> {
             modifier: self.clone(),
         });
     }
-}
+}*/
 
-impl<T: Attribute> Spawnable for AttributeModifier<T> {
+/*impl<T: Attribute> Spawnable for AttributeModifier<T> {
     fn spawn(&self, commands: &mut EntityCommands) {
         commands.insert((
             AttributeModifier::<T> {
-                expression: self.expression.clone(),
+                value: self.value.clone(),
                 who: self.who,
                 operation: self.operation,
             },
             Name::new(format!("{}", self)),
         ));
     }
-}
-
-impl<T: Attribute> Clone for AttributeModifier<T> {
-    fn clone(&self) -> Self {
-        AttributeModifier {
-            expression: self.expression.clone(),
-            who: self.who,
-            operation: self.operation,
-        }
-    }
-}
+}*/

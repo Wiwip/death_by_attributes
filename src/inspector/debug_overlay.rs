@@ -210,7 +210,10 @@ fn list_modifiers_for_effect(
     // List attributes for printing
     for (name, _, type_id, _) in modifier_components.iter() {
         let Some(type_id) = type_id else {
-            error!("Failed to get type registration for entity {:?} / {}", *type_id, name);
+            error!(
+                "Failed to get type registration for entity {:?} / {}",
+                *type_id, name
+            );
             continue;
         };
 

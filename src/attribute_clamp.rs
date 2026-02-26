@@ -5,28 +5,21 @@ use bevy::prelude::*;
 use num_traits::{AsPrimitive, Bounded, Num};
 use std::collections::Bound;
 use std::ops::RangeBounds;
-use express_it::expr::Expr;
 
 #[derive(Component, Debug, Clone)]
 pub struct Clamp<T: Attribute> {
-    pub(crate) expression: Expr<T::Property, T::ExprType>,
-    pub(crate) limits: (Bound<T::Property>, Bound<T::Property>),
-    pub(crate) bounds: (Bound<T::Property>, Bound<T::Property>),
+    pub min_limit: T::Property,
+    pub max_limit: T::Property,
 }
 
 impl<T> Clamp<T>
 where
     T: Attribute,
-    f64: AsPrimitive<T::Property>,
 {
-    pub fn new(
-        expression: Expr<T::Property, T::ExprType>,
-        limits: impl RangeBounds<f64> + Send + Sync + Copy + 'static,
-    ) -> Self {
+    pub fn new() -> Self {
         Self {
-            expression,
-            limits: convert_bounds::<f64, T>(limits),
-            bounds: (Bound::Unbounded, Bound::Unbounded),
+            min_limit: T::Property::default(),
+            max_limit: T::Property::default(),
         }
     }
 }
@@ -85,10 +78,10 @@ where
     T: Attribute,
 {
     for (mut attribute_data, clamp) in query.iter_mut() {
-        let clamp_value = bound_clamp(attribute_data.attribute.base_value(), clamp.bounds);
+        /*let clamp_value = bound_clamp(attribute_data.attribute.base_value(), clamp.bounds);
         attribute_data.attribute.set_base_value(clamp_value);
 
-        attribute_data.update_attribute_from_cache();
+        attribute_data.update_attribute_from_cache();*/
     }
 }
 

@@ -6,15 +6,16 @@ use crate::modifier::Who;
 use bevy::asset::AssetId;
 use bevy::prelude::{Component, TypePath};
 use bevy::reflect::Reflect;
+use express_it::context::{Path, ReadContext};
 use express_it::expr::{Expr, ExprNode, ExpressionError};
 use express_it::logic::{BoolExpr, BoolExprNode};
 use serde::Serialize;
 use std::any::{Any, TypeId};
+use std::collections::HashSet;
 use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::ops::{Bound, RangeBounds};
 use std::sync::Arc;
-use express_it::context::{Path, ReadContext};
 
 pub type StackCondition = IsAttributeWithinBounds<Stacks>;
 
@@ -62,6 +63,10 @@ impl<T: Attribute> ExprNode<bool> for IsAttributeWithinBounds<T> {
 
         Ok(self.bounds.contains(&attribute.current_value()))
     }
+
+    fn get_dependencies(&self, deps: &mut HashSet<Path>) {
+        todo!()
+    }
 }
 
 impl<T: Attribute> Into<BoolExpr> for IsAttributeWithinBounds<T> {
@@ -105,6 +110,10 @@ impl ExprNode<bool> for ChanceCondition {
     fn eval(&self, _: &dyn ReadContext) -> Result<bool, ExpressionError> {
         Ok(rand::random::<f32>() < self.0)
     }
+
+    fn get_dependencies(&self, deps: &mut HashSet<Path>) {
+        todo!()
+    }
 }
 
 impl std::fmt::Debug for ChanceCondition {
@@ -145,6 +154,10 @@ impl<C: Component + Reflect> ExprNode<bool> for HasComponent<C> {
         let any = ctx.get_any_component(Who::Owner.into(), TypeId::of::<C>());
         Ok(any.is_ok())
     }
+
+    fn get_dependencies(&self, deps: &mut HashSet<Path>) {
+        todo!()
+    }
 }
 
 impl<C: Component> std::fmt::Debug for HasComponent<C> {
@@ -171,6 +184,10 @@ impl ExprNode<bool> for AbilityCondition {
         .map(|ability| ability.0.id() == self.asset)
         .unwrap_or(false))*/
         unimplemented!()
+    }
+
+    fn get_dependencies(&self, deps: &mut HashSet<Path>) {
+        todo!()
     }
 }
 

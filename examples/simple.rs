@@ -68,7 +68,7 @@ fn main() {
             init_attribute::<MagicPower>,
         ))
         .add_plugins(EguiPlugin::default())
-        .add_plugins(DefaultInspectorConfigPlugin)
+        //.add_plugins(DefaultInspectorConfigPlugin)
         .add_plugins(WorldInspectorPlugin::default())
         .add_plugins(ActorInspectorPlugin)
         .add_systems(
@@ -127,13 +127,13 @@ fn setup_effects(mut commands: Commands, mut ctx: EffectContext) {
     let mp_buff = ctx.add_effect(
         Effect::permanent()
             .name("MagicPower Buff".into())
-            .modify::<MagicPower>(Intelligence::src(), ModOp::Add, Who::Target)
+            .modify::<MagicPower>(Mana::src(), ModOp::Add, Who::Target)
             .modify::<MagicPower>(5u32, ModOp::Add, Who::Target)
-            .activate_while(IsAttributeWithinBounds::<Health>::new(..=500, Who::Source))
-            .with_stacking_policy(EffectStackingPolicy::Add {
+            //.activate_while(IsAttributeWithinBounds::<Health>::new(..=500, Who::Source))
+            /*.with_stacking_policy(EffectStackingPolicy::Add {
                 count: 1,
                 max_stack: 10,
-            })
+            })*/
             .build(),
     );
 
@@ -244,7 +244,7 @@ fn setup_actor(mut ctx: EffectContext, efx: Res<EffectsDatabase>, abilities: Res
         .with::<Mana>(30u32)
         .with::<ManaPool>(60.0)
         .with::<ManaRegen>(4.0)
-        //.clamp_by::<ManaPool, Mana>(..=1.0)
+        .clamp::<Mana>(0, ManaPool::src())
         // Misc
         .with::<MagicPower>(1.0)
         .with::<AttackPower>(10.0)

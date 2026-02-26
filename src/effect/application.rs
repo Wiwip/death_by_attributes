@@ -1,4 +1,3 @@
-use crate::{TypeIdBindings, AttributesMut, AppTypeIdBindings};
 use crate::assets::EffectDef;
 use crate::condition::BevyContext;
 use crate::effect::stacks::NotifyAddStackEvent;
@@ -7,7 +6,8 @@ use crate::effect::{
     AppliedEffects, Effect, EffectSource, EffectStackingPolicy, EffectTarget, EffectTargeting,
 };
 use crate::graph::NodeType;
-use crate::modifier::{Modifier, ModifierOf};
+use crate::modifier::ModifierOf;
+use crate::{AppTypeIdBindings, AttributesMut, TypeIdBindings};
 use bevy::asset::{Assets, Handle};
 use bevy::log::debug;
 use bevy::prelude::*;
@@ -129,8 +129,8 @@ pub struct ApplyEffectEvent {
 impl ApplyEffectEvent {
     fn apply_instant_effect(
         &self,
-        mut actors: &mut Query<(Option<&AppliedEffects>, AttributesMut), Without<Effect>>,
-        commands: &mut Commands,
+        actors: &mut Query<(Option<&AppliedEffects>, AttributesMut), Without<Effect>>,
+        _commands: &mut Commands,
         effect: &EffectDef,
         type_registry: TypeRegistryArc,
         type_bindings: AppTypeIdBindings,
@@ -162,7 +162,7 @@ impl ApplyEffectEvent {
             return Ok(());
         }
 
-        self.apply_modifiers(&mut actors, &mut effect.modifiers.iter(), commands);
+        //self.apply_modifiers(&mut actors, &mut effect.modifiers.iter(), commands);
         Ok(())
     }
 
@@ -171,16 +171,16 @@ impl ApplyEffectEvent {
         actors: &'a mut Query<(Option<&AppliedEffects>, AttributesMut), Without<Effect>>,
         modifiers: &mut I,
         commands: &mut Commands,
-    ) where
-        I: Iterator<Item = &'a Box<dyn Modifier>>,
+    ) /*where
+    I: Iterator<Item = &'a Box<dyn Modifier>>,*/
     {
-        let [(_, source), (_, target)] = actors
+        /*let [(_, source), (_, target)] = actors
             .get_many([self.targeting.source(), self.targeting.target()])
             .unwrap();
 
         for modifier in modifiers {
             modifier.apply_delayed(source.id(), target.id(), self.entity, commands);
-        }
+        }*/
     }
 
     fn spawn_persistent_effect(
@@ -238,7 +238,7 @@ impl ApplyEffectEvent {
             source_actor: &source_actor_ref,
             owner: &source_actor_ref, // TODO: Should this be the source actor? The effect doesn't exist for instant effects.
             type_registry,
-            type_bindings,
+            type_bindings: type_bindings.clone(),
         };
 
         // Determines whether the effect should activate
@@ -275,9 +275,10 @@ impl ApplyEffectEvent {
         }
 
         // Spawn effect modifiers
-        effect.modifiers.iter().for_each(|modifier| {
+        let bindings = type_bindings.internal.read().unwrap();
+        effect.persistent_modifiers.iter().for_each(|modifier| {
             let mut entity_commands = commands.spawn(ModifierOf(effect_entity));
-            modifier.spawn(&mut entity_commands);
+            modifier.spawn_persistent_modifier(source_actor_ref.id(), &context, &bindings, &mut entity_commands);
         });
 
         // Spawn effect triggers
