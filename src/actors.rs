@@ -1,24 +1,23 @@
+use crate::GrantedAbilities;
 use crate::ability::{AbilityOf, GrantAbilityCommand};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
-use crate::attribute_clamp::Clamp;
+use crate::attribute::clamps::Clamp;
 use crate::attributes::AttributeId;
 use crate::effect::{ApplyEffectEvent, EffectTargeting};
 use crate::graph::NodeType;
 use crate::modifier::AttributeCalculatorCached;
 use crate::mutator::EntityActions;
 use crate::prelude::*;
-use crate::GrantedAbilities;
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use express_it::expr::Expr;
+use express_it::expr::{Expr, ExprNode};
 use num_traits::{AsPrimitive, Num};
 use std::any::Any;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
-#[allow(dead_code)]
-#[derive(Component, Clone, Debug)]
+#[derive(Component, Clone, Debug, Deref)]
 #[require(GrantedAbilities)]
-pub struct Actor(Handle<ActorDef>);
+pub struct Actor(pub Handle<ActorDef>);
 
 pub struct SpawnActorCommand {
     pub handle: Handle<ActorDef>,
@@ -87,6 +86,7 @@ pub struct ActorBuilder {
 
     // The value is actually Box<(Expr<T>, Expr<T>)>, but hidden behind 'Any'.
     clamp_exprs: HashMap<AttributeId, Box<dyn Any + Send + Sync>>,
+    clamp_reverse_lookup: HashMap<AttributeId, Vec<AttributeId>>,
 }
 
 impl ActorBuilder {
@@ -97,6 +97,7 @@ impl ActorBuilder {
             abilities: vec![],
             effects: vec![],
             clamp_exprs: Default::default(),
+            clamp_reverse_lookup: Default::default(),
         }
     }
 
@@ -122,69 +123,37 @@ impl ActorBuilder {
         self
     }
 
-    /*pub fn clamp<T>(
-        self,
-        _limits: impl RangeBounds<f64> + Clone + Send + Sync + 'static,
-    ) -> ActorBuilder
-    where
-        T: Attribute,
-        f64: AsPrimitive<T::Property>,
-    {
-        unimplemented!();
-        /*self.builder_actions.push_back(EntityActions::new(
-            move |entity_commands: &mut EntityCommands| {
-                let limits = convert_bounds::<f64, T>(limits.clone());
-
-                /*entity_commands.insert(Clamp::<T> {
-                    expression: T::src(),
-                    limits,
-                    bounds: limits,
-                });*/
-            },
-        ));
-
-        self
-        */
-    }*/
-
     pub fn clamp<T>(
         mut self,
+
         min_expr: impl Into<Expr<T::Property>> + Send + Sync + 'static,
         max_expr: impl Into<Expr<T::Property>> + Send + Sync + 'static,
     ) -> ActorBuilder
     where
         T: Attribute,
-        //f64: AsPrimitive<T::Property>,
     {
+        let min_expr = min_expr.into();
+        let max_expr = max_expr.into();
+
+        // Insert dependencies for reverse lookup
+        let mut deps = HashSet::default();
+        min_expr.inner.get_dependencies(&mut deps);
+        max_expr.inner.get_dependencies(&mut deps);
+        println!("deps: {:?}", deps);
+        for dep in deps {
+            self.clamp_reverse_lookup
+                .entry(dep.id)
+                .or_default()
+                .push(dep.id);
+        }
+
+        // Insert expressions
         self.clamp_exprs
             .insert(T::ID, Box::new((min_expr, max_expr)));
 
         self.builder_actions.push_back(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
-                let parent_actor = entity_commands.id();
-
-                //let mut observer = Observer::new(observe_current_value_change_for_clamp_bounds::<S, T>);
-                //observer.watch_entity(parent_actor);
-
                 entity_commands.insert(Clamp::<T>::new());
-
-                /*entity_commands.commands().spawn((
-                    observer,
-                    Name::new(format!(
-                        "Clamp<{}, {}> Observer",
-                        pretty_type_name::<S>(),
-                        pretty_type_name::<T>(),
-                    )),
-                ));*/
-
-                /*entity_commands
-                .commands()
-                .trigger(CurrentValueChanged::<S> {
-                    phantom_data: Default::default(),
-                    old: S::Property::zero(),
-                    new: S::Property::zero(),
-                    entity: parent_actor,
-                })*/
             },
         ));
 
@@ -213,6 +182,7 @@ impl ActorBuilder {
             abilities: self.abilities,
             effects: self.effects,
             clamp_exprs: self.clamp_exprs,
+            clamp_reverse_lookup: self.clamp_reverse_lookup,
         }
     }
 }

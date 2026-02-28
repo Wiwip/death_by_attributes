@@ -7,7 +7,7 @@ use crate::ability::systems::{
     activate_ability, reset_ability_cooldown, tick_ability_cooldown, try_activate_ability_observer,
 };
 use crate::assets::AbilityDef;
-use crate::condition::{AbilityCondition, HasComponent};
+use crate::condition::{HasComponent};
 use crate::schedule::EffectsSet;
 use bevy::prelude::*;
 pub use builder::AbilityBuilder;
@@ -64,7 +64,7 @@ impl TryActivateAbility {
             target_data,
         }
     }
-    pub fn by_def(target: Entity, handle: AssetId<AbilityDef>, target_data: TargetData) -> Self {
+    pub fn by_def(_target: Entity, _handle: AssetId<AbilityDef>, _target_data: TargetData) -> Self {
         unimplemented!()
         /*Self {
             ability: target,

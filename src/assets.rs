@@ -20,6 +20,7 @@ pub struct ActorDef {
     // The value below is hidden behind 'Any' but actually:
     // Box<(Expr<T::Property>, Expr<T::Property>)>
     pub clamp_exprs: HashMap<AttributeId, Box<dyn Any + Send + Sync>>,
+    pub clamp_reverse_lookup: HashMap<AttributeId, Vec<AttributeId>>
 }
 
 #[derive(Asset, TypePath)]

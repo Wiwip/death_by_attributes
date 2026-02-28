@@ -3,7 +3,6 @@ use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::window::PresentMode;
 use bevy_egui::EguiPlugin;
-use bevy_inspector_egui::DefaultInspectorConfigPlugin;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use express_it::frame::LazyPlan;
 use std::fmt::Debug;
@@ -12,9 +11,8 @@ use vitality::ability::{AbilityBuilder, AbilityExecute, TargetData, TryActivateA
 use vitality::actors::ActorBuilder;
 use vitality::assets::{AbilityDef, EffectDef};
 use vitality::attributes::ReflectAccessAttribute;
-use vitality::condition::IsAttributeWithinBounds;
 use vitality::context::EffectContext;
-use vitality::effect::{Effect, EffectBuilder, EffectStackingPolicy};
+use vitality::effect::{Effect, EffectStackingPolicy};
 use vitality::graph::DependencyGraph;
 use vitality::inspector::ActorInspectorPlugin;
 use vitality::inspector::debug_overlay::DebugOverlayMarker;
@@ -232,14 +230,14 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
 fn setup_actor(mut ctx: EffectContext, efx: Res<EffectsDatabase>, abilities: Res<AbilityDatabase>) {
     let actor_template = ActorBuilder::new()
         .name("=== Player ===".into())
-        .with::<Strength>(12.0)
-        .with::<Agility>(7.0)
-        .with::<Intelligence>(1.0)
+        .with::<Strength>(12)
+        .with::<Agility>(7)
+        .with::<Intelligence>(1)
         // Health
         .with::<Health>(85.0)
         .with::<MaxHealth>(100.0)
         .with::<HealthRegen>(2.0)
-        //.clamp_by::<MaxHealth, Health>(..=1.0)
+        .clamp::<Health>(0, MaxHealth::src() + Strength::src())
         // Mana
         .with::<Mana>(30u32)
         .with::<ManaPool>(60.0)
@@ -256,7 +254,7 @@ fn setup_actor(mut ctx: EffectContext, efx: Res<EffectsDatabase>, abilities: Res
 
     let player_entity = ctx.add_spawn_actor(actor_template).id();
 
-    let test_entity = ctx
+    /*let test_entity = ctx
         .add_spawn_actor(
             ActorBuilder::new()
                 .name("==Test==")
@@ -264,17 +262,17 @@ fn setup_actor(mut ctx: EffectContext, efx: Res<EffectsDatabase>, abilities: Res
                 .insert(DebugOverlayMarker)
                 .build(),
         )
-        .id();
+        .id();*/
 
-    let test_effect = EffectBuilder::permanent()
+    /*let test_effect = EffectBuilder::permanent()
         .modify::<Strength>(Strength::src(), ModOp::Add, Who::Target)
-        .build();
-    ctx.apply_dynamic_effect_to_target(test_entity, player_entity, test_effect);
+        .build();*/
+    //ctx.apply_dynamic_effect_to_target(test_entity, player_entity, test_effect);
 
-    let test_effect = EffectBuilder::permanent()
+    /*let test_effect = EffectBuilder::permanent()
         .modify::<Intelligence>(Strength::src(), ModOp::Add, Who::Target)
-        .build();
-    ctx.apply_dynamic_effect_to_target(player_entity, test_entity, test_effect);
+        .build();*/
+    //ctx.apply_dynamic_effect_to_target(player_entity, test_entity, test_effect);
 
     ctx.apply_effect_to_self(player_entity, &efx.ap_buff);
     ctx.apply_effect_to_self(player_entity, &efx.hp_buff);

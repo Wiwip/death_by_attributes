@@ -11,7 +11,6 @@ use std::sync::{Arc, RwLock};
 pub mod ability;
 pub mod actors;
 pub mod assets;
-mod attribute_clamp;
 pub mod attributes;
 pub mod condition;
 pub mod context;
@@ -25,10 +24,10 @@ pub mod registry;
 mod schedule;
 mod systems;
 mod trigger;
+mod attribute;
 
 use crate::ability::{Ability, AbilityCooldown, AbilityOf, AbilityPlugin, GrantedAbilities};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
-use crate::attribute_clamp::apply_clamps;
 use crate::attributes::{
     AttributeId, ReflectAccessAttribute, on_add_attribute, on_change_notify_attribute_dependencies,
     on_change_notify_attribute_parents,
@@ -48,7 +47,7 @@ use crate::prelude::*;
 use crate::registry::RegistryPlugin;
 use crate::schedule::EffectsSet;
 use crate::systems::{
-    MarkNodeDirty, apply_periodic_effect, mark_node_dirty_observer, update_attribute,
+    apply_periodic_effect, mark_node_dirty_observer, update_attribute,
     update_effect_system,
 };
 use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
@@ -61,14 +60,15 @@ pub mod prelude {
     pub use crate::modifier::{AccessModifier, AttributeModifier};
 }
 
-use crate::modifier::attribute_modifier::{update_modifier_when_dependencies_changed, RecalculateExpression};
+use crate::modifier::attribute_modifier::{update_modifier_when_dependencies_changed};
 pub use num_traits;
+use crate::attribute::clamps::{apply_clamps, update_clamps, Clamp};
 
 pub struct AttributesPlugin;
 
 impl Plugin for AttributesPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<AppTypeIdBindings>()
+        app.init_resource::<AppAttributeBindings>()
             .add_plugins((
                 AbilityPlugin,
                 ConditionPlugin,
@@ -108,18 +108,18 @@ impl AttributesPlugin {
 }
 
 #[derive(Resource, Clone, Default)]
-pub struct AppTypeIdBindings {
-    pub internal: Arc<RwLock<TypeIdBindings>>,
+pub struct AppAttributeBindings {
+    pub internal: Arc<RwLock<AttributeBindings>>,
 }
 
 #[derive(Default)]
-pub struct TypeIdBindings {
+pub struct AttributeBindings {
     map: HashMap<AttributeId, TypeId>,
     convert: HashMap<AttributeId, fn(&dyn Any) -> &dyn Reflect>,
     insert_dependency_map: HashMap<AttributeId, fn(Entity, &mut EntityCommands)>,
 }
 
-impl TypeIdBindings {
+impl AttributeBindings {
     fn add<T: Attribute>(&mut self) {
         let previous = self.map.insert(T::ID, TypeId::of::<T>());
 
@@ -149,13 +149,14 @@ impl TypeIdBindings {
 pub fn init_attribute<T: Attribute>(app: &mut App) {
     app.register_type::<T>();
     app.register_type::<AttributeModifier<T>>();
+    app.register_type::<Clamp<T>>();
     app.register_type::<AttributeCalculatorCached<T>>();
     app.register_type_data::<T, ReflectAccessAttribute>();
     app.add_message::<ApplyAttributeModifierMessage<T>>();
 
     // Register u64->TypeId bindings for expressions
     app.world_mut()
-        .resource_mut::<AppTypeIdBindings>()
+        .resource_mut::<AppAttributeBindings>()
         .internal
         .write()
         .unwrap()
@@ -190,6 +191,7 @@ pub fn init_attribute<T: Attribute>(app: &mut App) {
     app.add_observer(on_add_attribute::<T>);
     app.add_observer(update_attribute::<T>);
     app.add_observer(update_modifier_when_dependencies_changed::<T>);
+    app.add_observer(update_clamps::<T>);
 
     debug!(
         "Registered Systems for attribute: {}.",

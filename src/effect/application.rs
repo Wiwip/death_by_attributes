@@ -7,7 +7,7 @@ use crate::effect::{
 };
 use crate::graph::NodeType;
 use crate::modifier::ModifierOf;
-use crate::{AppTypeIdBindings, AttributesMut, TypeIdBindings};
+use crate::{AppAttributeBindings, AttributesMut};
 use bevy::asset::{Assets, Handle};
 use bevy::log::debug;
 use bevy::prelude::*;
@@ -133,7 +133,7 @@ impl ApplyEffectEvent {
         _commands: &mut Commands,
         effect: &EffectDef,
         type_registry: TypeRegistryArc,
-        type_bindings: AppTypeIdBindings,
+        type_bindings: AppAttributeBindings,
     ) -> Result<(), BevyError> {
         debug!("Applying instant effect to {}", self.targeting.target());
 
@@ -166,13 +166,13 @@ impl ApplyEffectEvent {
         Ok(())
     }
 
-    fn apply_modifiers<'a, I>(
+    fn _apply_modifiers<'a, I>(
         &self,
-        actors: &'a mut Query<(Option<&AppliedEffects>, AttributesMut), Without<Effect>>,
-        modifiers: &mut I,
-        commands: &mut Commands,
+        _actors: &'a mut Query<(Option<&AppliedEffects>, AttributesMut), Without<Effect>>,
+        _modifiers: &mut I,
+        _commands: &mut Commands,
     ) /*where
-    I: Iterator<Item = &'a Box<dyn Modifier>>,*/
+        I: Iterator<Item = &'a Box<dyn Modifier>>,*/
     {
         /*let [(_, source), (_, target)] = actors
             .get_many([self.targeting.source(), self.targeting.target()])
@@ -191,7 +191,7 @@ impl ApplyEffectEvent {
         effects: &mut Query<&Effect>,
         add_stack_event: &mut MessageWriter<NotifyAddStackEvent>,
         type_registry: TypeRegistryArc,
-        type_bindings: AppTypeIdBindings,
+        type_bindings: AppAttributeBindings,
     ) -> Result<(), BevyError> {
         // We want to know whether an effect with the same handle already points to the actor
         let (optional_effects, _) = actors.get_mut(self.targeting.target())?;
@@ -305,7 +305,7 @@ pub(crate) fn apply_effect_event_observer(
     mut writer: MessageWriter<NotifyAddStackEvent>,
     mut commands: Commands,
     type_registry: Res<AppTypeRegistry>,
-    type_bindings: Res<AppTypeIdBindings>,
+    type_bindings: Res<AppAttributeBindings>,
 ) -> Result<(), BevyError> {
     let effect = effect_assets
         .get(&trigger.handle)

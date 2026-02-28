@@ -7,7 +7,6 @@ use petgraph::visit::{GraphBase, IntoNeighbors};
 use ptree::{TreeBuilder, print_tree};
 use std::collections::HashSet;
 use std::panic;
-use std::panic::catch_unwind;
 
 /// Attributes are Components and inserted on Entities.
 /// - Derived attributes could be used

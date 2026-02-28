@@ -1,14 +1,13 @@
-use std::collections::HashSet;
 use crate::assets::EffectDef;
 use crate::attributes::Attribute;
 use crate::condition::IsAttributeWithinBounds;
-use crate::effect::EffectStackingPolicy;
 use crate::effect::application::EffectApplicationPolicy;
+use crate::effect::EffectStackingPolicy;
 use crate::modifier::{AttributeModifier, ModOp, Who};
 use crate::mutator::EntityActions;
 use bevy::ecs::system::IntoObserverSystem;
 use bevy::prelude::{Bundle, Entity, EntityCommands, EntityEvent, Name};
-use express_it::expr::{Expr, ExprNode};
+use express_it::expr::Expr;
 use express_it::logic::{BoolExpr, BoolExprNode};
 use std::ops::RangeBounds;
 use std::sync::Arc;

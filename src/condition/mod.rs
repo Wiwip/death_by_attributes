@@ -1,20 +1,17 @@
 use crate::condition::systems::evaluate_effect_conditions;
 use bevy::app::{App, Plugin};
-use bevy::log::tracing_subscriber::registry;
-use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
-use bevy_inspector_egui::__macro_exports::bevy_reflect::TypeRegistryArc;
 use express_it::context::{Accessor, ReadContext, ScopeId, WriteContext};
 use express_it::expr::ExpressionError;
 use std::any::{Any, TypeId};
+use bevy::reflect::TypeRegistryArc;
 
 mod conditions;
 mod systems;
 
 use crate::modifier::Who;
-use crate::prelude::AttributeModifier;
 use crate::schedule::EffectsSet;
-use crate::{AppTypeIdBindings, AttributesMut, AttributesRef, TypeIdBindings};
+use crate::{AppAttributeBindings, AttributesMut, AttributesRef};
 pub use conditions::{
     AbilityCondition, ChanceCondition, HasComponent, IsAttributeWithinBounds, StackCondition,
 };
@@ -39,7 +36,7 @@ pub struct BevyContextMut<'w, 's> {
     pub owner: &'w mut AttributesMut<'w, 's>,
 
     pub type_registry: TypeRegistryArc,
-    pub type_bindings: AppTypeIdBindings,
+    pub type_bindings: AppAttributeBindings,
 }
 
 impl<'w, 's> BevyContextMut<'w, 's> {
@@ -134,7 +131,7 @@ pub struct BevyContext<'w, 's> {
     pub owner: &'w AttributesRef<'w, 's>,
 
     pub type_registry: TypeRegistryArc,
-    pub type_bindings: AppTypeIdBindings,
+    pub type_bindings: AppAttributeBindings,
 }
 
 impl BevyContext<'_, '_> {

@@ -1,7 +1,7 @@
 use crate::assets::EffectDef;
 use crate::condition::BevyContext;
 use crate::effect::{Effect, EffectInactive, EffectSource, EffectTarget, EffectTicker};
-use crate::{AppTypeIdBindings, AttributesRef, TypeIdBindings};
+use crate::{AppAttributeBindings, AttributesRef};
 use bevy::asset::Assets;
 use bevy::ecs::relationship::Relationship;
 use bevy::log::error;
@@ -22,7 +22,7 @@ pub fn evaluate_effect_conditions(
     parents: Query<AttributesRef>,
     effects: Res<Assets<EffectDef>>,
     type_registry: Res<AppTypeRegistry>,
-    type_bindings: Res<AppTypeIdBindings>,
+    type_bindings: Res<AppAttributeBindings>,
     mut commands: Commands,
 ) {
     for (effect_entity_ref, effect, source, target, status) in query.iter_mut() {

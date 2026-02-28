@@ -1,4 +1,4 @@
-
+use crate::effect::AttributeDependents;
 use crate::inspector::pretty_type_name;
 use crate::math::{AbsDiff, SaturatingAttributes};
 use crate::modifier::{AttributeCalculator, AttributeCalculatorCached};
@@ -23,14 +23,13 @@ use std::hash::Hasher;
 use std::hash::{DefaultHasher, Hash};
 use std::iter::Sum;
 use std::marker::PhantomData;
-use crate::effect::AttributeDependents;
 
 pub trait Value
 where
     Self: Num + NumOps + NumAssign + NumAssignOps + NumCast,
-    Self: Default + Copy + Debug + Display,
+    Self: Default + PartialOrd + Copy + Debug + Display,
     Self: GetTypeRegistration + Typed + Send + Sync,
-    Self: SaturatingAttributes<Output = Self> + Sum + Bounded + AbsDiff + PartialOrd,
+    Self: SaturatingAttributes<Output = Self> + Sum + Bounded + AbsDiff,
     Self: FromPrimitive + AsPrimitive<f64> + Reflect,
     Self: SelectExprNodeImpl<Property = Self>,
 {
@@ -39,9 +38,9 @@ where
 impl<T> Value for T
 where
     Self: Num + NumOps + NumAssign + NumAssignOps + NumCast,
-    Self: Default + Copy + Debug + Display,
+    Self: Default + PartialOrd + Copy + Debug + Display,
     Self: GetTypeRegistration + Typed + Send + Sync,
-    Self: SaturatingAttributes<Output = Self> + Sum + Bounded + AbsDiff + PartialOrd,
+    Self: SaturatingAttributes<Output = Self> + Sum + Bounded + AbsDiff,
     Self: FromPrimitive + AsPrimitive<f64> + Reflect,
     Self: SelectExprNodeImpl<Property = Self>,
 {

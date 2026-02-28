@@ -6,19 +6,18 @@ use crate::modifier::{ModifierMarker, ModifierOf};
 use crate::modifier::{ReflectAccessModifier, Who};
 use crate::prelude::*;
 use crate::systems::MarkNodeDirty;
-use crate::{AppTypeIdBindings, AttributesRef, TypeIdBindings};
+use crate::{AppAttributeBindings, AttributesRef, AttributeBindings};
 use bevy::prelude::*;
 use express_it::expr::{Expr, ExprNode, SelectExprNodeImpl};
 use std::collections::HashSet;
 use std::fmt::Display;
-use std::marker::PhantomData;
 
 pub trait PersistentModifier: Send + Sync {
     fn spawn_persistent_modifier(
         &self,
         actor_entity: Entity,
         ctx: &BevyContext,
-        type_bindings: &TypeIdBindings,
+        type_bindings: &AttributeBindings,
         commands: &mut EntityCommands,
     );
 }
@@ -58,7 +57,7 @@ where
         &self,
         actor_entity: Entity,
         ctx: &BevyContext,
-        type_bindings: &TypeIdBindings,
+        type_bindings: &AttributeBindings,
         commands: &mut EntityCommands,
     ) {
         let Ok(value) = self.expr.eval_dyn(ctx) else {
@@ -121,7 +120,7 @@ pub fn update_modifier_when_dependencies_changed<T: Attribute>(
     effects: Query<(&EffectSource, &EffectTarget)>,
     actors: Query<AttributesRef, Without<AttributeModifier<T>>>,
     type_registry: Res<AppTypeRegistry>,
-    type_bindings: Res<AppTypeIdBindings>,
+    type_bindings: Res<AppAttributeBindings>,
     mut commands: Commands,
 ) {
     let Ok((mut modifier, effect_id)) = modifiers.get_mut(trigger.modifier_entity) else {

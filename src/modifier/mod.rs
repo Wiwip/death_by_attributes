@@ -2,17 +2,13 @@ pub mod attribute_modifier;
 mod calculator;
 mod events;
 
-use crate::condition::BevyContextMut;
 use crate::inspector::pretty_type_name;
 use crate::prelude::*;
-use crate::{AppTypeIdBindings, Spawnable, TypeIdBindings};
 pub use attribute_modifier::AttributeModifier;
-use bevy::prelude::{Commands, Component, Entity, EntityCommands, Reflect, reflect_trait};
-use bevy::reflect::TypeRegistryArc;
+use bevy::prelude::{Component, Entity, EntityCommands, Reflect, reflect_trait};
 pub use calculator::{AttributeCalculator, AttributeCalculatorCached, ModOp};
 pub use events::{ApplyAttributeModifierMessage, apply_modifier_events};
 use express_it::context::ScopeId;
-use express_it::frame::LazyPlan;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter};
 

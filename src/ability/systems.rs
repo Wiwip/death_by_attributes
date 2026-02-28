@@ -3,7 +3,7 @@ use crate::ability::{
 };
 use crate::assets::AbilityDef;
 use crate::condition::{BevyContext, BevyContextMut};
-use crate::{AppTypeIdBindings, AttributesMut, AttributesRef, TypeIdBindings};
+use crate::{AppAttributeBindings, AttributesMut, AttributesRef};
 use bevy::asset::Assets;
 use bevy::prelude::*;
 use bevy_inspector_egui::__macro_exports::bevy_reflect::TypeRegistryArc;
@@ -29,7 +29,7 @@ pub fn try_activate_ability_observer(
     ability_assets: Res<Assets<AbilityDef>>,
     mut commands: Commands,
     type_registry: Res<AppTypeRegistry>,
-    type_bindings: Res<AppTypeIdBindings>,
+    type_bindings: Res<AppAttributeBindings>,
 ) -> Result<(), BevyError> {
     let Ok((source_entity_ref, actor_abilities)) = actors.get(trigger.ability) else {
         warn!("The Actor({}) has no GrantedAbilities", trigger.ability);
@@ -99,7 +99,7 @@ fn can_activate_ability(
     ability_def: &AbilityDef,
     conditions: &BoolExpr,
     type_registry: &TypeRegistryArc,
-    type_bindings: AppTypeIdBindings,
+    type_bindings: AppAttributeBindings,
 ) -> Result<bool, BevyError> {
     let context = BevyContext {
         target_actor: target_entity_ref,
@@ -144,7 +144,7 @@ pub(crate) fn reset_ability_cooldown(
     mut cooldowns: Query<(&AbilityOf, &mut AbilityCooldown)>,
     query: Query<AttributesRef>,
     type_registry: Res<AppTypeRegistry>,
-    type_bindings: Res<AppTypeIdBindings>,
+    type_bindings: Res<AppAttributeBindings>,
 ) -> Result<(), BevyError> {
     let Ok((_parent, mut cooldown)) = cooldowns.get_mut(trigger.ability) else {
         // This event does not affect an ability without a cooldown.
@@ -186,7 +186,7 @@ pub(crate) fn activate_ability(
     ability_assets: Res<Assets<AbilityDef>>,
     mut commands: Commands,
     type_registry: Res<AppTypeRegistry>,
-    type_bindings: Res<AppTypeIdBindings>,
+    type_bindings: Res<AppAttributeBindings>,
 ) -> Result<(), BevyError> {
     debug!("{}: Commit ability cost.", trigger.ability);
     let ability = abilities.get(trigger.ability)?;
