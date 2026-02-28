@@ -3,6 +3,7 @@ extern crate core;
 use crate::effect::{AttributeDependency, Stacks};
 use bevy::prelude::*;
 use std::any::{Any, TypeId};
+use std::collections::HashSet;
 use std::error::Error;
 use std::fmt::Formatter;
 use std::marker::PhantomData;
@@ -11,6 +12,7 @@ use std::sync::{Arc, RwLock};
 pub mod ability;
 pub mod actors;
 pub mod assets;
+mod attribute;
 pub mod attributes;
 pub mod condition;
 pub mod context;
@@ -24,7 +26,6 @@ pub mod registry;
 mod schedule;
 mod systems;
 mod trigger;
-mod attribute;
 
 use crate::ability::{Ability, AbilityCooldown, AbilityOf, AbilityPlugin, GrantedAbilities};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
@@ -47,11 +48,11 @@ use crate::prelude::*;
 use crate::registry::RegistryPlugin;
 use crate::schedule::EffectsSet;
 use crate::systems::{
-    apply_periodic_effect, mark_node_dirty_observer, update_attribute,
-    update_effect_system,
+    apply_periodic_effect, mark_node_dirty_observer, update_attribute, update_effect_system,
 };
 use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
 use bevy::platform::collections::HashMap;
+use bevy::platform::collections::hash_map::Entry;
 
 pub mod prelude {
     pub use crate::attributes::{
@@ -60,9 +61,9 @@ pub mod prelude {
     pub use crate::modifier::{AccessModifier, AttributeModifier};
 }
 
-use crate::modifier::attribute_modifier::{update_modifier_when_dependencies_changed};
+use crate::attribute::clamps::{Clamp, apply_clamps, update_clamps};
+use crate::modifier::attribute_modifier::update_modifier_when_dependencies_changed;
 pub use num_traits;
-use crate::attribute::clamps::{apply_clamps, update_clamps, Clamp};
 
 pub struct AttributesPlugin;
 
@@ -115,34 +116,49 @@ pub struct AppAttributeBindings {
 #[derive(Default)]
 pub struct AttributeBindings {
     map: HashMap<AttributeId, TypeId>,
-    convert: HashMap<AttributeId, fn(&dyn Any) -> &dyn Reflect>,
+    base_ids: HashSet<AttributeId>,
+    convert: HashMap<AttributeId, fn(&dyn Any) -> Option<&dyn Reflect>>,
     insert_dependency_map: HashMap<AttributeId, fn(Entity, &mut EntityCommands)>,
 }
 
 impl AttributeBindings {
     fn add<T: Attribute>(&mut self) {
-        let previous = self.map.insert(T::ID, TypeId::of::<T>());
+        self.base_ids.insert(T::BASE_ID);
 
-        if let Some(existing) = previous {
-            if existing != TypeId::of::<T>() {
-                error!(
-                    "Attribute type ID collision for {} (id: {}). Previously bound to {:?}.",
+        for id in [T::ID, T::BASE_ID] {
+            self.bind_type_id::<T>(id);
+            self.convert.insert(id, Self::convert_fn::<T>);
+            self.insert_dependency_map
+                .insert(id, Self::dependency_fn::<T>);
+        }
+    }
+
+    // Binds the AttributeId to a specific TypeId used for reflection
+    fn bind_type_id<T: Attribute>(&mut self, id: AttributeId) {
+        let type_id = TypeId::of::<T>();
+        match self.map.entry(id) {
+            Entry::Vacant(e) => {
+                e.insert(type_id);
+            }
+            Entry::Occupied(e) => {
+                panic!(
+                    "Attribute type ID collision for {} (id: {}). Was the attribute registered twice?",
                     pretty_type_name::<T>(),
-                    T::ID,
-                    existing
+                    id,
                 );
             }
-        }
-
-        self.convert.insert(T::ID, |any: &dyn Any| -> &dyn Reflect {
-            let value = any.downcast_ref::<T::Property>().unwrap();
-            value.as_reflect()
-        });
-
-        let func = |entity, commands: &mut EntityCommands| {
-            commands.insert(AttributeDependency::<T>::new(entity));
         };
-        self.insert_dependency_map.insert(T::ID, func);
+    }
+
+    // Allows conversions from dyn Any to dyn Reflect when all we know is the attribute ID
+    fn convert_fn<T: Attribute>(any: &dyn Any) -> Option<&dyn Reflect> {
+        any.downcast_ref::<T::Property>()
+            .map(|value| value.as_reflect())
+    }
+
+    // Inserts dependency injection closures
+    fn dependency_fn<T: Attribute>(entity: Entity, commands: &mut EntityCommands) {
+        commands.insert(AttributeDependency::<T>::new(entity));
     }
 }
 

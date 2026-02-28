@@ -56,6 +56,7 @@ where
     type Property: Value;
     type ExprType: ExprNode<Self::Property>;
     const ID: AttributeId;
+    const BASE_ID: AttributeId;
 
     fn new<T: Num + AsPrimitive<Self::Property> + Copy>(value: T) -> Self;
     fn base_value(&self) -> Self::Property;
@@ -70,14 +71,17 @@ where
     fn scoped(scope: impl Into<ScopeId>) -> Expr<Self::Property>;
     fn lit(value: Self::Property) -> Expr<Self::Property>;
     // Expression helpers
-    fn set(scope: impl Into<ScopeId>, expr: Expr<Self::Property>) -> Assignment<Self::Property>;
+    fn set(
+        scope: impl Into<ScopeId>,
+        expr: impl Into<Expr<Self::Property>>,
+    ) -> Assignment<Self::Property>;
     fn add(
         scope: impl Into<ScopeId> + Copy,
-        expr: Expr<Self::Property>,
+        expr: impl Into<Expr<Self::Property>>,
     ) -> Assignment<Self::Property>;
     fn sub(
         scope: impl Into<ScopeId> + Copy,
-        expr: Expr<Self::Property>,
+        expr: impl Into<Expr<Self::Property>>,
     ) -> Assignment<Self::Property>;
 }
 
@@ -107,6 +111,7 @@ macro_rules! attribute_impl {
             type ExprType = express_it::expr::SelectExprNode<$ValueType>;
 
             const ID: u64 = express_it::context::fnv1a64(stringify!($StructName));
+            const BASE_ID: u64 = express_it::context::fnv1a64(concat!(stringify!($StructName), "::base"));
 
             fn new<T>(value: T) -> Self
             where
@@ -161,39 +166,39 @@ macro_rules! attribute_impl {
             }
             fn set(
                 scope: impl Into<express_it::context::ScopeId>,
-                expr: express_it::expr::Expr<Self::Property>,
+                expr: impl Into<express_it::expr::Expr<Self::Property>>,
             ) -> express_it::frame::Assignment<Self::Property> {
                 express_it::frame::Assignment {
-                    path: express_it::context::Path::from_id(scope, Self::ID),
-                    expr,
+                    path: express_it::context::Path::from_id(scope, Self::BASE_ID),
+                    expr: expr.into(),
                 }
             }
             fn add(
                 scope: impl Into<express_it::context::ScopeId> + std::marker::Copy,
-                expr: express_it::expr::Expr<Self::Property>,
+                expr: impl Into<express_it::expr::Expr<Self::Property>>,
             ) -> express_it::frame::Assignment<Self::Property> {
                 let get_expr =
                     express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
-                        express_it::context::Path::from_id(scope.into(), Self::ID),
+                        express_it::context::Path::from_id(scope.into(), Self::BASE_ID),
                     )));
 
                 express_it::frame::Assignment {
-                    path: express_it::context::Path::from_id(scope.into(), Self::ID),
-                    expr: get_expr + expr,
+                    path: express_it::context::Path::from_id(scope.into(), Self::BASE_ID),
+                    expr: get_expr + expr.into(),
                 }
             }
             fn sub(
                 scope: impl Into<express_it::context::ScopeId> + std::marker::Copy,
-                expr: express_it::expr::Expr<Self::Property>,
+                expr: impl Into<express_it::expr::Expr<Self::Property>>,
             ) -> express_it::frame::Assignment<Self::Property> {
                 let get_expr =
                     express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
-                        express_it::context::Path::from_id(scope.into(), Self::ID),
+                        express_it::context::Path::from_id(scope.into(), Self::BASE_ID),
                     )));
 
                 express_it::frame::Assignment {
-                    path: express_it::context::Path::from_id(scope.into(), Self::ID),
-                    expr: get_expr - expr,
+                    path: express_it::context::Path::from_id(scope.into(), Self::BASE_ID),
+                    expr: get_expr - expr.into(),
                 }
             }
         }

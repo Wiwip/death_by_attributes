@@ -119,7 +119,10 @@ impl WriteContext for BevyContextMut<'_, '_> {
             ExpressionError::FailedReflect(format!("Invalid reflect path: {err}").into())
         })?;
 
-        let value_reflect = any_to_reflect(&*value);
+        let value_reflect = any_to_reflect(&*value).ok_or_else(|| {
+            ExpressionError::FailedReflect("Type mismatch while converting expression value".into())
+        })?;
+
         dyn_partial_reflect.apply(value_reflect);
         Ok(())
     }
@@ -193,7 +196,14 @@ impl ReadContext for BevyContext<'_, '_> {
             ));
         };
 
-        let dyn_partial_reflect = dyn_reflect.reflect_path("current_value").map_err(|err| {
+        let read_base = {
+            let bindings = self.type_bindings.internal.read().unwrap();
+            bindings.base_ids.contains(&access.path())
+        };
+
+        let field = if read_base { "base_value" } else { "current_value" };
+
+        let dyn_partial_reflect = dyn_reflect.reflect_path(field).map_err(|err| {
             ExpressionError::FailedReflect(format!("Invalid reflect path: {err}").into())
         })?;
 

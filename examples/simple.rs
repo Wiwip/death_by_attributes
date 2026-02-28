@@ -139,7 +139,7 @@ fn setup_effects(mut commands: Commands, mut ctx: EffectContext) {
     let hp_buff = ctx.add_effect(
         Effect::permanent()
             .name("MaxHealth Increase".into())
-            .modify::<MaxHealth>(45u32, ModOp::Add, Who::Target)
+            .modify::<MaxHealth>(50u32, ModOp::Add, Who::Target)
             //.modify::<ManaPool>(Health::source_expr(), ModOp::Add, Who::Target)
             .with_stacking_policy(EffectStackingPolicy::RefreshDuration)
             .build(),
@@ -149,7 +149,7 @@ fn setup_effects(mut commands: Commands, mut ctx: EffectContext) {
     let regen = ctx.add_effect(
         Effect::permanent_ticking(1.0)
             .name("Regen".into())
-            .modify::<Health>(HealthRegen::src() + 5, ModOp::Add, Who::Target)
+            .modify::<Health>(5, ModOp::Add, Who::Target)
             .modify::<Mana>(ManaRegen::src(), ModOp::Add, Who::Target)
             .build(),
     );
@@ -202,7 +202,7 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
         AbilityBuilder::new()
             .with_name("Frostball".into())
             .with_cooldown(1.0)
-            .with_cost::<Mana>(12)
+            .with_cost::<Mana>(1)
             .with_tag::<Frost>()
             .add_execution(
                 |trigger: On<AbilityExecute>,
@@ -218,7 +218,7 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
                     }
                 },
             )
-            .on_execute(LazyPlan::new().step(MaxHealth::add(Who::Source, Mana::src())))
+            .on_execute(LazyPlan::new().step(MaxHealth::add(Who::Source, 5)))
             .build(),
     );
     commands.insert_resource(AbilityDatabase {
