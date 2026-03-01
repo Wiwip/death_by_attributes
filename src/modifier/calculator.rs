@@ -1,5 +1,5 @@
 use crate::math::SaturatingAttributes;
-use crate::prelude::{Attribute, AttributeModifier};
+use crate::prelude::{Attribute, Modifier};
 use bevy::prelude::*;
 use express_it::expr::ExpressionError;
 use num_traits::{AsPrimitive, Bounded, FromPrimitive, Zero};
@@ -114,7 +114,7 @@ impl<T: Attribute> AttributeCalculator<T> {
     }
 
     pub fn convert(
-        modifier: &AttributeModifier<T>,
+        modifier: &Modifier<T>,
         //context: &dyn ReadContext,
     ) -> Result<Self, ExpressionError> {
         let value = modifier.value; //.eval_dyn(context)?;

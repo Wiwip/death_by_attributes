@@ -1,6 +1,5 @@
 use crate::assets::AbilityDef;
 use crate::attributes::Attribute;
-use crate::effect::Stacks;
 use crate::inspector::pretty_type_name;
 use crate::modifier::Who;
 use bevy::asset::AssetId;
@@ -16,8 +15,6 @@ use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::ops::{Bound, RangeBounds};
 use std::sync::Arc;
-
-pub type StackCondition = IsAttributeWithinBounds<Stacks>;
 
 #[derive(TypePath)]
 pub struct IsAttributeWithinBounds<T: Attribute> {
@@ -56,12 +53,11 @@ impl<T: Attribute> std::fmt::Debug for IsAttributeWithinBounds<T> {
 
 impl<T: Attribute> ExprNode<bool> for IsAttributeWithinBounds<T> {
     fn eval(&self, ctx: &dyn ReadContext) -> Result<bool, ExpressionError> {
-        let path = Path::from_type::<T>(self.who);
-
+        let path = Path::from_id(self.who, T::ID);
         let any = ctx.get_any(&path)?;
-        let attribute = any.downcast_ref::<T>().unwrap();
-
-        Ok(self.bounds.contains(&attribute.current_value()))
+        let value = any.downcast_ref::<T::Property>().unwrap();
+        
+        Ok(self.bounds.contains(&value))
     }
 
     fn get_dependencies(&self, _deps: &mut HashSet<Path>) {

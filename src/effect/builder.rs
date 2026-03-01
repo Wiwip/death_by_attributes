@@ -3,7 +3,7 @@ use crate::attributes::Attribute;
 use crate::condition::IsAttributeWithinBounds;
 use crate::effect::application::EffectApplicationPolicy;
 use crate::effect::EffectStackingPolicy;
-use crate::modifier::{AttributeModifier, ModOp, Who};
+use crate::modifier::{Modifier, ModOp, Who};
 use crate::mutator::EntityActions;
 use bevy::ecs::system::IntoObserverSystem;
 use bevy::prelude::{Bundle, Entity, EntityCommands, EntityEvent, Name};
@@ -27,7 +27,7 @@ impl EffectBuilder {
                 attach_conditions: vec![],
                 on_actor_triggers: vec![],
                 on_effect_triggers: vec![],
-                persistent_modifiers: vec![],
+                modifiers: vec![],
             },
         }
     }
@@ -87,8 +87,8 @@ impl EffectBuilder {
     ) -> Self {
         let expr = expr.into();
         self.def
-            .persistent_modifiers
-            .push(Box::new(AttributeModifier::<T> {
+            .modifiers
+            .push(Box::new(Modifier::<T> {
                 expr: expr.clone(),
                 value: T::Property::default(),
                 who,
@@ -103,6 +103,7 @@ impl EffectBuilder {
     ///
     /// ```
     /// # use vitality::prelude::*;
+    /// # use vitality::condition::ChanceCondition;
     /// attribute!(Health, f32);
     /// attribute!(Damage, f32);
     ///
@@ -117,7 +118,7 @@ impl EffectBuilder {
         self
     }
 
-    pub fn activate_while(mut self, condition: impl Into<BoolExpr>) -> Self {
+    pub fn active_while(mut self, condition: impl Into<BoolExpr>) -> Self {
         self.def.activate_conditions.push(condition.into());
         self
     }

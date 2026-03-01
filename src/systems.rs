@@ -6,7 +6,7 @@ use crate::effect::{
     EffectTarget, EffectTicker,
 };
 use crate::graph::{DependencyGraph, NodeType};
-use crate::modifier::attribute_modifier::RecalculateExpression;
+use crate::modifier::modifier::RecalculateExpression;
 use crate::modifier::{ApplyAttributeModifierMessage, AttributeCalculator, OwnedModifiers};
 use crate::prelude::*;
 use crate::{AppAttributeBindings, AttributesRef, CurrentValueChanged, Dirty};
@@ -53,7 +53,7 @@ pub fn update_effect_system<T: Attribute>(
     attributes: Query<AttributeQueryDataReadOnly<T>>,
     attribute_refs: Query<AttributesRef>,
     effects: Query<(&OwnedModifiers, &EffectSource, &EffectTarget)>,
-    modifiers: Query<&AttributeModifier<T>>,
+    modifiers: Query<&Modifier<T>>,
     mut commands: Commands,
     type_registry: Res<AppTypeRegistry>,
     type_bindings: Res<AppAttributeBindings>,
@@ -100,7 +100,7 @@ fn update_effect_tree_attributes<T: Attribute>(
     attributes: &Query<AttributeQueryDataReadOnly<T>>,
     attribute_refs: &Query<AttributesRef>,
     effects: &Query<(&OwnedModifiers, &EffectSource, &EffectTarget)>,
-    modifiers: &Query<&AttributeModifier<T>>,
+    modifiers: &Query<&Modifier<T>>,
     commands: &mut Commands,
     type_registry: &TypeRegistryArc,
     type_bindings: &AppAttributeBindings,
@@ -154,7 +154,7 @@ fn update_effect_tree_attributes<T: Attribute>(
         }
         NodeType::Effect => {
             let Ok((modifier_entities, _source, _target)) = effects.get(current_entity) else {
-                error!("{}: Error getting effect type.", current_entity);
+                // Effect has no modifiers, return default calculator.
                 return AttributeCalculator::default();
             };
 
@@ -230,7 +230,6 @@ pub fn update_attribute<T: Attribute>(
     };
 }
 
-
 pub fn apply_periodic_effect<T: Attribute>(
     actors: Query<AttributesRef>,
     effects: Query<(
@@ -241,7 +240,7 @@ pub fn apply_periodic_effect<T: Attribute>(
         &EffectTarget,
         &EffectSource,
     )>,
-    modifiers: Query<&AttributeModifier<T>>,
+    modifiers: Query<&Modifier<T>>,
     mut event_writer: MessageWriter<ApplyAttributeModifierMessage<T>>,
     effect_assets: Res<Assets<EffectDef>>,
     type_registry: Res<AppTypeRegistry>,

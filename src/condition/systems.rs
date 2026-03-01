@@ -1,4 +1,5 @@
 use crate::assets::EffectDef;
+use crate::context::BevyContext;
 use crate::effect::{Effect, EffectInactive, EffectSource, EffectTarget, EffectTicker};
 use crate::{AppAttributeBindings, AttributesRef};
 use bevy::asset::Assets;
@@ -6,7 +7,6 @@ use bevy::ecs::relationship::Relationship;
 use bevy::log::error;
 use bevy::prelude::*;
 use express_it::expr::ExprNode;
-use crate::context::BevyContext;
 
 pub fn evaluate_effect_conditions(
     mut query: Query<
@@ -64,7 +64,10 @@ pub fn evaluate_effect_conditions(
         let should_be_active = effect
             .activate_conditions
             .iter()
-            .all(|condition| condition.inner.eval(&context).unwrap_or(false));
+            .all(|condition| condition.inner.eval(&context).unwrap_or_else(|_| {
+                error!("A condition failed to execute.");
+                false
+            }));
 
         let is_inactive = status.is_some();
         if should_be_active && is_inactive {
@@ -84,7 +87,7 @@ mod test {
     use super::*;
     use crate::ability::AbilityBuilder;
     use crate::actors::{Actor, ActorBuilder};
-    use crate::assets::{AbilityDef, ActorDef};
+    use crate::assets::AbilityDef;
     use crate::condition::IsAttributeWithinBounds;
     use crate::context::EffectContext;
     use crate::effect::{Effect, EffectInactive};
@@ -95,6 +98,7 @@ mod test {
     use crate::registry::{Registry, RegistryMut};
     use crate::{AttributesPlugin, attribute};
     use bevy::ecs::system::RunSystemOnce;
+    use bevy::log::LogPlugin;
 
     attribute!(TestA, f32);
     attribute!(TestB, f64);
@@ -102,15 +106,11 @@ mod test {
     #[derive(Component, Copy, Clone, Debug, PartialEq)]
     struct ConditionTag;
 
-    fn prepare_actor(
-        mut actor_assets: ResMut<Assets<ActorDef>>,
-        mut ctx: EffectContext,
-        registry: Registry,
-    ) {
-        let actor_template = actor_assets.add(
+    fn prepare_actor(mut ctx: EffectContext, registry: Registry) {
+        let actor_template = ctx.add_actor(
             ActorBuilder::new()
                 .name("TestActor".into())
-                .with::<TestA>(100.0)
+                .with::<TestA>(0.0)
                 .with::<TestB>(1.0)
                 .grant_ability(&registry.ability(TEST_ABILITY_TOKEN))
                 .with_effect(&registry.effect(CONDITION_EFFECT))
@@ -124,7 +124,7 @@ mod test {
             TEST_EFFECT,
             Effect::permanent()
                 .name("Increase Effect".into())
-                .modify::<TestA>(200.0_f32, ModOp::Add, Who::Target)
+                .modify::<TestA>(100.0_f32, ModOp::Add, Who::Source)
                 .build(),
         );
 
@@ -132,7 +132,8 @@ mod test {
             CONDITION_EFFECT,
             Effect::permanent()
                 .name("Condition Effect".into())
-                .activate_while(IsAttributeWithinBounds::<TestA>::target(150.0..))
+                // Active when TestA is more than 50.0
+                .active_while(IsAttributeWithinBounds::<TestA>::source(50.0..))
                 .insert(ConditionTag)
                 .build(),
         );
@@ -158,7 +159,16 @@ mod test {
     #[test]
     fn test_attribute_condition() {
         let mut app = App::new();
-        app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
+        app.add_plugins((
+            MinimalPlugins,
+            AssetPlugin::default(),
+            LogPlugin {
+                filter: "error,vitality=debug".into(),
+                level: bevy::log::Level::DEBUG,
+                ..default()
+            },
+            AttributesPlugin,
+        ));
         app.add_plugins((
             crate::init_attribute::<TestA>,
             crate::init_attribute::<TestB>,

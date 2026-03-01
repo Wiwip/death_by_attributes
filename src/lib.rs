@@ -55,14 +55,19 @@ use bevy::platform::collections::HashMap;
 use bevy::platform::collections::hash_map::Entry;
 
 pub mod prelude {
+    pub use crate::attribute;
     pub use crate::attributes::{
         AccessAttribute, Attribute, AttributeTypeId, ReflectAccessAttribute,
     };
-    pub use crate::modifier::{AccessModifier, AttributeModifier};
+    pub use crate::effect::{EffectBuilder, EffectApplicationPolicy};
+    pub use crate::modifier::{AccessModifier, Modifier, ModOp, Who};
+
+    // Necessary for attribute macro
+    pub use bevy::prelude::ReflectComponent;
 }
 
 use crate::attribute::clamps::{Clamp, apply_clamps, update_clamps};
-use crate::modifier::attribute_modifier::update_modifier_when_dependencies_changed;
+use crate::modifier::modifier::update_modifier_when_dependencies_changed;
 pub use num_traits;
 
 pub struct AttributesPlugin;
@@ -164,7 +169,7 @@ impl AttributeBindings {
 
 pub fn init_attribute<T: Attribute>(app: &mut App) {
     app.register_type::<T>();
-    app.register_type::<AttributeModifier<T>>();
+    app.register_type::<Modifier<T>>();
     app.register_type::<Clamp<T>>();
     app.register_type::<AttributeCalculatorCached<T>>();
     app.register_type_data::<T, ReflectAccessAttribute>();

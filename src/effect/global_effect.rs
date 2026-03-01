@@ -44,7 +44,7 @@ mod test {
     use super::*;
     use crate::ability::AbilityBuilder;
     use crate::actors::{Actor, ActorBuilder};
-    use crate::assets::{AbilityDef, ActorDef};
+    use crate::assets::AbilityDef;
     use crate::condition::IsAttributeWithinBounds;
     use crate::context::EffectContext;
     use crate::effect::{Effect, EffectInactive};
@@ -53,9 +53,8 @@ mod test {
     use crate::registry::ability_registry::AbilityToken;
     use crate::registry::effect_registry::EffectToken;
     use crate::registry::{Registry, RegistryMut};
-    use crate::{AttributesPlugin, attribute, init_attribute};
+    use crate::{attribute, init_attribute, AttributesPlugin};
     use bevy::ecs::system::RunSystemOnce;
-    use bevy::prelude::*;
 
     attribute!(TestAttribute, f64);
 
@@ -63,11 +62,10 @@ mod test {
     struct ConditionTag;
 
     fn prepare_actor(
-        mut actor_assets: ResMut<Assets<ActorDef>>,
         mut ctx: EffectContext,
         registry: Registry,
     ) {
-        let actor_template = actor_assets.add(
+        let actor_template = ctx.add_actor(
             ActorBuilder::new()
                 .name("TestActor".into())
                 .with::<TestAttribute>(0.0)
@@ -91,7 +89,7 @@ mod test {
             CONDITION_EFFECT,
             Effect::permanent()
                 .name("Condition Effect".into())
-                .activate_while(IsAttributeWithinBounds::<TestAttribute>::target(150.0..))
+                .active_while(IsAttributeWithinBounds::<TestAttribute>::target(150.0..))
                 .insert(ConditionTag)
                 .build(),
         );

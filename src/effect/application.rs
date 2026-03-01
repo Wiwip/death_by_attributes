@@ -13,6 +13,7 @@ use bevy::prelude::*;
 use bevy_inspector_egui::__macro_exports::bevy_reflect::TypeRegistryArc;
 use std::cmp::PartialEq;
 use crate::context::BevyContext;
+use crate::modifier::modifier::EffectModifier;
 
 /// Describes how the effect is applied to entities
 #[derive(Debug, Clone, Reflect, PartialEq)]
@@ -130,7 +131,7 @@ impl ApplyEffectEvent {
     fn apply_instant_effect(
         &self,
         actors: &mut Query<(Option<&AppliedEffects>, AttributesMut), Without<Effect>>,
-        _commands: &mut Commands,
+        commands: &mut Commands,
         effect: &EffectDef,
         type_registry: TypeRegistryArc,
         type_bindings: AppAttributeBindings,
@@ -162,25 +163,21 @@ impl ApplyEffectEvent {
             return Ok(());
         }
 
-        //self.apply_modifiers(&mut actors, &mut effect.modifiers.iter(), commands);
+        self.apply_modifiers(actors, &mut effect.modifiers.iter(), commands);
         Ok(())
     }
 
-    fn _apply_modifiers<'a, I>(
+    fn apply_modifiers<'a, I>(
         &self,
         _actors: &'a mut Query<(Option<&AppliedEffects>, AttributesMut), Without<Effect>>,
-        _modifiers: &mut I,
-        _commands: &mut Commands,
-    ) /*where
-        I: Iterator<Item = &'a Box<dyn Modifier>>,*/
+        modifiers: &mut I,
+        commands: &mut Commands,
+    ) where
+        I: Iterator<Item = &'a Box<dyn EffectModifier>>,
     {
-        /*let [(_, source), (_, target)] = actors
-            .get_many([self.targeting.source(), self.targeting.target()])
-            .unwrap();
-
         for modifier in modifiers {
-            modifier.apply_delayed(source.id(), target.id(), self.entity, commands);
-        }*/
+            modifier.apply_delayed(self.targeting.source(), self.targeting.target(), self.entity, commands);
+        }
     }
 
     fn spawn_persistent_effect(
@@ -276,7 +273,7 @@ impl ApplyEffectEvent {
 
         // Spawn effect modifiers
         let bindings = type_bindings.internal.read().unwrap();
-        effect.persistent_modifiers.iter().for_each(|modifier| {
+        effect.modifiers.iter().for_each(|modifier| {
             let mut entity_commands = commands.spawn(ModifierOf(effect_entity));
             modifier.spawn_persistent_modifier(source_actor_ref.id(), &context, &bindings, &mut entity_commands);
         });
@@ -340,7 +337,6 @@ pub(crate) fn apply_effect_event_observer(
 mod test {
     use super::*;
     use crate::actors::ActorBuilder;
-    use crate::assets::ActorDef;
     use crate::condition::IsAttributeWithinBounds;
     use crate::context::EffectContext;
     use crate::effect::builder::EffectBuilder;
@@ -356,11 +352,10 @@ mod test {
     attribute!(TestInt, u32);
 
     fn prepare_actor(
-        mut actor_assets: ResMut<Assets<ActorDef>>,
         mut ctx: EffectContext,
         registry: Registry,
     ) {
-        let actor_template = actor_assets.add(
+        let actor_template = ctx.add_actor(
             ActorBuilder::new()
                 .name("TestActor".into())
                 .with::<TestA>(100.0)
@@ -385,7 +380,7 @@ mod test {
             CONDITION_EFFECT,
             Effect::permanent()
                 .name("Condition Effect".into())
-                .activate_while(IsAttributeWithinBounds::<TestA>::target(150.0..))
+                .active_while(IsAttributeWithinBounds::<TestA>::target(150.0..))
                 .build(),
         );
     }

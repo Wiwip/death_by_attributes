@@ -1,7 +1,6 @@
 use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
 use vitality::actors::ActorBuilder;
-use vitality::assets::ActorDef;
 use vitality::context::EffectContext;
 use vitality::effect::{Effect, EffectApplicationPolicy, EffectBuilder};
 use vitality::modifier::{ModOp, Who};
@@ -10,8 +9,8 @@ use vitality::{AttributesPlugin, attribute, init_attribute};
 
 attribute!(TestA, u32);
 
-fn prepare_actor(mut actor_assets: ResMut<Assets<ActorDef>>, mut ctx: EffectContext) {
-    let actor_template = actor_assets.add(
+fn prepare_actor(mut ctx: EffectContext) {
+    let actor_template = ctx.add_actor(
         ActorBuilder::new()
             .name("TestActor".into())
             .with::<TestA>(0)
