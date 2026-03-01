@@ -1,4 +1,4 @@
-use crate::condition::BevyContext;
+use crate::context::BevyContext;
 use crate::effect::{EffectSource, EffectTarget};
 use crate::inspector::pretty_type_name;
 use crate::modifier::calculator::ModOp;
@@ -6,7 +6,7 @@ use crate::modifier::{ModifierMarker, ModifierOf};
 use crate::modifier::{ReflectAccessModifier, Who};
 use crate::prelude::*;
 use crate::systems::MarkNodeDirty;
-use crate::{AppAttributeBindings, AttributesRef, AttributeBindings};
+use crate::{AppAttributeBindings, AttributeBindings, AttributesRef};
 use bevy::prelude::*;
 use express_it::expr::{Expr, ExprNode, SelectExprNodeImpl};
 use std::collections::HashSet;

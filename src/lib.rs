@@ -140,7 +140,7 @@ impl AttributeBindings {
             Entry::Vacant(e) => {
                 e.insert(type_id);
             }
-            Entry::Occupied(e) => {
+            Entry::Occupied(_) => {
                 panic!(
                     "Attribute type ID collision for {} (id: {}). Was the attribute registered twice?",
                     pretty_type_name::<T>(),

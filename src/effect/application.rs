@@ -1,5 +1,4 @@
 use crate::assets::EffectDef;
-use crate::condition::BevyContext;
 use crate::effect::stacks::NotifyAddStackEvent;
 use crate::effect::timing::{EffectDuration, EffectTicker};
 use crate::effect::{
@@ -13,6 +12,7 @@ use bevy::log::debug;
 use bevy::prelude::*;
 use bevy_inspector_egui::__macro_exports::bevy_reflect::TypeRegistryArc;
 use std::cmp::PartialEq;
+use crate::context::BevyContext;
 
 /// Describes how the effect is applied to entities
 #[derive(Debug, Clone, Reflect, PartialEq)]

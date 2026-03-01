@@ -2,7 +2,7 @@ use crate::ability::{
     Ability, AbilityCooldown, AbilityExecute, AbilityOf, GrantedAbilities, TryActivateAbility,
 };
 use crate::assets::AbilityDef;
-use crate::condition::{BevyContext, BevyContextMut};
+use crate::context::{BevyContext, BevyContextMut};
 use crate::{AppAttributeBindings, AttributesMut, AttributesRef};
 use bevy::asset::Assets;
 use bevy::prelude::*;

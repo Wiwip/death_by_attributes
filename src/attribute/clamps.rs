@@ -1,11 +1,11 @@
 use crate::actors::Actor;
 use crate::assets::ActorDef;
 use crate::attributes::AttributeQueryData;
-use crate::condition::BevyContext;
 use crate::prelude::*;
 use crate::{AppAttributeBindings, AttributesRef, CurrentValueChanged};
 use bevy::prelude::*;
 use express_it::expr::Expr;
+use crate::context::BevyContext;
 
 #[derive(Component, Default, Debug, Clone, Reflect)]
 #[reflect(Component, from_reflect = false)]

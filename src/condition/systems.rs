@@ -1,5 +1,4 @@
 use crate::assets::EffectDef;
-use crate::condition::BevyContext;
 use crate::effect::{Effect, EffectInactive, EffectSource, EffectTarget, EffectTicker};
 use crate::{AppAttributeBindings, AttributesRef};
 use bevy::asset::Assets;
@@ -7,6 +6,7 @@ use bevy::ecs::relationship::Relationship;
 use bevy::log::error;
 use bevy::prelude::*;
 use express_it::expr::ExprNode;
+use crate::context::BevyContext;
 
 pub fn evaluate_effect_conditions(
     mut query: Query<

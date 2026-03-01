@@ -1,7 +1,6 @@
 use crate::actors::Actor;
 use crate::assets::EffectDef;
 use crate::attributes::{Attribute, AttributeQueryData, AttributeQueryDataReadOnly};
-use crate::condition::BevyContext;
 use crate::effect::{
     AttributeDependents, Effect, EffectSource, EffectStatusParam,
     EffectTarget, EffectTicker,
@@ -16,6 +15,7 @@ use bevy::reflect::TypeRegistryArc;
 use petgraph::visit::IntoNeighbors;
 use std::any::type_name;
 use std::marker::PhantomData;
+use crate::context::BevyContext;
 
 #[derive(EntityEvent)]
 #[entity_event(propagate=&'static EffectTarget, auto_propagate)]
