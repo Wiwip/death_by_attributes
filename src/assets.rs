@@ -1,7 +1,7 @@
 use crate::attributes::AttributeId;
 use crate::effect::{EffectApplicationPolicy, EffectStackingPolicy};
 use crate::modifier::ModifierFn;
-use crate::modifier::modifier::EffectModifier;
+use crate::modifier::modifier::Modifier;
 use crate::mutator::EntityActions;
 use bevy::prelude::*;
 use express_it::frame::LazyPlan;
@@ -28,7 +28,7 @@ pub struct EffectDef {
     pub application_policy: EffectApplicationPolicy,
     pub stacking_policy: EffectStackingPolicy,
     pub effect_fn: Vec<Box<ModifierFn>>,
-    pub modifiers: Vec<Box<dyn EffectModifier>>,
+    pub modifiers: Vec<Box<dyn Modifier>>,
 
     pub attach_conditions: Vec<BoolExpr>,
     pub activate_conditions: Vec<BoolExpr>,

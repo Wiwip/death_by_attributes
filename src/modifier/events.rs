@@ -13,7 +13,7 @@ pub struct ApplyAttributeModifierMessage<T: Attribute> {
     pub source_entity: Entity,
     pub target_entity: Entity,
     pub effect_entity: Entity,
-    pub modifier: Modifier<T>,
+    pub modifier: AttributeModifier<T>,
 }
 
 pub fn apply_modifier_events<T: Attribute>(

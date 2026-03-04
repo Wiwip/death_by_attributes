@@ -13,7 +13,7 @@ use bevy::prelude::*;
 use bevy_inspector_egui::__macro_exports::bevy_reflect::TypeRegistryArc;
 use std::cmp::PartialEq;
 use crate::context::BevyContext;
-use crate::modifier::modifier::EffectModifier;
+use crate::modifier::modifier::Modifier;
 
 /// Describes how the effect is applied to entities
 #[derive(Debug, Clone, Reflect, PartialEq)]
@@ -173,7 +173,7 @@ impl ApplyEffectEvent {
         modifiers: &mut I,
         commands: &mut Commands,
     ) where
-        I: Iterator<Item = &'a Box<dyn EffectModifier>>,
+        I: Iterator<Item = &'a Box<dyn Modifier>>,
     {
         for modifier in modifiers {
             modifier.apply_delayed(self.targeting.source(), self.targeting.target(), self.entity, commands);

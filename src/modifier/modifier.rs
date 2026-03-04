@@ -16,7 +16,7 @@ use express_it::expr::{Expr, ExprNode, SelectExprNodeImpl};
 use std::collections::HashSet;
 use std::fmt::Display;
 
-pub trait EffectModifier: Send + Sync {
+pub trait Modifier: Send + Sync {
     /// Spawns the modifier as a component on the effect, targeting the actor for observers.
     /// The EntityCommand is the already inserted attribute modifier component.
     fn spawn_persistent_modifier(
@@ -51,7 +51,7 @@ pub trait EffectModifier: Send + Sync {
 #[reflect(Component, from_reflect = false)]
 #[reflect(AccessModifier)]
 #[require(ModifierMarker)]
-pub struct Modifier<T: Attribute> {
+pub struct AttributeModifier<T: Attribute> {
     #[reflect(ignore)]
     pub expr: Expr<T::Property>,
     pub value: T::Property,
@@ -59,7 +59,7 @@ pub struct Modifier<T: Attribute> {
     pub operation: ModOp,
 }
 
-impl<T> Modifier<T>
+impl<T> AttributeModifier<T>
 where
     T: Attribute + 'static,
 {
@@ -78,7 +78,7 @@ where
     }
 }
 
-impl<T> EffectModifier for Modifier<T>
+impl<T> Modifier for AttributeModifier<T>
 where
     T: Attribute,
     T::Property: SelectExprNodeImpl<Property = T::Property>,
@@ -98,7 +98,7 @@ where
             return;
         };
 
-        let modifier = Modifier::<T> {
+        let modifier = AttributeModifier::<T> {
             expr: self.expr.clone(),
             value,
             who: self.who,
@@ -171,7 +171,7 @@ where
     }
 }
 
-impl<T> Display for Modifier<T>
+impl<T> Display for AttributeModifier<T>
 where
     T: Attribute,
 {
@@ -196,9 +196,9 @@ pub struct RecalculateExpression {
 /// When the attribute changes, update the values of dependent AttributeModifier<T>.
 pub fn update_modifier_when_dependencies_changed<T: Attribute>(
     trigger: On<RecalculateExpression>,
-    mut modifiers: Query<(&mut Modifier<T>, &ModifierOf)>,
+    mut modifiers: Query<(&mut AttributeModifier<T>, &ModifierOf)>,
     effects: Query<(&EffectSource, &EffectTarget)>,
-    actors: Query<AttributesRef, Without<Modifier<T>>>,
+    actors: Query<AttributesRef, Without<AttributeModifier<T>>>,
     type_registry: Res<AppTypeRegistry>,
     type_bindings: Res<AppAttributeBindings>,
     mut commands: Commands,

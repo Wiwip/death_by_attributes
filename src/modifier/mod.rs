@@ -4,7 +4,7 @@ mod events;
 
 use crate::inspector::pretty_type_name;
 use crate::prelude::*;
-pub use modifier::Modifier;
+pub use modifier::AttributeModifier;
 use bevy::prelude::{Component, Entity, EntityCommands, Reflect, reflect_trait};
 pub use calculator::{AttributeCalculator, AttributeCalculatorCached, ModOp};
 pub use events::{ApplyAttributeModifierMessage, apply_modifier_events};
@@ -39,7 +39,7 @@ pub trait AccessModifier {
     fn name(&self) -> String;
 }
 
-impl<T> AccessModifier for Modifier<T>
+impl<T> AccessModifier for AttributeModifier<T>
 where
     T: Attribute,
 {

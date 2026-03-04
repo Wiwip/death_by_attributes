@@ -60,7 +60,7 @@ pub mod prelude {
         AccessAttribute, Attribute, AttributeTypeId, ReflectAccessAttribute,
     };
     pub use crate::effect::{EffectBuilder, EffectApplicationPolicy};
-    pub use crate::modifier::{AccessModifier, Modifier, ModOp, Who};
+    pub use crate::modifier::{AccessModifier, AttributeModifier, ModOp, Who};
 
     // Necessary for attribute macro
     pub use bevy::prelude::ReflectComponent;
@@ -169,7 +169,7 @@ impl AttributeBindings {
 
 pub fn init_attribute<T: Attribute>(app: &mut App) {
     app.register_type::<T>();
-    app.register_type::<Modifier<T>>();
+    app.register_type::<AttributeModifier<T>>();
     app.register_type::<Clamp<T>>();
     app.register_type::<AttributeCalculatorCached<T>>();
     app.register_type_data::<T, ReflectAccessAttribute>();
@@ -261,10 +261,6 @@ pub type AttributesRef<'w, 's> = EntityRefExcept<
         ModifierOf,
     ),
 >;
-
-pub trait Spawnable: Send + Sync {
-    fn spawn(&self, commands: &mut EntityCommands);
-}
 
 #[derive(Component, Copy, Clone, Debug)]
 #[component(storage = "SparseSet")]

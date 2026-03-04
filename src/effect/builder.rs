@@ -3,7 +3,7 @@ use crate::attributes::Attribute;
 use crate::condition::IsAttributeWithinBounds;
 use crate::effect::application::EffectApplicationPolicy;
 use crate::effect::EffectStackingPolicy;
-use crate::modifier::{Modifier, ModOp, Who};
+use crate::modifier::{AttributeModifier, ModOp, Who};
 use crate::mutator::EntityActions;
 use bevy::ecs::system::IntoObserverSystem;
 use bevy::prelude::{Bundle, Entity, EntityCommands, EntityEvent, Name};
@@ -88,7 +88,7 @@ impl EffectBuilder {
         let expr = expr.into();
         self.def
             .modifiers
-            .push(Box::new(Modifier::<T> {
+            .push(Box::new(AttributeModifier::<T> {
                 expr: expr.clone(),
                 value: T::Property::default(),
                 who,
