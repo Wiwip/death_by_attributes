@@ -1,13 +1,12 @@
-use crate::assets::AbilityDef;
-use bevy::asset::Handle;
-use bevy::platform::collections::HashMap;
+use std::collections::HashMap;
 use bevy::prelude::*;
 use smol_str::SmolStr;
+use crate::assets::ActorDef;
 
-#[derive(Clone, PartialEq, Eq, Hash, Reflect)]
-pub struct AbilityToken(SmolStr);
+#[derive(Default, Clone, PartialEq, Eq, Hash, Reflect)]
+pub struct ActorToken(SmolStr);
 
-impl AbilityToken {
+impl ActorToken {
     /// Construct a new [`AbilityToken`] from a [`SmolStr`].
     pub const fn new(text: SmolStr) -> Self {
         Self(text)
@@ -19,31 +18,31 @@ impl AbilityToken {
     }
 }
 
-impl core::fmt::Display for AbilityToken {
+impl core::fmt::Display for ActorToken {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
-impl core::fmt::Debug for AbilityToken {
+impl core::fmt::Debug for ActorToken {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "AbilityToken({:?})", self.0)
     }
 }
 
 #[derive(Resource, Default)]
-pub struct AbilityRegistry {
-    map: HashMap<AbilityToken, Handle<AbilityDef>>,
+pub struct ActorRegistry {
+    map: HashMap<ActorToken, Handle<ActorDef>>,
 }
 
-impl AbilityRegistry {
-    pub fn add(&mut self, token: AbilityToken, handle: Handle<AbilityDef>) {
+impl ActorRegistry {
+    pub fn add(&mut self, token: ActorToken, handle: Handle<ActorDef>) {
         self.map.insert(token, handle);
     }
 
-    pub fn get(&self, token: &AbilityToken) -> &Handle<AbilityDef> {
+    pub fn get(&self, token: &ActorToken) -> &Handle<ActorDef> {
         self.map
-            .get(token)
+            .get(&token)
             .expect(format!("{:?} not registered", token).as_str())
     }
 }

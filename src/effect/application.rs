@@ -1,4 +1,5 @@
 use crate::assets::EffectDef;
+use crate::context::BevyContext;
 use crate::effect::stacks::NotifyAddStackEvent;
 use crate::effect::timing::{EffectDuration, EffectTicker};
 use crate::effect::{
@@ -6,14 +7,13 @@ use crate::effect::{
 };
 use crate::graph::NodeType;
 use crate::modifier::ModifierOf;
+use crate::modifier::modifier::Modifier;
 use crate::{AppAttributeBindings, AttributesMut};
 use bevy::asset::{Assets, Handle};
 use bevy::log::debug;
 use bevy::prelude::*;
 use bevy_inspector_egui::__macro_exports::bevy_reflect::TypeRegistryArc;
 use std::cmp::PartialEq;
-use crate::context::BevyContext;
-use crate::modifier::modifier::Modifier;
 
 /// Describes how the effect is applied to entities
 #[derive(Debug, Clone, Reflect, PartialEq)]
@@ -176,7 +176,12 @@ impl ApplyEffectEvent {
         I: Iterator<Item = &'a Box<dyn Modifier>>,
     {
         for modifier in modifiers {
-            modifier.apply_delayed(self.targeting.source(), self.targeting.target(), self.entity, commands);
+            modifier.apply_delayed(
+                self.targeting.source(),
+                self.targeting.target(),
+                self.entity,
+                commands,
+            );
         }
     }
 
@@ -275,7 +280,12 @@ impl ApplyEffectEvent {
         let bindings = type_bindings.internal.read().unwrap();
         effect.modifiers.iter().for_each(|modifier| {
             let mut entity_commands = commands.spawn(ModifierOf(effect_entity));
-            modifier.spawn_persistent_modifier(source_actor_ref.id(), &context, &bindings, &mut entity_commands);
+            modifier.spawn_persistent_modifier(
+                source_actor_ref.id(),
+                &context,
+                &bindings,
+                &mut entity_commands,
+            );
         });
 
         // Spawn effect triggers
@@ -351,20 +361,17 @@ mod test {
     attribute!(TestB, f64);
     attribute!(TestInt, u32);
 
-    fn prepare_actor(
-        mut ctx: EffectContext,
-        registry: Registry,
-    ) {
+    fn prepare_actor(mut ctx: EffectContext, registry: Registry) {
         let actor_template = ctx.add_actor(
             ActorBuilder::new()
                 .name("TestActor".into())
                 .with::<TestA>(100.0)
                 .with::<TestB>(10.0)
                 .with::<TestInt>(50)
-                .with_effect(&registry.effect(CONDITION_EFFECT))
+                .with_effect(&registry.effect(&CONDITION_EFFECT))
                 .build(),
         );
-        ctx.spawn_actor(&actor_template);
+        ctx.spawn_actor_from_handle(&actor_template);
     }
 
     fn prepare_effects(mut registry: RegistryMut) {

@@ -255,23 +255,23 @@ fn setup_actor(mut ctx: EffectContext, efx: Res<EffectsDatabase>, abilities: Res
     let player_entity = ctx.add_spawn_actor(actor_template).id();
 
     /*let test_entity = ctx
-        .add_spawn_actor(
-            ActorBuilder::new()
-                .name("==Test==")
-                .with::<Strength>(10.0)
-                .insert(DebugOverlayMarker)
-                .build(),
-        )
-        .id();*/
+    .add_spawn_actor(
+        ActorBuilder::new()
+            .name("==Test==")
+            .with::<Strength>(10.0)
+            .insert(DebugOverlayMarker)
+            .build(),
+    )
+    .id();*/
 
     /*let test_effect = EffectBuilder::permanent()
-        .modify::<Strength>(Strength::src(), ModOp::Add, Who::Target)
-        .build();*/
+    .modify::<Strength>(Strength::src(), ModOp::Add, Who::Target)
+    .build();*/
     //ctx.apply_dynamic_effect_to_target(test_entity, player_entity, test_effect);
 
     /*let test_effect = EffectBuilder::permanent()
-        .modify::<Intelligence>(Strength::src(), ModOp::Add, Who::Target)
-        .build();*/
+    .modify::<Intelligence>(Strength::src(), ModOp::Add, Who::Target)
+    .build();*/
     //ctx.apply_dynamic_effect_to_target(player_entity, test_entity, test_effect);
 
     ctx.apply_effect_to_self(player_entity, &efx.ap_buff);

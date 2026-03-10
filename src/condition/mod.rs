@@ -6,9 +6,7 @@ mod conditions;
 mod systems;
 
 use crate::schedule::EffectsSet;
-pub use conditions::{
-    AbilityCondition, ChanceCondition, HasComponent, IsAttributeWithinBounds,
-};
+pub use conditions::{AbilityCondition, ChanceCondition, HasComponent, IsAttributeWithinBounds};
 
 pub struct ConditionPlugin;
 
@@ -23,7 +21,6 @@ impl Plugin for ConditionPlugin {
         //app.add_systems(Update, evaluate_effect_conditions.in_set(EffectsSet::Notify));
     }
 }
-
 
 /*
 #[cfg(test)]

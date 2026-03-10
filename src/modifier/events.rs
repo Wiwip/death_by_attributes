@@ -1,3 +1,4 @@
+use crate::context::BevyContext;
 use crate::inspector::pretty_type_name;
 use crate::math::AbsDiff;
 use crate::modifier::calculator::AttributeCalculator;
@@ -6,7 +7,6 @@ use crate::systems::MarkNodeDirty;
 use crate::{AppAttributeBindings, AttributesMut};
 use bevy::prelude::*;
 use bevy::reflect::TypeRegistryArc;
-use crate::context::BevyContext;
 
 #[derive(Message)]
 pub struct ApplyAttributeModifierMessage<T: Attribute> {
@@ -72,11 +72,7 @@ pub fn apply_modifier<T: Attribute>(
 
     // Apply the modifier
     let Ok(calculator) = AttributeCalculator::<T>::convert(&modifier) else {
-        return Err(format!(
-            "Could not convert modifier {} to calculator.",
-            modifier,
-        )
-        .into());
+        return Err(format!("Could not convert modifier {} to calculator.", modifier,).into());
     };
     let new_base_value = calculator.eval(base_value);
 

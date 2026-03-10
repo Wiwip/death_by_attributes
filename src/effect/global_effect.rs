@@ -53,7 +53,7 @@ mod test {
     use crate::registry::ability_registry::AbilityToken;
     use crate::registry::effect_registry::EffectToken;
     use crate::registry::{Registry, RegistryMut};
-    use crate::{attribute, init_attribute, AttributesPlugin};
+    use crate::{AttributesPlugin, attribute, init_attribute};
     use bevy::ecs::system::RunSystemOnce;
 
     attribute!(TestAttribute, f64);
@@ -61,19 +61,16 @@ mod test {
     #[derive(Component, Copy, Clone, Debug, PartialEq)]
     struct ConditionTag;
 
-    fn prepare_actor(
-        mut ctx: EffectContext,
-        registry: Registry,
-    ) {
+    fn prepare_actor(mut ctx: EffectContext, registry: Registry) {
         let actor_template = ctx.add_actor(
             ActorBuilder::new()
                 .name("TestActor".into())
                 .with::<TestAttribute>(0.0)
-                .grant_ability(&registry.ability(TEST_ABILITY_TOKEN))
-                .with_effect(&registry.effect(CONDITION_EFFECT))
+                .grant_ability(&registry.ability(&TEST_ABILITY_TOKEN))
+                .with_effect(&registry.effect(&CONDITION_EFFECT))
                 .build(),
         );
-        ctx.spawn_actor(&actor_template);
+        ctx.spawn_actor_from_handle(&actor_template);
     }
 
     fn prepare_effects(mut registry: RegistryMut) {
@@ -135,7 +132,7 @@ mod test {
 
         app.world_mut()
             .run_system_once(move |mut ctx: EffectContext, registry: Registry| {
-                ctx.apply_effect_to_self(actor_id, &registry.effect(TEST_EFFECT));
+                ctx.apply_effect_to_self(actor_id, &registry.effect(&TEST_EFFECT));
             })
             .unwrap();
 

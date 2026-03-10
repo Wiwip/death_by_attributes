@@ -61,13 +61,12 @@ pub fn evaluate_effect_conditions(
         };
 
         // Determines whether the effect should activate
-        let should_be_active = effect
-            .activate_conditions
-            .iter()
-            .all(|condition| condition.inner.eval(&context).unwrap_or_else(|_| {
+        let should_be_active = effect.activate_conditions.iter().all(|condition| {
+            condition.inner.eval(&context).unwrap_or_else(|_| {
                 error!("A condition failed to execute.");
                 false
-            }));
+            })
+        });
 
         let is_inactive = status.is_some();
         if should_be_active && is_inactive {
@@ -112,11 +111,11 @@ mod test {
                 .name("TestActor".into())
                 .with::<TestA>(0.0)
                 .with::<TestB>(1.0)
-                .grant_ability(&registry.ability(TEST_ABILITY_TOKEN))
-                .with_effect(&registry.effect(CONDITION_EFFECT))
+                .grant_ability(&registry.ability(&TEST_ABILITY_TOKEN))
+                .with_effect(&registry.effect(&CONDITION_EFFECT))
                 .build(),
         );
-        ctx.spawn_actor(&actor_template);
+        ctx.spawn_actor_from_handle(&actor_template);
     }
 
     fn prepare_effects(mut registry: RegistryMut) {
@@ -193,7 +192,7 @@ mod test {
 
         app.world_mut()
             .run_system_once(move |mut ctx: EffectContext, registry: Registry| {
-                ctx.apply_effect_to_self(actor_id, &registry.effect(TEST_EFFECT));
+                ctx.apply_effect_to_self(actor_id, &registry.effect(&TEST_EFFECT));
             })
             .unwrap();
 

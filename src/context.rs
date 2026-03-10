@@ -1,21 +1,24 @@
-use std::any::{Any, TypeId};
 use crate::actors::SpawnActorCommand;
 use crate::assets::{ActorDef, EffectDef};
 use crate::effect::global_effect::{GlobalActor, GlobalEffects};
 use crate::effect::{ApplyEffectEvent, EffectTargeting};
+use crate::modifier::Who;
+use crate::{AppAttributeBindings, AttributesMut, AttributesRef};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy::reflect::TypeRegistryArc;
 use express_it::context::{Accessor, ReadContext, ScopeId, WriteContext};
 use express_it::expr::ExpressionError;
-use crate::{AppAttributeBindings, AttributesMut, AttributesRef};
-use crate::modifier::Who;
+use std::any::{Any, TypeId};
+use crate::registry::actor_registry::ActorToken;
+use crate::registry::{Registry};
 
 #[derive(SystemParam)]
 pub struct EffectContext<'w, 's> {
     commands: Commands<'w, 's>,
     global_actor: Query<'w, 's, Entity, With<GlobalActor>>,
     global_effects: ResMut<'w, GlobalEffects>,
+    registry: Registry<'w>,
     effects: ResMut<'w, Assets<EffectDef>>,
     actors: ResMut<'w, Assets<ActorDef>>,
 }
@@ -70,7 +73,17 @@ impl<'s, 'w> EffectContext<'w, 's> {
         self.actors.add(actor)
     }
 
-    pub fn spawn_actor(&mut self, handle: &Handle<ActorDef>) -> EntityCommands<'_> {
+    pub fn spawn_actor(&mut self, token: &ActorToken) -> EntityCommands<'_> {
+        let handle = self.registry.actor(&token);
+
+        let mut entity_commands = self.commands.spawn_empty();
+        entity_commands.queue(SpawnActorCommand {
+            handle,
+        });
+        entity_commands
+    }
+
+    pub fn spawn_actor_from_handle(&mut self, handle: &Handle<ActorDef>) -> EntityCommands<'_> {
         let mut entity_commands = self.commands.spawn_empty();
         entity_commands.queue(SpawnActorCommand {
             handle: handle.clone(),
@@ -80,7 +93,7 @@ impl<'s, 'w> EffectContext<'w, 's> {
 
     pub fn add_spawn_actor(&mut self, actor: ActorDef) -> EntityCommands<'_> {
         let handle = self.actors.add(actor);
-        self.spawn_actor(&handle)
+        self.spawn_actor_from_handle(&handle)
     }
 
     pub fn insert_actor(&mut self, entity: Entity, handle: &Handle<ActorDef>) {
@@ -109,7 +122,6 @@ impl<'s, 'w> EffectContext<'w, 's> {
         }
     }
 }
-
 
 pub struct BevyContextMut<'w, 's> {
     pub source_actor: &'w mut AttributesMut<'w, 's>,
@@ -282,7 +294,11 @@ impl ReadContext for BevyContext<'_, '_> {
             bindings.base_ids.contains(&access.path())
         };
 
-        let field = if read_base { "base_value" } else { "current_value" };
+        let field = if read_base {
+            "base_value"
+        } else {
+            "current_value"
+        };
 
         let dyn_partial_reflect = dyn_reflect.reflect_path(field).map_err(|err| {
             ExpressionError::FailedReflect(format!("Invalid reflect path: {err}").into())

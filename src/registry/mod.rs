@@ -1,11 +1,13 @@
-use crate::assets::{AbilityDef, EffectDef};
+use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::registry::ability_registry::{AbilityRegistry, AbilityToken};
 use crate::registry::effect_registry::{EffectRegistry, EffectToken};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
+use crate::registry::actor_registry::{ActorRegistry, ActorToken};
 
 pub mod ability_registry;
 pub mod effect_registry;
+pub mod actor_registry;
 
 pub struct RegistryPlugin;
 
@@ -13,24 +15,28 @@ impl Plugin for RegistryPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(EffectRegistry::default());
         app.insert_resource(AbilityRegistry::default());
+        app.insert_resource(ActorRegistry::default());
     }
 }
 
 #[derive(SystemParam)]
 pub struct Registry<'w> {
     ability_registry: Res<'w, AbilityRegistry>,
-    //ability_assets: Res<'w, Assets<AbilityDef>>,
     effect_registry: Res<'w, EffectRegistry>,
-    //effect_assets: Res<'w, Assets<EffectDef>>,
+    actor_registry: Res<'w, ActorRegistry>,
 }
 
 impl Registry<'_> {
-    pub fn effect(&self, name: EffectToken) -> Handle<EffectDef> {
-        self.effect_registry.get(name).clone()
+    pub fn effect(&self, name: &EffectToken) -> &Handle<EffectDef> {
+        self.effect_registry.get(name).expect("effect not found")
     }
 
-    pub fn ability(&self, name: AbilityToken) -> Handle<AbilityDef> {
+    pub fn ability(&self, name: &AbilityToken) -> Handle<AbilityDef> {
         self.ability_registry.get(name).clone()
+    }
+
+    pub fn actor(&self, name: &ActorToken) -> Handle<ActorDef> {
+        self.actor_registry.get(name).clone()
     }
 }
 
@@ -41,6 +47,9 @@ pub struct RegistryMut<'w> {
 
     effect_registry: ResMut<'w, EffectRegistry>,
     effect_assets: ResMut<'w, Assets<EffectDef>>,
+
+    actor_registry: ResMut<'w, ActorRegistry>,
+    actor_assets: ResMut<'w, Assets<ActorDef>>,
 }
 
 impl RegistryMut<'_> {
@@ -49,8 +58,8 @@ impl RegistryMut<'_> {
         self.effect_registry.add(name, handle);
     }
 
-    pub fn effect(&self, name: EffectToken) -> Handle<EffectDef> {
-        self.effect_registry.get(name).clone()
+    pub fn effect(&self, name: &EffectToken) -> &Handle<EffectDef> {
+        self.effect_registry.get(&name).expect("Effect must exist.")
     }
 
     pub fn add_ability(&mut self, name: AbilityToken, ability: AbilityDef) {
@@ -58,7 +67,16 @@ impl RegistryMut<'_> {
         self.ability_registry.add(name, handle);
     }
 
-    pub fn ability(&self, name: AbilityToken) -> Handle<AbilityDef> {
+    pub fn ability(&self, name: &AbilityToken) -> Handle<AbilityDef> {
         self.ability_registry.get(name).clone()
+    }
+
+    pub fn add_actor(&mut self, name: ActorToken, actor: ActorDef) {
+        let handle = self.actor_assets.add(actor);
+        self.actor_registry.add(name, handle);
+    }
+
+    pub fn actor(&self, name: &ActorToken) -> Handle<ActorDef> {
+        self.actor_registry.get(name).clone()
     }
 }

@@ -1,14 +1,14 @@
-pub mod modifier;
 mod calculator;
 mod events;
+pub mod modifier;
 
 use crate::inspector::pretty_type_name;
 use crate::prelude::*;
-pub use modifier::AttributeModifier;
 use bevy::prelude::{Component, Entity, EntityCommands, Reflect, reflect_trait};
 pub use calculator::{AttributeCalculator, AttributeCalculatorCached, ModOp};
 pub use events::{ApplyAttributeModifierMessage, apply_modifier_events};
 use express_it::context::ScopeId;
+pub use modifier::AttributeModifier;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter};
 

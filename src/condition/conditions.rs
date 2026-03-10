@@ -9,7 +9,7 @@ use express_it::context::{Path, ReadContext};
 use express_it::expr::{Expr, ExprNode, ExpressionError};
 use express_it::logic::{BoolExpr, BoolExprNode};
 use serde::Serialize;
-use std::any::{TypeId};
+use std::any::TypeId;
 use std::collections::HashSet;
 use std::fmt::Formatter;
 use std::marker::PhantomData;
@@ -56,7 +56,7 @@ impl<T: Attribute> ExprNode<bool> for IsAttributeWithinBounds<T> {
         let path = Path::from_id(self.who, T::ID);
         let any = ctx.get_any(&path)?;
         let value = any.downcast_ref::<T::Property>().unwrap();
-        
+
         Ok(self.bounds.contains(&value))
     }
 

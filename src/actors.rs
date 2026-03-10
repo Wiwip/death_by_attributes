@@ -1,19 +1,17 @@
-use crate::GrantedAbilities;
 use crate::ability::{AbilityOf, GrantAbilityCommand};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::attribute::clamps::Clamp;
-use crate::attributes::AttributeId;
 use crate::effect::{ApplyEffectEvent, EffectTargeting};
 use crate::graph::NodeType;
 use crate::modifier::AttributeCalculatorCached;
 use crate::mutator::EntityActions;
 use crate::prelude::*;
+use crate::GrantedAbilities;
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use express_it::expr::{Expr, ExprNode};
 use num_traits::{AsPrimitive, Num};
-use std::any::Any;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::HashSet;
 
 #[derive(Component, Clone, Debug, Deref)]
 #[require(GrantedAbilities)]
@@ -79,30 +77,26 @@ impl EntityCommand for SpawnActorCommand {
 }
 
 pub struct ActorBuilder {
-    name: String,
-    builder_actions: VecDeque<EntityActions>,
-    abilities: Vec<Handle<AbilityDef>>,
-    effects: Vec<Handle<EffectDef>>,
-
-    // The value is actually Box<(Expr<T>, Expr<T>)>, but hidden behind 'Any'.
-    clamp_exprs: HashMap<AttributeId, Box<dyn Any + Send + Sync>>,
-    clamp_reverse_lookup: HashMap<AttributeId, Vec<AttributeId>>,
+    actor: ActorDef,
 }
 
 impl ActorBuilder {
     pub fn new() -> ActorBuilder {
         Self {
-            name: "Actor".to_string(),
-            builder_actions: VecDeque::new(),
-            abilities: vec![],
-            effects: vec![],
-            clamp_exprs: Default::default(),
-            clamp_reverse_lookup: Default::default(),
+            actor: ActorDef {
+                name: "Actor".to_string(),
+                description: "".to_string(),
+                builder_actions: Default::default(),
+                abilities: vec![],
+                effects: vec![],
+                clamp_exprs: Default::default(),
+                clamp_reverse_lookup: Default::default(),
+            },
         }
     }
 
     pub fn name(mut self, name: &str) -> ActorBuilder {
-        self.name = name.to_string();
+        self.actor.name = name.to_string();
         self
     }
 
@@ -110,7 +104,7 @@ impl ActorBuilder {
         mut self,
         value: impl Num + AsPrimitive<T::Property> + Copy + Send + Sync + 'static,
     ) -> ActorBuilder {
-        self.builder_actions.push_front(EntityActions::new(
+        self.actor.builder_actions.push_front(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
                 entity_commands.insert((T::new(value), AttributeCalculatorCached::<T>::default()));
             },
@@ -119,7 +113,7 @@ impl ActorBuilder {
     }
 
     pub fn with_effect(mut self, effect: &Handle<EffectDef>) -> ActorBuilder {
-        self.effects.push(effect.clone());
+        self.actor.effects.push(effect.clone());
         self
     }
 
@@ -141,17 +135,19 @@ impl ActorBuilder {
         max_expr.inner.get_dependencies(&mut deps);
         println!("deps: {:?}", deps);
         for dep in deps {
-            self.clamp_reverse_lookup
+            self.actor
+                .clamp_reverse_lookup
                 .entry(dep.id)
                 .or_default()
                 .push(dep.id);
         }
 
         // Insert expressions
-        self.clamp_exprs
+        self.actor
+            .clamp_exprs
             .insert(T::ID, Box::new((min_expr, max_expr)));
 
-        self.builder_actions.push_back(EntityActions::new(
+        self.actor.builder_actions.push_back(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
                 entity_commands.insert(Clamp::<T>::new());
             },
@@ -161,7 +157,7 @@ impl ActorBuilder {
     }
 
     pub fn insert<T: Bundle + Clone + 'static>(mut self, bundle: T) -> ActorBuilder {
-        self.builder_actions.push_front(EntityActions::new(
+        self.actor.builder_actions.push_front(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
                 entity_commands.insert(bundle.clone());
             },
@@ -170,19 +166,11 @@ impl ActorBuilder {
     }
 
     pub fn grant_ability(mut self, ability_spec: &Handle<AbilityDef>) -> Self {
-        self.abilities.push(ability_spec.clone());
+        self.actor.abilities.push(ability_spec.clone());
         self
     }
 
     pub fn build(self) -> ActorDef {
-        ActorDef {
-            name: self.name,
-            description: "".to_string(),
-            builder_actions: self.builder_actions,
-            abilities: self.abilities,
-            effects: self.effects,
-            clamp_exprs: self.clamp_exprs,
-            clamp_reverse_lookup: self.clamp_reverse_lookup,
-        }
+        self.actor
     }
 }

@@ -59,12 +59,14 @@ pub mod prelude {
     pub use crate::attributes::{
         AccessAttribute, Attribute, AttributeTypeId, ReflectAccessAttribute,
     };
-    pub use crate::effect::{EffectBuilder, EffectApplicationPolicy};
+    pub use crate::effect::{EffectApplicationPolicy, EffectBuilder};
     pub use crate::modifier::{AccessModifier, AttributeModifier, ModOp, Who};
 
     // Necessary for attribute macro
     pub use bevy::prelude::ReflectComponent;
 }
+
+pub use express_it;
 
 use crate::attribute::clamps::{Clamp, apply_clamps, update_clamps};
 use crate::modifier::modifier::update_modifier_when_dependencies_changed;

@@ -97,8 +97,8 @@ macro_rules! attribute_impl {
             Copy,
             bevy::prelude::Reflect,
             Debug,
-            serde::Serialize,
-            serde::Deserialize,
+            //serde::Serialize,
+            //serde::Deserialize,
         )]
         #[reflect(Component, AccessAttribute)]
         pub struct $StructName {
@@ -108,10 +108,11 @@ macro_rules! attribute_impl {
 
         impl $crate::attributes::Attribute for $StructName {
             type Property = $ValueType;
-            type ExprType = express_it::expr::SelectExprNode<$ValueType>;
+            type ExprType = $crate::express_it::expr::SelectExprNode<$ValueType>;
 
-            const ID: u64 = express_it::context::fnv1a64(stringify!($StructName));
-            const BASE_ID: u64 = express_it::context::fnv1a64(concat!(stringify!($StructName), "::base"));
+            const ID: u64 = $crate::express_it::context::fnv1a64(stringify!($StructName));
+            const BASE_ID: u64 =
+                $crate::express_it::context::fnv1a64(concat!(stringify!($StructName), "::base"));
 
             fn new<T>(value: T) -> Self
             where
@@ -137,67 +138,80 @@ macro_rules! attribute_impl {
             fn set_current_value(&mut self, value: $ValueType) {
                 self.current_value = value;
             }
-            fn src() -> express_it::expr::Expr<Self::Property> {
-                express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
-                    express_it::context::Path::from_id($crate::modifier::Who::Source, Self::ID),
+            fn src() -> $crate::express_it::expr::Expr<Self::Property> {
+                $crate::express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
+                    $crate::express_it::context::Path::from_id(
+                        $crate::modifier::Who::Source,
+                        Self::ID,
+                    ),
                 )))
             }
-            fn dst() -> express_it::expr::Expr<Self::Property> {
-                express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
-                    express_it::context::Path::from_id($crate::modifier::Who::Target, Self::ID),
+            fn dst() -> $crate::express_it::expr::Expr<Self::Property> {
+                $crate::express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
+                    $crate::express_it::context::Path::from_id(
+                        $crate::modifier::Who::Target,
+                        Self::ID,
+                    ),
                 )))
             }
-            fn parent() -> express_it::expr::Expr<Self::Property> {
-                express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
-                    express_it::context::Path::from_id($crate::modifier::Who::Owner, Self::ID),
+            fn parent() -> $crate::express_it::expr::Expr<Self::Property> {
+                $crate::express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
+                    $crate::express_it::context::Path::from_id(
+                        $crate::modifier::Who::Owner,
+                        Self::ID,
+                    ),
                 )))
             }
             fn scoped(
-                scope: impl Into<express_it::context::ScopeId>,
-            ) -> express_it::expr::Expr<Self::Property> {
-                express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
-                    express_it::context::Path::from_id(scope.into(), Self::ID),
+                scope: impl Into<$crate::express_it::context::ScopeId>,
+            ) -> $crate::express_it::expr::Expr<Self::Property> {
+                $crate::express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
+                    $crate::express_it::context::Path::from_id(scope.into(), Self::ID),
                 )))
             }
-            fn lit(value: $ValueType) -> express_it::expr::Expr<Self::Property> {
-                express_it::expr::Expr::<Self::Property>::new(std::sync::Arc::new(
+            fn lit(value: $ValueType) -> $crate::express_it::expr::Expr<Self::Property> {
+                $crate::express_it::expr::Expr::<Self::Property>::new(std::sync::Arc::new(
                     Self::ExprType::Lit(value),
                 ))
             }
             fn set(
-                scope: impl Into<express_it::context::ScopeId>,
-                expr: impl Into<express_it::expr::Expr<Self::Property>>,
-            ) -> express_it::frame::Assignment<Self::Property> {
-                express_it::frame::Assignment {
-                    path: express_it::context::Path::from_id(scope, Self::BASE_ID),
+                scope: impl Into<$crate::express_it::context::ScopeId>,
+                expr: impl Into<$crate::express_it::expr::Expr<Self::Property>>,
+            ) -> $crate::express_it::frame::Assignment<Self::Property> {
+                $crate::express_it::frame::Assignment {
+                    path: $crate::express_it::context::Path::from_id(scope, Self::BASE_ID),
                     expr: expr.into(),
                 }
             }
             fn add(
-                scope: impl Into<express_it::context::ScopeId> + std::marker::Copy,
-                expr: impl Into<express_it::expr::Expr<Self::Property>>,
-            ) -> express_it::frame::Assignment<Self::Property> {
-                let get_expr =
-                    express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
-                        express_it::context::Path::from_id(scope.into(), Self::BASE_ID),
-                    )));
+                scope: impl Into<$crate::express_it::context::ScopeId> + std::marker::Copy,
+                expr: impl Into<$crate::express_it::expr::Expr<Self::Property>>,
+            ) -> $crate::express_it::frame::Assignment<Self::Property> {
+                let get_expr = $crate::express_it::expr::Expr::new(std::sync::Arc::new(
+                    Self::ExprType::Attribute($crate::express_it::context::Path::from_id(
+                        scope.into(),
+                        Self::BASE_ID,
+                    )),
+                ));
 
-                express_it::frame::Assignment {
-                    path: express_it::context::Path::from_id(scope.into(), Self::BASE_ID),
+                $crate::express_it::frame::Assignment {
+                    path: $crate::express_it::context::Path::from_id(scope.into(), Self::BASE_ID),
                     expr: get_expr + expr.into(),
                 }
             }
             fn sub(
-                scope: impl Into<express_it::context::ScopeId> + std::marker::Copy,
-                expr: impl Into<express_it::expr::Expr<Self::Property>>,
-            ) -> express_it::frame::Assignment<Self::Property> {
-                let get_expr =
-                    express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
-                        express_it::context::Path::from_id(scope.into(), Self::BASE_ID),
-                    )));
+                scope: impl Into<$crate::express_it::context::ScopeId> + std::marker::Copy,
+                expr: impl Into<$crate::express_it::expr::Expr<Self::Property>>,
+            ) -> $crate::express_it::frame::Assignment<Self::Property> {
+                let get_expr = $crate::express_it::expr::Expr::new(std::sync::Arc::new(
+                    Self::ExprType::Attribute($crate::express_it::context::Path::from_id(
+                        scope.into(),
+                        Self::BASE_ID,
+                    )),
+                ));
 
-                express_it::frame::Assignment {
-                    path: express_it::context::Path::from_id(scope.into(), Self::BASE_ID),
+                $crate::express_it::frame::Assignment {
+                    path: $crate::express_it::context::Path::from_id(scope.into(), Self::BASE_ID),
                     expr: get_expr - expr.into(),
                 }
             }
@@ -231,8 +245,8 @@ macro_rules! tag {
             Copy,
             Clone,
             Debug,
-            serde::Serialize,
-            serde::Deserialize,
+            //serde::Serialize,
+            //serde::Deserialize,
         )]
         #[reflect(Component)]
         pub struct $StructName;

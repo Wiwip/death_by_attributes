@@ -44,14 +44,15 @@ impl AbilityBuilder {
         self
     }
 
-    pub fn with_cost<T: Attribute>(mut self, cost: T::Property) -> Self
+    pub fn with_cost<T: Attribute>(mut self, cost: impl Into<Expr<T::Property>>) -> Self
     where
         Expr<T::Property>: CompareExpr,
     {
-        let cost_expr = T::sub(Who::Source, T::lit(cost));
-        self.cost_modifiers = self.cost_modifiers.step(cost_expr);
+        let cost_expr = cost.into();
+        let cost_assignment = T::sub(Who::Source, cost_expr.clone());
+        self.cost_modifiers = self.cost_modifiers.step(cost_assignment);
 
-        let cost_expr = T::lit(cost).le(T::src());
+        let cost_expr = cost_expr.le(T::src());
         self.cost_condition.push(cost_expr);
         self
     }

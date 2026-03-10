@@ -16,7 +16,7 @@ fn prepare_actor(mut ctx: EffectContext) {
             .with::<TestA>(0)
             .build(),
     );
-    ctx.spawn_actor(&actor_template);
+    ctx.spawn_actor_from_handle(&actor_template);
 }
 
 /// Creates an actor with attribute TestA(u32) with a base value of 0.

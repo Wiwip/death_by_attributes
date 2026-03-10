@@ -1,8 +1,8 @@
 use crate::assets::EffectDef;
 use crate::attributes::Attribute;
 use crate::condition::IsAttributeWithinBounds;
-use crate::effect::application::EffectApplicationPolicy;
 use crate::effect::EffectStackingPolicy;
+use crate::effect::application::EffectApplicationPolicy;
 use crate::modifier::{AttributeModifier, ModOp, Who};
 use crate::mutator::EntityActions;
 use bevy::ecs::system::IntoObserverSystem;
@@ -86,14 +86,12 @@ impl EffectBuilder {
         who: Who,
     ) -> Self {
         let expr = expr.into();
-        self.def
-            .modifiers
-            .push(Box::new(AttributeModifier::<T> {
-                expr: expr.clone(),
-                value: T::Property::default(),
-                who,
-                operation: op,
-            }));
+        self.def.modifiers.push(Box::new(AttributeModifier::<T> {
+            expr: expr.clone(),
+            value: T::Property::default(),
+            who,
+            operation: op,
+        }));
         self
     }
 
