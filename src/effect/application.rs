@@ -1,5 +1,5 @@
 use crate::assets::EffectDef;
-use crate::context::BevyContext;
+use crate::context::EffectExprContext;
 use crate::effect::stacks::NotifyAddStackEvent;
 use crate::effect::timing::{EffectDuration, EffectTicker};
 use crate::effect::{
@@ -145,7 +145,7 @@ impl ApplyEffectEvent {
             return Ok(());
         };
 
-        let context = BevyContext {
+        let context = EffectExprContext {
             target_actor: &target_actor_ref,
             source_actor: &source_actor_ref,
             owner: &source_actor_ref, // TODO: Make optional
@@ -235,7 +235,7 @@ impl ApplyEffectEvent {
         let (_, source_actor_ref) = actors.get(self.targeting.source())?;
         let (_, target_actor_ref) = actors.get(self.targeting.target())?;
 
-        let context = BevyContext {
+        let context = EffectExprContext {
             target_actor: &target_actor_ref,
             source_actor: &source_actor_ref,
             owner: &source_actor_ref, // TODO: Should this be the source actor? The effect doesn't exist for instant effects.

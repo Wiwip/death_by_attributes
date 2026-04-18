@@ -1,7 +1,7 @@
 use crate::actors::Actor;
 use crate::assets::ActorDef;
 use crate::attributes::AttributeQueryData;
-use crate::context::BevyContext;
+use crate::context::EffectExprContext;
 use crate::prelude::*;
 use crate::{AppAttributeBindings, AttributesRef, CurrentValueChanged};
 use bevy::prelude::*;
@@ -41,7 +41,7 @@ pub fn update_clamps<T: Attribute>(
             .get(&actor_handle.0)
             .ok_or("Missing actor asset.")?;
 
-        let actor_context = BevyContext {
+        let actor_context = EffectExprContext {
             source_actor: &attribute_ref,
             target_actor: &attribute_ref,
             owner: &attribute_ref,
@@ -54,11 +54,11 @@ pub fn update_clamps<T: Attribute>(
         };
 
         let (min_expr, max_expr) = clamp_exprs
-            .downcast_ref::<(Expr<T::Property>, Expr<T::Property>)>()
+            .downcast_ref::<(Expr<T::Property, EffectExprSchema>, Expr<T::Property, EffectExprSchema>)>()
             .ok_or("Failed downcast expressions.")?;
 
-        let min_value = min_expr.eval_dyn(&actor_context)?;
-        let max_value = max_expr.eval_dyn(&actor_context)?;
+        let min_value = min_expr.eval(&actor_context)?;
+        let max_value = max_expr.eval(&actor_context)?;
 
         (min_value, max_value)
     };

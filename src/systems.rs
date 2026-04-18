@@ -1,7 +1,7 @@
 use crate::actors::Actor;
 use crate::assets::EffectDef;
 use crate::attributes::{Attribute, AttributeQueryData, AttributeQueryDataReadOnly};
-use crate::context::BevyContext;
+use crate::context::EffectExprContext;
 use crate::effect::{
     AttributeDependents, Effect, EffectSource, EffectStatusParam, EffectTarget, EffectTicker,
 };
@@ -260,7 +260,7 @@ pub fn apply_periodic_effect<T: Attribute>(
         let source_actor_ref = actors.get(source.0).unwrap();
         let target_actor_ref = actors.get(target.0).unwrap();
 
-        let context = BevyContext {
+        let context = EffectExprContext {
             target_actor: &target_actor_ref,
             source_actor: &source_actor_ref,
             owner: &effect_ref,

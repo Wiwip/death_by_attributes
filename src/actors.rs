@@ -12,6 +12,7 @@ use bevy::prelude::*;
 use express_it::expr::{Expr, ExprNode};
 use num_traits::{AsPrimitive, Num};
 use std::collections::HashSet;
+use crate::context::EffectExprSchema;
 
 #[derive(Component, Clone, Debug, Deref)]
 #[require(GrantedAbilities)]
@@ -119,9 +120,8 @@ impl ActorBuilder {
 
     pub fn clamp<T>(
         mut self,
-
-        min_expr: impl Into<Expr<T::Property>> + Send + Sync + 'static,
-        max_expr: impl Into<Expr<T::Property>> + Send + Sync + 'static,
+        min_expr: impl Into<Expr<T::Property, EffectExprSchema>> + Send + Sync + 'static,
+        max_expr: impl Into<Expr<T::Property, EffectExprSchema>> + Send + Sync + 'static,
     ) -> ActorBuilder
     where
         T: Attribute,

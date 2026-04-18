@@ -15,6 +15,7 @@ use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::ops::{Bound, RangeBounds};
 use std::sync::Arc;
+use crate::context::{AbilityExprContext, AbilityExprSchema, EffectExprContext, EffectExprSchema};
 
 #[derive(TypePath)]
 pub struct IsAttributeWithinBounds<T: Attribute> {
@@ -51,8 +52,8 @@ impl<T: Attribute> std::fmt::Debug for IsAttributeWithinBounds<T> {
     }
 }
 
-impl<T: Attribute> ExprNode<bool> for IsAttributeWithinBounds<T> {
-    fn eval(&self, ctx: &dyn ReadContext) -> Result<bool, ExpressionError> {
+impl<T: Attribute> ExprNode<bool, EffectExprSchema> for IsAttributeWithinBounds<T> {
+    fn eval(&self, ctx: &EffectExprContext) -> Result<bool, ExpressionError> {
         let path = Path::from_id(self.who, T::ID);
         let any = ctx.get_any(&path)?;
         let value = any.downcast_ref::<T::Property>().unwrap();
@@ -60,13 +61,17 @@ impl<T: Attribute> ExprNode<bool> for IsAttributeWithinBounds<T> {
         Ok(self.bounds.contains(&value))
     }
 
+    fn eval_dyn(&self, ctx: &dyn ReadContext) -> Result<bool, ExpressionError> {
+        todo!()
+    }
+
     fn get_dependencies(&self, _deps: &mut HashSet<Path>) {
         todo!()
     }
 }
 
-impl<T: Attribute> Into<BoolExpr> for IsAttributeWithinBounds<T> {
-    fn into(self) -> BoolExpr {
+impl<T: Attribute> Into<BoolExpr<EffectExprSchema>> for IsAttributeWithinBounds<T> {
+    fn into(self) -> BoolExpr<EffectExprSchema> {
         let node = BoolExprNode::Boxed(Box::new(self));
         Expr::new(Arc::new(node))
     }
@@ -102,9 +107,13 @@ impl<T: Attribute> std::fmt::Display for IsAttributeWithinBounds<T> {
 #[derive(Serialize)]
 pub struct ChanceCondition(pub f32);
 
-impl ExprNode<bool> for ChanceCondition {
-    fn eval(&self, _: &dyn ReadContext) -> Result<bool, ExpressionError> {
+impl ExprNode<bool, EffectExprSchema> for ChanceCondition {
+    fn eval(&self, _: &EffectExprContext) -> Result<bool, ExpressionError> {
         Ok(rand::random::<f32>() < self.0)
+    }
+
+    fn eval_dyn(&self, ctx: &dyn ReadContext) -> Result<bool, ExpressionError> {
+        todo!()
     }
 
     fn get_dependencies(&self, _deps: &mut HashSet<Path>) {
@@ -145,10 +154,31 @@ impl<C: Component> HasComponent<C> {
     }
 }
 
-impl<C: Component + Reflect> ExprNode<bool> for HasComponent<C> {
-    fn eval(&self, ctx: &dyn ReadContext) -> Result<bool, ExpressionError> {
-        let any = ctx.get_any_component(Who::Owner.into(), TypeId::of::<C>());
-        Ok(any.is_ok())
+impl<C: Component + Reflect> ExprNode<bool, EffectExprSchema> for HasComponent<C> {
+    fn eval(&self, ctx: &EffectExprContext) -> Result<bool, ExpressionError> {
+
+        //let any = ctx.get_any_component(Who::Owner.into(), TypeId::of::<C>());
+        //Ok(any.is_ok())
+        todo!();
+    }
+
+    fn eval_dyn(&self, ctx: &dyn ReadContext) -> Result<bool, ExpressionError> {
+        todo!()
+    }
+
+    fn get_dependencies(&self, _deps: &mut HashSet<Path>) {
+        todo!()
+    }
+}
+impl<C: Component + Reflect> ExprNode<bool, AbilityExprSchema> for HasComponent<C> {
+    fn eval(&self, ctx: &AbilityExprContext) -> Result<bool, ExpressionError> {
+        //let any = ctx.get_any_component(Who::Owner.into(), TypeId::of::<C>());
+        //Ok(any.is_ok())
+        todo!();
+    }
+
+    fn eval_dyn(&self, ctx: &dyn ReadContext) -> Result<bool, ExpressionError> {
+        todo!()
     }
 
     fn get_dependencies(&self, _deps: &mut HashSet<Path>) {
@@ -172,14 +202,18 @@ impl AbilityCondition {
     }
 }
 
-impl ExprNode<bool> for AbilityCondition {
-    fn eval(&self, _context: &dyn ReadContext) -> Result<bool, ExpressionError> {
+impl ExprNode<bool, AbilityExprSchema> for AbilityCondition {
+    fn eval(&self, _context: &AbilityExprContext) -> Result<bool, ExpressionError> {
         /*Ok(context
         .get_any()
         .get::<Ability>()
         .map(|ability| ability.0.id() == self.asset)
         .unwrap_or(false))*/
         unimplemented!()
+    }
+
+    fn eval_dyn(&self, ctx: &dyn ReadContext) -> Result<bool, ExpressionError> {
+        todo!()
     }
 
     fn get_dependencies(&self, _deps: &mut HashSet<Path>) {

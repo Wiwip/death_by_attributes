@@ -1,4 +1,4 @@
-use crate::context::BevyContext;
+use crate::context::EffectExprContext;
 use crate::inspector::pretty_type_name;
 use crate::math::AbsDiff;
 use crate::modifier::calculator::AttributeCalculator;
@@ -60,7 +60,7 @@ pub fn apply_modifier<T: Attribute>(
         .base_value();
 
     // We update the modifier's internal value before applying it.
-    let context = BevyContext {
+    let context = EffectExprContext {
         source_actor: &source,
         target_actor: &target, // Needs to be fixed.
         owner: &source,

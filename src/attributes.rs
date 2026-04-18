@@ -1,3 +1,4 @@
+use crate::context::EffectExprSchema;
 use crate::effect::AttributeDependents;
 use crate::inspector::pretty_type_name;
 use crate::math::{AbsDiff, SaturatingAttributes};
@@ -31,7 +32,7 @@ where
     Self: GetTypeRegistration + Typed + Send + Sync,
     Self: SaturatingAttributes<Output = Self> + Sum + Bounded + AbsDiff,
     Self: FromPrimitive + AsPrimitive<f64> + Reflect,
-    Self: SelectExprNodeImpl<Property = Self>,
+    Self: SelectExprNodeImpl<EffectExprSchema, Property = Self>,
 {
 }
 
@@ -42,7 +43,7 @@ where
     Self: GetTypeRegistration + Typed + Send + Sync,
     Self: SaturatingAttributes<Output = Self> + Sum + Bounded + AbsDiff,
     Self: FromPrimitive + AsPrimitive<f64> + Reflect,
-    Self: SelectExprNodeImpl<Property = Self>,
+    Self: SelectExprNodeImpl<EffectExprSchema, Property = Self>,
 {
 }
 
@@ -54,7 +55,7 @@ where
     Self: Reflect + TypePath + GetTypeRegistration,
 {
     type Property: Value;
-    type ExprType: ExprNode<Self::Property>;
+    type ExprType: ExprNode<Self::Property, EffectExprSchema>;
     const ID: AttributeId;
     const BASE_ID: AttributeId;
 
@@ -65,24 +66,24 @@ where
     fn borrow_current_value(&self) -> &Self::Property;
     fn set_current_value(&mut self, value: Self::Property);
     // Helper to wrap attribute access in an Expression
-    fn src() -> Expr<Self::Property>;
-    fn dst() -> Expr<Self::Property>;
-    fn parent() -> Expr<Self::Property>;
-    fn scoped(scope: impl Into<ScopeId>) -> Expr<Self::Property>;
-    fn lit(value: Self::Property) -> Expr<Self::Property>;
+    fn src() -> Expr<Self::Property, EffectExprSchema>;
+    fn dst() -> Expr<Self::Property, EffectExprSchema>;
+    fn parent() -> Expr<Self::Property, EffectExprSchema>;
+    fn scoped(scope: impl Into<ScopeId>) -> Expr<Self::Property, EffectExprSchema>;
+    fn lit(value: Self::Property) -> Expr<Self::Property, EffectExprSchema>;
     // Expression helpers
     fn set(
         scope: impl Into<ScopeId>,
-        expr: impl Into<Expr<Self::Property>>,
-    ) -> Assignment<Self::Property>;
+        expr: impl Into<Expr<Self::Property, EffectExprSchema>>,
+    ) -> Assignment<Self::Property, EffectExprSchema>;
     fn add(
         scope: impl Into<ScopeId> + Copy,
-        expr: impl Into<Expr<Self::Property>>,
-    ) -> Assignment<Self::Property>;
+        expr: impl Into<Expr<Self::Property, EffectExprSchema>>,
+    ) -> Assignment<Self::Property, EffectExprSchema>;
     fn sub(
         scope: impl Into<ScopeId> + Copy,
-        expr: impl Into<Expr<Self::Property>>,
-    ) -> Assignment<Self::Property>;
+        expr: impl Into<Expr<Self::Property, EffectExprSchema>>,
+    ) -> Assignment<Self::Property, EffectExprSchema>;
 }
 
 // Move expression-related functions to this subtrait.
@@ -97,8 +98,6 @@ macro_rules! attribute_impl {
             Copy,
             bevy::prelude::Reflect,
             Debug,
-            //serde::Serialize,
-            //serde::Deserialize,
         )]
         #[reflect(Component, AccessAttribute)]
         pub struct $StructName {
@@ -108,7 +107,7 @@ macro_rules! attribute_impl {
 
         impl $crate::attributes::Attribute for $StructName {
             type Property = $ValueType;
-            type ExprType = $crate::express_it::expr::SelectExprNode<$ValueType>;
+            type ExprType = $crate::express_it::expr::SelectExprNode<$ValueType, EffectExprSchema>;
 
             const ID: u64 = $crate::express_it::context::fnv1a64(stringify!($StructName));
             const BASE_ID: u64 =
@@ -138,7 +137,7 @@ macro_rules! attribute_impl {
             fn set_current_value(&mut self, value: $ValueType) {
                 self.current_value = value;
             }
-            fn src() -> $crate::express_it::expr::Expr<Self::Property> {
+            fn src() -> $crate::express_it::expr::Expr<Self::Property, EffectExprSchema> {
                 $crate::express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
                     $crate::express_it::context::Path::from_id(
                         $crate::modifier::Who::Source,
@@ -146,7 +145,7 @@ macro_rules! attribute_impl {
                     ),
                 )))
             }
-            fn dst() -> $crate::express_it::expr::Expr<Self::Property> {
+            fn dst() -> $crate::express_it::expr::Expr<Self::Property, EffectExprSchema> {
                 $crate::express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
                     $crate::express_it::context::Path::from_id(
                         $crate::modifier::Who::Target,
@@ -154,7 +153,7 @@ macro_rules! attribute_impl {
                     ),
                 )))
             }
-            fn parent() -> $crate::express_it::expr::Expr<Self::Property> {
+            fn parent() -> $crate::express_it::expr::Expr<Self::Property, EffectExprSchema> {
                 $crate::express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
                     $crate::express_it::context::Path::from_id(
                         $crate::modifier::Who::Owner,
@@ -164,20 +163,20 @@ macro_rules! attribute_impl {
             }
             fn scoped(
                 scope: impl Into<$crate::express_it::context::ScopeId>,
-            ) -> $crate::express_it::expr::Expr<Self::Property> {
+            ) -> $crate::express_it::expr::Expr<Self::Property, EffectExprSchema> {
                 $crate::express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
                     $crate::express_it::context::Path::from_id(scope.into(), Self::ID),
                 )))
             }
-            fn lit(value: $ValueType) -> $crate::express_it::expr::Expr<Self::Property> {
-                $crate::express_it::expr::Expr::<Self::Property>::new(std::sync::Arc::new(
+            fn lit(value: $ValueType) -> $crate::express_it::expr::Expr<Self::Property, EffectExprSchema> {
+                $crate::express_it::expr::Expr::<Self::Property, EffectExprSchema>::new(std::sync::Arc::new(
                     Self::ExprType::Lit(value),
                 ))
             }
             fn set(
                 scope: impl Into<$crate::express_it::context::ScopeId>,
-                expr: impl Into<$crate::express_it::expr::Expr<Self::Property>>,
-            ) -> $crate::express_it::frame::Assignment<Self::Property> {
+                expr: impl Into<$crate::express_it::expr::Expr<Self::Property, EffectExprSchema>>,
+            ) -> $crate::express_it::frame::Assignment<Self::Property, EffectExprSchema> {
                 $crate::express_it::frame::Assignment {
                     path: $crate::express_it::context::Path::from_id(scope, Self::BASE_ID),
                     expr: expr.into(),
@@ -185,8 +184,8 @@ macro_rules! attribute_impl {
             }
             fn add(
                 scope: impl Into<$crate::express_it::context::ScopeId> + std::marker::Copy,
-                expr: impl Into<$crate::express_it::expr::Expr<Self::Property>>,
-            ) -> $crate::express_it::frame::Assignment<Self::Property> {
+                expr: impl Into<$crate::express_it::expr::Expr<Self::Property, EffectExprSchema>>,
+            ) -> $crate::express_it::frame::Assignment<Self::Property, EffectExprSchema> {
                 let get_expr = $crate::express_it::expr::Expr::new(std::sync::Arc::new(
                     Self::ExprType::Attribute($crate::express_it::context::Path::from_id(
                         scope.into(),
@@ -201,8 +200,8 @@ macro_rules! attribute_impl {
             }
             fn sub(
                 scope: impl Into<$crate::express_it::context::ScopeId> + std::marker::Copy,
-                expr: impl Into<$crate::express_it::expr::Expr<Self::Property>>,
-            ) -> $crate::express_it::frame::Assignment<Self::Property> {
+                expr: impl Into<$crate::express_it::expr::Expr<Self::Property, EffectExprSchema>>,
+            ) -> $crate::express_it::frame::Assignment<Self::Property, EffectExprSchema> {
                 let get_expr = $crate::express_it::expr::Expr::new(std::sync::Arc::new(
                     Self::ExprType::Attribute($crate::express_it::context::Path::from_id(
                         scope.into(),

@@ -11,6 +11,7 @@ use express_it::expr::Expr;
 use express_it::logic::{BoolExpr, BoolExprNode};
 use std::ops::RangeBounds;
 use std::sync::Arc;
+use crate::context::{ActorExprSchema, EffectExprSchema};
 
 pub struct EffectBuilder {
     def: EffectDef,
@@ -81,7 +82,7 @@ impl EffectBuilder {
     /// ```
     pub fn modify<T: Attribute>(
         mut self,
-        expr: impl Into<Expr<T::Property>>,
+        expr: impl Into<Expr<T::Property, EffectExprSchema>>,
         op: ModOp,
         who: Who,
     ) -> Self {
@@ -111,12 +112,12 @@ impl EffectBuilder {
     ///     .attach_if(ChanceCondition(0.10))
     ///     .build()
     /// ```
-    pub fn attach_if(mut self, condition: impl Into<BoolExpr>) -> Self {
+    pub fn attach_if(mut self, condition: impl Into<BoolExpr<EffectExprSchema>>) -> Self {
         self.def.attach_conditions.push(condition.into());
         self
     }
 
-    pub fn active_while(mut self, condition: impl Into<BoolExpr>) -> Self {
+    pub fn active_while(mut self, condition: impl Into<BoolExpr<EffectExprSchema>>) -> Self {
         self.def.activate_conditions.push(condition.into());
         self
     }

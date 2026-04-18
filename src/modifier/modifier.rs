@@ -1,4 +1,4 @@
-use crate::context::{BevyContext, BevyContextMut};
+use crate::context::{EffectExprContext, BevyContextMut, EffectExprSchema};
 use crate::effect::{EffectSource, EffectTarget};
 use crate::inspector::pretty_type_name;
 use crate::math::AbsDiff;
@@ -22,7 +22,7 @@ pub trait Modifier: Send + Sync {
     fn spawn_persistent_modifier(
         &self,
         actor_entity: Entity,
-        ctx: &BevyContext,
+        ctx: &EffectExprContext,
         type_bindings: &AttributeBindings,
         commands: &mut EntityCommands,
     );
@@ -53,7 +53,7 @@ pub trait Modifier: Send + Sync {
 #[require(ModifierMarker)]
 pub struct AttributeModifier<T: Attribute> {
     #[reflect(ignore)]
-    pub expr: Expr<T::Property>,
+    pub expr: Expr<T::Property, EffectExprSchema>,
     pub value: T::Property,
     pub who: Who,
     pub operation: ModOp,
@@ -63,7 +63,7 @@ impl<T> AttributeModifier<T>
 where
     T: Attribute + 'static,
 {
-    pub fn new(value: T::Property, modifier: ModOp, who: Who, expr: Expr<T::Property>) -> Self {
+    pub fn new(value: T::Property, modifier: ModOp, who: Who, expr: Expr<T::Property, EffectExprSchema>) -> Self {
         Self {
             expr,
             value,
@@ -72,7 +72,7 @@ where
         }
     }
 
-    pub fn update_value(&mut self, ctx: &BevyContext) {
+    pub fn update_value(&mut self, ctx: &EffectExprContext) {
         let new_val = self.expr.inner.eval(ctx).unwrap_or(T::Property::default());
         self.value = new_val;
     }
@@ -81,16 +81,16 @@ where
 impl<T> Modifier for AttributeModifier<T>
 where
     T: Attribute,
-    T::Property: SelectExprNodeImpl<Property = T::Property>,
+    T::Property: SelectExprNodeImpl<EffectExprSchema, Property = T::Property>,
 {
     fn spawn_persistent_modifier(
         &self,
         actor_entity: Entity,
-        ctx: &BevyContext,
+        ctx: &EffectExprContext,
         type_bindings: &AttributeBindings,
         commands: &mut EntityCommands,
     ) {
-        let Ok(value) = self.expr.eval_dyn(ctx) else {
+        let Ok(value) = self.expr.inner.eval_dyn(ctx) else {
             error!(
                 "{}: Could not resolve expression to spawn persistent modifier.",
                 commands.id()
@@ -125,7 +125,7 @@ where
         type_registry: TypeRegistryArc,
         type_bindings: AppAttributeBindings,
     ) -> bool {
-        let immutable_context = BevyContext {
+        let immutable_context = EffectExprContext {
             source_actor: &context.source_actor.as_readonly(),
             target_actor: &context.source_actor.as_readonly(), // Needs to be fixed.
             owner: &context.owner.as_readonly(),
@@ -209,7 +209,7 @@ pub fn update_modifier_when_dependencies_changed<T: Attribute>(
     let (source, target) = effects.get(effect_id.0).unwrap();
     let [source_ref, target_ref] = actors.get_many([source.0, target.0]).unwrap();
 
-    let context = BevyContext {
+    let context = EffectExprContext {
         target_actor: &target_ref,
         source_actor: &source_ref,
         owner: &source_ref,
@@ -217,7 +217,7 @@ pub fn update_modifier_when_dependencies_changed<T: Attribute>(
         type_bindings: type_bindings.clone(),
     };
 
-    let new_val = modifier.expr.eval_dyn(&context).unwrap();
+    let new_val = modifier.expr.eval(&context).unwrap();
     modifier.value = new_val;
 
     commands.trigger(MarkNodeDirty::<T> {

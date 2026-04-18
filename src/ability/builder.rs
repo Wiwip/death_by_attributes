@@ -1,6 +1,7 @@
 use crate::ability::AbilityCooldown;
 use crate::assets::AbilityDef;
 use crate::attributes::Attribute;
+use crate::context::{AbilityExprSchema, EffectExprSchema};
 use crate::inspector::pretty_type_name;
 use crate::modifier::{AttributeCalculatorCached, Who};
 use crate::mutator::EntityActions;
@@ -15,7 +16,7 @@ pub struct AbilityBuilder {
     name: String,
     mutators: Vec<EntityActions>,
     triggers: Vec<EntityActions>,
-    cost_condition: Vec<BoolExpr>,
+    cost_condition: Vec<BoolExpr<EffectExprSchema>>,
     cost_modifiers: LazyPlan,
     on_execute: Vec<LazyPlan>,
 }
@@ -44,9 +45,9 @@ impl AbilityBuilder {
         self
     }
 
-    pub fn with_cost<T: Attribute>(mut self, cost: impl Into<Expr<T::Property>>) -> Self
+    pub fn with_cost<T: Attribute>(mut self, cost: impl Into<Expr<T::Property, EffectExprSchema>>) -> Self
     where
-        Expr<T::Property>: CompareExpr,
+        Expr<T::Property, EffectExprSchema>: CompareExpr<EffectExprSchema>,
     {
         let cost_expr = cost.into();
         let cost_assignment = T::sub(Who::Source, cost_expr.clone());
@@ -57,7 +58,7 @@ impl AbilityBuilder {
         self
     }
 
-    pub fn with_cooldown(mut self, expr: impl Into<Expr<f64>>) -> Self {
+    pub fn with_cooldown(mut self, expr: impl Into<Expr<f64, EffectExprSchema>>) -> Self {
         let val = expr.into();
 
         self.mutators.push(EntityActions::new(

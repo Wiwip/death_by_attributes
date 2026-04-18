@@ -1,5 +1,5 @@
 use crate::assets::EffectDef;
-use crate::context::BevyContext;
+use crate::context::EffectExprContext;
 use crate::effect::{Effect, EffectInactive, EffectSource, EffectTarget, EffectTicker};
 use crate::{AppAttributeBindings, AttributesRef};
 use bevy::asset::Assets;
@@ -52,7 +52,7 @@ pub fn evaluate_effect_conditions(
             continue;
         };
 
-        let context = BevyContext {
+        let context = EffectExprContext {
             target_actor: &target_actor_ref,
             source_actor: &source_actor_ref,
             owner: &effect_entity_ref,

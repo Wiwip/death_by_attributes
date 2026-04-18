@@ -7,6 +7,7 @@ use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use express_it::frame::LazyPlan;
 use std::fmt::Debug;
 use std::time::Duration;
+use petgraph::operator::complement;
 use vitality::ability::{AbilityBuilder, AbilityExecute, TargetData, TryActivateAbility};
 use vitality::actors::ActorBuilder;
 use vitality::assets::{AbilityDef, EffectDef};
@@ -227,7 +228,7 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
     });
 }
 
-fn setup_actor(mut ctx: EffectContext, efx: Res<EffectsDatabase>, abilities: Res<AbilityDatabase>) {
+fn setup_actor(mut ctx: EffectContext, efx: Res<EffectsDatabase>, abilities: Res<AbilityDatabase>, mut commands: Commands) {
     let actor_template = ActorBuilder::new()
         .name("=== Player ===".into())
         .with::<Strength>(12)
@@ -254,6 +255,7 @@ fn setup_actor(mut ctx: EffectContext, efx: Res<EffectsDatabase>, abilities: Res
 
     let player_entity = ctx.add_spawn_actor(actor_template).id();
 
+    //commands.entity(player_entity).insert();
     /*let test_entity = ctx
     .add_spawn_actor(
         ActorBuilder::new()

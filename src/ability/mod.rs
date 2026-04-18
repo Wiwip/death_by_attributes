@@ -18,6 +18,8 @@ use std::error::Error;
 use std::fmt::Formatter;
 use std::sync::Arc;
 pub use system_param::AbilityContext;
+use crate::context::AbilityExprSchema;
+use crate::prelude::EffectExprSchema;
 
 pub struct AbilityPlugin;
 
@@ -49,7 +51,7 @@ pub struct Ability(pub(crate) Handle<AbilityDef>);
 pub struct TryActivateAbility {
     #[event_target]
     ability: Entity,
-    condition: BoolExpr,
+    condition: BoolExpr<EffectExprSchema>,
     target_data: TargetData,
 }
 
@@ -77,7 +79,7 @@ impl TryActivateAbility {
 #[derive(Component)]
 pub struct AbilityCooldown {
     timer: Timer,
-    value: Expr<f64>,
+    value: Expr<f64, EffectExprSchema>,
 }
 
 #[derive(Debug)]
