@@ -1,4 +1,4 @@
-use crate::context::{EffectExprContext, BevyContextMut, EffectExprSchema};
+use crate::context::{split_path, EffectExprContextMut, EffectExprContext, EffectExprSchema};
 use crate::effect::{EffectSource, EffectTarget};
 use crate::inspector::pretty_type_name;
 use crate::math::AbsDiff;
@@ -6,15 +6,16 @@ use crate::modifier::calculator::ModOp;
 use crate::modifier::{
     ApplyAttributeModifierMessage, AttributeCalculator, ModifierMarker, ModifierOf,
 };
-use crate::modifier::{ReflectAccessModifier, Who};
+use crate::modifier::{EffectSubject, ReflectAccessModifier};
 use crate::prelude::*;
 use crate::systems::MarkNodeDirty;
-use crate::{AppAttributeBindings, AttributeBindings, AttributesRef};
+use crate::{AttributeBindings, AttributesRef};
 use bevy::prelude::*;
 use bevy::reflect::TypeRegistryArc;
 use express_it::expr::{Expr, ExprNode, SelectExprNodeImpl};
 use std::collections::HashSet;
 use std::fmt::Display;
+use smol_str::SmolStr;
 
 pub trait Modifier: Send + Sync {
     /// Spawns the modifier as a component on the effect, targeting the actor for observers.
@@ -31,9 +32,8 @@ pub trait Modifier: Send + Sync {
     /// Good for ability cost calculations. Prevents them from paying the cost once but doubly activate.
     fn apply_immediate(
         &self,
-        context: &mut BevyContextMut,
+        context: &mut EffectExprContextMut,
         type_registry: TypeRegistryArc,
-        type_bindings: AppAttributeBindings,
     ) -> bool;
 
     /// Sends a message to apply the message at the end of the schedule together with all other mods.
@@ -55,7 +55,7 @@ pub struct AttributeModifier<T: Attribute> {
     #[reflect(ignore)]
     pub expr: Expr<T::Property, EffectExprSchema>,
     pub value: T::Property,
-    pub who: Who,
+    pub who: EffectSubject,
     pub operation: ModOp,
 }
 
@@ -63,7 +63,12 @@ impl<T> AttributeModifier<T>
 where
     T: Attribute + 'static,
 {
-    pub fn new(value: T::Property, modifier: ModOp, who: Who, expr: Expr<T::Property, EffectExprSchema>) -> Self {
+    pub fn new(
+        value: T::Property,
+        modifier: ModOp,
+        who: EffectSubject,
+        expr: Expr<T::Property, EffectExprSchema>,
+    ) -> Self {
         Self {
             expr,
             value,
@@ -90,12 +95,12 @@ where
         type_bindings: &AttributeBindings,
         commands: &mut EntityCommands,
     ) {
-        let Ok(value) = self.expr.inner.eval_dyn(ctx) else {
-            error!(
-                "{}: Could not resolve expression to spawn persistent modifier.",
-                commands.id()
-            );
-            return;
+        let value = match self.expr.eval(ctx) {
+            Ok(value) => value,
+            Err(err) => {
+                error!("{}", err);
+                return;
+            }
         };
 
         let modifier = AttributeModifier::<T> {
@@ -110,9 +115,11 @@ where
         let mut dependencies = HashSet::default();
         self.expr.inner.get_dependencies(&mut dependencies);
         for dependency in dependencies {
+            let (_, component, _) = split_path(&dependency.0).expect("Failed to split path");
+
             let attr_dep = type_bindings
-                .insert_dependency_map
-                .get(&dependency.id)
+                .how_to_insert_dependency
+                .get(&SmolStr::new(component))
                 .unwrap();
             attr_dep(actor_entity, commands);
         }
@@ -121,22 +128,23 @@ where
     }
     fn apply_immediate(
         &self,
-        context: &mut BevyContextMut,
+        context: &mut EffectExprContextMut,
         type_registry: TypeRegistryArc,
-        type_bindings: AppAttributeBindings,
     ) -> bool {
         let immutable_context = EffectExprContext {
             source_actor: &context.source_actor.as_readonly(),
             target_actor: &context.source_actor.as_readonly(), // Needs to be fixed.
-            owner: &context.owner.as_readonly(),
+            effect_holder: &context.owner.as_readonly(),
             type_registry: type_registry.clone(),
-            type_bindings: type_bindings.clone(),
         };
 
         let Ok(calc) = AttributeCalculator::<T>::convert(self) else {
             return false;
         };
-        let Some(attribute) = immutable_context.attribute_ref(Who::Target).get::<T>() else {
+        let Some(attribute) = immutable_context
+            .attribute_ref(EffectSubject::Target)
+            .get::<T>()
+        else {
             return false;
         };
         let new_val = calc.eval(attribute.base_value());
@@ -200,7 +208,6 @@ pub fn update_modifier_when_dependencies_changed<T: Attribute>(
     effects: Query<(&EffectSource, &EffectTarget)>,
     actors: Query<AttributesRef, Without<AttributeModifier<T>>>,
     type_registry: Res<AppTypeRegistry>,
-    type_bindings: Res<AppAttributeBindings>,
     mut commands: Commands,
 ) {
     let Ok((mut modifier, effect_id)) = modifiers.get_mut(trigger.modifier_entity) else {
@@ -212,9 +219,8 @@ pub fn update_modifier_when_dependencies_changed<T: Attribute>(
     let context = EffectExprContext {
         target_actor: &target_ref,
         source_actor: &source_ref,
-        owner: &source_ref,
+        effect_holder: &source_ref,
         type_registry: type_registry.0.clone(),
-        type_bindings: type_bindings.clone(),
     };
 
     let new_val = modifier.expr.eval(&context).unwrap();

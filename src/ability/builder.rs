@@ -3,7 +3,7 @@ use crate::assets::AbilityDef;
 use crate::attributes::Attribute;
 use crate::context::{AbilityExprSchema, EffectExprSchema};
 use crate::inspector::pretty_type_name;
-use crate::modifier::{AttributeCalculatorCached, Who};
+use crate::modifier::{AttributeCalculatorCached, EffectSubject};
 use crate::mutator::EntityActions;
 use bevy::ecs::system::IntoObserverSystem;
 use bevy::prelude::*;
@@ -50,7 +50,7 @@ impl AbilityBuilder {
         Expr<T::Property, AbilityExprSchema>: CompareExpr<AbilityExprSchema>,
     {
         let cost_expr = cost.into();
-        let cost_assignment = T::sub(Who::Source, cost_expr.clone());
+        let cost_assignment = T::sub(EffectSubject::Source, cost_expr.clone());
         self.cost_modifiers = self.cost_modifiers.step(cost_assignment);
 
         let cost_expr = cost_expr.le(T::src());

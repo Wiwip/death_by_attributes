@@ -1,7 +1,6 @@
 use express_it::expr::ExprSchema;
 use crate::assets::EffectDef;
 use crate::attribute;
-use crate::context::EffectExprSchema;
 use crate::effect::timing::EffectDuration;
 use crate::effect::Effect;
 use crate::prelude::Attribute;

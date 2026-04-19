@@ -134,7 +134,6 @@ impl ApplyEffectEvent {
         commands: &mut Commands,
         effect: &EffectDef,
         type_registry: TypeRegistryArc,
-        type_bindings: AppAttributeBindings,
     ) -> Result<(), BevyError> {
         debug!("Applying instant effect to {}", self.targeting.target());
 
@@ -148,9 +147,8 @@ impl ApplyEffectEvent {
         let context = EffectExprContext {
             target_actor: &target_actor_ref,
             source_actor: &source_actor_ref,
-            owner: &source_actor_ref, // TODO: Make optional
+            effect_holder: &source_actor_ref, // TODO: Make optional
             type_registry: type_registry.clone(),
-            type_bindings,
         };
 
         // Determines whether the effect should activate
@@ -238,9 +236,8 @@ impl ApplyEffectEvent {
         let context = EffectExprContext {
             target_actor: &target_actor_ref,
             source_actor: &source_actor_ref,
-            owner: &source_actor_ref, // TODO: Should this be the source actor? The effect doesn't exist for instant effects.
+            effect_holder: &source_actor_ref, // TODO: Should this be the source actor? The effect doesn't exist for instant effects.
             type_registry,
-            type_bindings: type_bindings.clone(),
         };
 
         // Determines whether the effect should activate
@@ -324,7 +321,6 @@ pub(crate) fn apply_effect_event_observer(
             &mut commands,
             effect,
             type_registry.0.clone(),
-            type_bindings.clone(),
         )?;
     }
 
@@ -350,7 +346,7 @@ mod test {
     use crate::condition::IsAttributeWithinBounds;
     use crate::context::EffectContext;
     use crate::effect::builder::EffectBuilder;
-    use crate::modifier::{ModOp, Who};
+    use crate::modifier::{ModOp, EffectSubject};
     use crate::prelude::*;
     use crate::registry::effect_registry::EffectToken;
     use crate::registry::{Registry, RegistryMut};
@@ -379,7 +375,7 @@ mod test {
             TEST_EFFECT,
             Effect::permanent()
                 .name("Increase Effect".into())
-                .modify::<TestA>(200.0, ModOp::Add, Who::Target)
+                .modify::<TestA>(200.0, ModOp::Add, EffectSubject::Target)
                 .build(),
         );
 
@@ -416,7 +412,7 @@ mod test {
         app.world_mut()
             .run_system_once(move |mut ctx: EffectContext| {
                 let effect = EffectBuilder::instant()
-                    .modify::<TestInt>(modifier_value, ModOp::Add, Who::Target)
+                    .modify::<TestInt>(modifier_value, ModOp::Add, EffectSubject::Target)
                     .build();
 
                 ctx.apply_dynamic_effect_to_self(actor_entity, effect);

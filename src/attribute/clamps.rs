@@ -1,11 +1,13 @@
+use std::any::Any;
 use crate::actors::Actor;
 use crate::assets::ActorDef;
 use crate::attributes::AttributeQueryData;
-use crate::context::EffectExprContext;
+use crate::context::{ActorExprContext};
 use crate::prelude::*;
-use crate::{AppAttributeBindings, AttributesRef, CurrentValueChanged};
+use crate::{ AttributesRef, CurrentValueChanged};
 use bevy::prelude::*;
 use express_it::expr::Expr;
+use crate::inspector::pretty_type_name;
 
 #[derive(Component, Default, Debug, Clone, Reflect)]
 #[reflect(Component, from_reflect = false)]
@@ -32,30 +34,27 @@ pub fn update_clamps<T: Attribute>(
     mut set: ParamSet<(Query<(&Actor, AttributesRef)>, Query<&mut Clamp<T>>)>,
     actor_assets: Res<Assets<ActorDef>>,
     type_registry: Res<AppTypeRegistry>,
-    type_bindings: Res<AppAttributeBindings>,
 ) -> Result<(), BevyError> {
     let (min_value, max_value) = {
         let p0 = set.p0();
         let (actor_handle, attribute_ref) = p0.get(trigger.entity)?;
         let actor_def = actor_assets
             .get(&actor_handle.0)
-            .ok_or("Missing actor asset.")?;
+            .ok_or("Missing actor asset")?;
 
-        let actor_context = EffectExprContext {
-            source_actor: &attribute_ref,
-            target_actor: &attribute_ref,
-            owner: &attribute_ref,
+        let actor_context = ActorExprContext {
+            actor_context: &attribute_ref,
             type_registry: type_registry.0.clone(),
-            type_bindings: type_bindings.clone(),
         };
 
-        let Some(clamp_exprs) = actor_def.clamp_exprs.get(&T::ID) else {
+        let Some(clamp_exprs) = actor_def.clamp_exprs.get(pretty_type_name::<T>().as_str()) else {
             return Ok(());
         };
 
-        let (min_expr, max_expr) = clamp_exprs
-            .downcast_ref::<(Expr<T::Property, EffectExprSchema>, Expr<T::Property, EffectExprSchema>)>()
-            .ok_or("Failed downcast expressions.")?;
+        let any_ref: &dyn Any = clamp_exprs.as_ref();
+        let (min_expr, max_expr) = any_ref
+            .downcast_ref::<(Expr<T::Property, ActorExprSchema>, Expr<T::Property, ActorExprSchema>)>()
+            .ok_or("Failed downcast expressions")?;
 
         let min_value = min_expr.eval(&actor_context)?;
         let max_value = max_expr.eval(&actor_context)?;

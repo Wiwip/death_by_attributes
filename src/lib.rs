@@ -3,7 +3,6 @@ extern crate core;
 use crate::effect::{AttributeDependency, Stacks};
 use bevy::prelude::*;
 use std::any::{Any, TypeId};
-use std::collections::HashSet;
 use std::error::Error;
 use std::fmt::Formatter;
 use std::marker::PhantomData;
@@ -30,8 +29,8 @@ mod trigger;
 use crate::ability::{Ability, AbilityCooldown, AbilityOf, AbilityPlugin, GrantedAbilities};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::attributes::{
-    AttributeId, ReflectAccessAttribute, on_add_attribute, on_change_notify_attribute_dependencies,
-    on_change_notify_attribute_parents,
+    on_add_attribute, on_change_notify_attribute_dependencies, on_change_notify_attribute_parents,
+    ReflectAccessAttribute,
 };
 use crate::condition::ConditionPlugin;
 use crate::effect::global_effect::GlobalEffectPlugin;
@@ -42,7 +41,7 @@ use crate::effect::{
 use crate::graph::NodeType;
 use crate::inspector::pretty_type_name;
 use crate::modifier::{
-    ApplyAttributeModifierMessage, AttributeCalculatorCached, ModifierOf, apply_modifier_events,
+    apply_modifier_events, ApplyAttributeModifierMessage, AttributeCalculatorCached, ModifierOf,
 };
 use crate::prelude::*;
 use crate::registry::RegistryPlugin;
@@ -51,17 +50,17 @@ use crate::systems::{
     apply_periodic_effect, mark_node_dirty_observer, update_attribute, update_effect_system,
 };
 use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
-use bevy::platform::collections::HashMap;
 use bevy::platform::collections::hash_map::Entry;
+use bevy::platform::collections::HashMap;
 
 pub mod prelude {
     pub use crate::attribute;
     pub use crate::attributes::{
         AccessAttribute, Attribute, AttributeTypeId, ReflectAccessAttribute,
     };
-    pub use crate::effect::{EffectApplicationPolicy, EffectBuilder};
-    pub use crate::modifier::{AccessModifier, AttributeModifier, ModOp, Who};
     pub use crate::context::{AbilityExprSchema, ActorExprSchema, EffectExprSchema};
+    pub use crate::effect::{EffectApplicationPolicy, EffectBuilder};
+    pub use crate::modifier::{AccessModifier, AttributeModifier, EffectSubject, ModOp};
 
     pub use express_it::expr::ExprSchema;
 
@@ -69,11 +68,12 @@ pub mod prelude {
     pub use bevy::prelude::ReflectComponent;
 }
 
-pub use express_it;
-
-use crate::attribute::clamps::{Clamp, apply_clamps, update_clamps};
+use crate::attribute::clamps::{apply_clamps, update_clamps, Clamp};
 use crate::modifier::modifier::update_modifier_when_dependencies_changed;
+
+pub use express_it;
 pub use num_traits;
+use smol_str::SmolStr;
 
 pub struct AttributesPlugin;
 
@@ -125,36 +125,38 @@ pub struct AppAttributeBindings {
 
 #[derive(Default)]
 pub struct AttributeBindings {
-    map: HashMap<AttributeId, TypeId>,
-    base_ids: HashSet<AttributeId>,
-    convert: HashMap<AttributeId, fn(&dyn Any) -> Option<&dyn Reflect>>,
-    insert_dependency_map: HashMap<AttributeId, fn(Entity, &mut EntityCommands)>,
+    type_id_map: HashMap<SmolStr, TypeId>,
+    convert: HashMap<SmolStr, fn(&dyn Any) -> Option<&dyn Reflect>>,
+    how_to_insert_dependency: HashMap<SmolStr, fn(Entity, &mut EntityCommands)>,
 }
 
 impl AttributeBindings {
     fn add<T: Attribute>(&mut self) {
-        self.base_ids.insert(T::BASE_ID);
+        let name = pretty_type_name::<T>();
 
-        for id in [T::ID, T::BASE_ID] {
-            self.bind_type_id::<T>(id);
-            self.convert.insert(id, Self::convert_fn::<T>);
-            self.insert_dependency_map
-                .insert(id, Self::dependency_fn::<T>);
-        }
+        self.bind_type_id::<T>();
+
+        self.convert.insert(name.clone().into(), Self::convert_fn::<T>);
+
+        self.how_to_insert_dependency
+            .insert(name.clone().into(), Self::dependency_fn::<T>);
     }
 
     // Binds the AttributeId to a specific TypeId used for reflection
-    fn bind_type_id<T: Attribute>(&mut self, id: AttributeId) {
+    fn bind_type_id<T: 'static>(&mut self) {
         let type_id = TypeId::of::<T>();
-        match self.map.entry(id) {
+        let name = pretty_type_name::<T>();
+
+        match self.type_id_map.entry(SmolStr::new(name.clone())) {
             Entry::Vacant(e) => {
+                trace!("{}: {}", pretty_type_name::<T>(), name.clone());
                 e.insert(type_id);
             }
             Entry::Occupied(_) => {
                 panic!(
-                    "Attribute type ID collision for {} (id: {}). Was the attribute registered twice?",
+                    "Attribute type ID collision for {} (id: {:?}). Was the attribute registered twice?",
                     pretty_type_name::<T>(),
-                    id,
+                    type_id,
                 );
             }
         };

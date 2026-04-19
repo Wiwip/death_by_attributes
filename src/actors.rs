@@ -1,6 +1,6 @@
+use std::any::type_name_of_val;
 use crate::ability::{AbilityOf, GrantAbilityCommand};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
-use crate::attribute::clamps::Clamp;
 use crate::effect::{ApplyEffectEvent, EffectTargeting};
 use crate::graph::NodeType;
 use crate::modifier::AttributeCalculatorCached;
@@ -12,7 +12,9 @@ use bevy::prelude::*;
 use express_it::expr::{Expr, ExprNode};
 use num_traits::{AsPrimitive, Num};
 use std::collections::HashSet;
-use crate::context::EffectExprSchema;
+use smol_str::SmolStr;
+use crate::attribute::clamps::Clamp;
+use crate::inspector::pretty_type_name;
 
 #[derive(Component, Clone, Debug, Deref)]
 #[require(GrantedAbilities)]
@@ -120,8 +122,8 @@ impl ActorBuilder {
 
     pub fn clamp<T>(
         mut self,
-        min_expr: impl Into<Expr<T::Property, EffectExprSchema>> + Send + Sync + 'static,
-        max_expr: impl Into<Expr<T::Property, EffectExprSchema>> + Send + Sync + 'static,
+        min_expr: impl Into<Expr<T::Property, ActorExprSchema>> + Send + Sync + 'static,
+        max_expr: impl Into<Expr<T::Property, ActorExprSchema>> + Send + Sync + 'static,
     ) -> ActorBuilder
     where
         T: Attribute,
@@ -130,22 +132,20 @@ impl ActorBuilder {
         let max_expr = max_expr.into();
 
         // Insert dependencies for reverse lookup
-        let mut deps = HashSet::default();
-        min_expr.inner.get_dependencies(&mut deps);
-        max_expr.inner.get_dependencies(&mut deps);
-        println!("deps: {:?}", deps);
-        for dep in deps {
-            self.actor
-                .clamp_reverse_lookup
-                .entry(dep.id)
-                .or_default()
-                .push(dep.id);
-        }
+        let mut paths = HashSet::default();
+        min_expr.inner.get_dependencies(&mut paths);
+        max_expr.inner.get_dependencies(&mut paths);
+        debug!("Clamp<{}> dependencies: {:?}", pretty_type_name::<T>(), paths);
+
+        let pair = (min_expr.clone(), max_expr.clone());
+        debug!("storing clamp exprs as: {}", type_name_of_val(&pair));
+
 
         // Insert expressions
+        let type_name = pretty_type_name::<T>();
         self.actor
             .clamp_exprs
-            .insert(T::ID, Box::new((min_expr, max_expr)));
+            .insert(SmolStr::new(type_name), Box::new((min_expr, max_expr)));
 
         self.actor.builder_actions.push_back(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {

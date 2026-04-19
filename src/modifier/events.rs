@@ -4,7 +4,7 @@ use crate::math::AbsDiff;
 use crate::modifier::calculator::AttributeCalculator;
 use crate::prelude::*;
 use crate::systems::MarkNodeDirty;
-use crate::{AppAttributeBindings, AttributesMut};
+use crate::{AttributesMut};
 use bevy::prelude::*;
 use bevy::reflect::TypeRegistryArc;
 
@@ -21,14 +21,12 @@ pub fn apply_modifier_events<T: Attribute>(
     mut attributes: Query<AttributesMut>,
     mut commands: Commands,
     type_registry: Res<AppTypeRegistry>,
-    type_bindings: Res<AppAttributeBindings>,
 ) {
     for ev in event_reader.read() {
         let has_changed = apply_modifier(
             &ev,
             &mut attributes,
             type_registry.0.clone(),
-            type_bindings.clone(),
         )
         .unwrap_or(false);
 
@@ -45,7 +43,6 @@ pub fn apply_modifier<T: Attribute>(
     trigger: &ApplyAttributeModifierMessage<T>,
     attributes: &mut Query<AttributesMut>,
     type_registry: TypeRegistryArc,
-    type_bindings: AppAttributeBindings,
 ) -> Result<bool, BevyError> {
     let query = [trigger.source_entity, trigger.target_entity];
     let [source, target] = attributes.get_many(query)?;
@@ -63,9 +60,8 @@ pub fn apply_modifier<T: Attribute>(
     let context = EffectExprContext {
         source_actor: &source,
         target_actor: &target, // Needs to be fixed.
-        owner: &source,
+        effect_holder: &source,
         type_registry: type_registry.clone(),
-        type_bindings: type_bindings.clone(),
     };
     let mut modifier = trigger.modifier.clone();
     modifier.update_value(&context);

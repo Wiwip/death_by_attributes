@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use vitality::actors::ActorBuilder;
 use vitality::context::EffectContext;
 use vitality::effect::{Effect, EffectApplicationPolicy, EffectBuilder};
-use vitality::modifier::{ModOp, Who};
+use vitality::modifier::{ModOp, EffectSubject};
 use vitality::prelude::*;
 use vitality::{AttributesPlugin, attribute, init_attribute};
 
@@ -43,7 +43,7 @@ fn test_update_current_values() {
     app.world_mut()
         .run_system_once(move |mut ctx: EffectContext| {
             let effect_def = EffectBuilder::new(EffectApplicationPolicy::Permanent)
-                .modify::<TestA>(42u32, ModOp::Add, Who::Target)
+                .modify::<TestA>(42u32, ModOp::Add, EffectSubject::Target)
                 .build();
 
             ctx.apply_dynamic_effect_to_self(entity, effect_def);

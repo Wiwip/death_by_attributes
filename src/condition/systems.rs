@@ -1,7 +1,7 @@
 use crate::assets::EffectDef;
 use crate::context::EffectExprContext;
 use crate::effect::{Effect, EffectInactive, EffectSource, EffectTarget, EffectTicker};
-use crate::{AppAttributeBindings, AttributesRef};
+use crate::{AttributesRef};
 use bevy::asset::Assets;
 use bevy::ecs::relationship::Relationship;
 use bevy::log::error;
@@ -22,7 +22,6 @@ pub fn evaluate_effect_conditions(
     parents: Query<AttributesRef>,
     effects: Res<Assets<EffectDef>>,
     type_registry: Res<AppTypeRegistry>,
-    type_bindings: Res<AppAttributeBindings>,
     mut commands: Commands,
 ) {
     for (effect_entity_ref, effect, source, target, status) in query.iter_mut() {
@@ -55,9 +54,8 @@ pub fn evaluate_effect_conditions(
         let context = EffectExprContext {
             target_actor: &target_actor_ref,
             source_actor: &source_actor_ref,
-            owner: &effect_entity_ref,
+            effect_holder: &effect_entity_ref,
             type_registry: type_registry.0.clone(),
-            type_bindings: type_bindings.clone(),
         };
 
         // Determines whether the effect should activate
@@ -90,7 +88,7 @@ mod test {
     use crate::condition::IsAttributeWithinBounds;
     use crate::context::EffectContext;
     use crate::effect::{Effect, EffectInactive};
-    use crate::modifier::{ModOp, Who};
+    use crate::modifier::{ModOp, EffectSubject};
     use crate::prelude::*;
     use crate::registry::ability_registry::AbilityToken;
     use crate::registry::effect_registry::EffectToken;
@@ -123,7 +121,7 @@ mod test {
             TEST_EFFECT,
             Effect::permanent()
                 .name("Increase Effect".into())
-                .modify::<TestA>(100.0_f32, ModOp::Add, Who::Source)
+                .modify::<TestA>(100.0_f32, ModOp::Add, EffectSubject::Source)
                 .build(),
         );
 

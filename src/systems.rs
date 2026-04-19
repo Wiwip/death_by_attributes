@@ -245,7 +245,6 @@ pub fn apply_periodic_effect<T: Attribute>(
     mut event_writer: MessageWriter<ApplyAttributeModifierMessage<T>>,
     effect_assets: Res<Assets<EffectDef>>,
     type_registry: Res<AppTypeRegistry>,
-    type_bindings: Res<AppAttributeBindings>,
 ) {
     for (effect_ref, effect, timer, owned_modifiers, target, source) in effects.iter() {
         if !timer.just_finished() {
@@ -263,9 +262,8 @@ pub fn apply_periodic_effect<T: Attribute>(
         let context = EffectExprContext {
             target_actor: &target_actor_ref,
             source_actor: &source_actor_ref,
-            owner: &effect_ref,
+            effect_holder: &effect_ref,
             type_registry: type_registry.0.clone(),
-            type_bindings: type_bindings.clone(),
         };
 
         // Determines whether the effect should activate

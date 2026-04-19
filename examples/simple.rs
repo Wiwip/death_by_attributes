@@ -7,8 +7,7 @@ use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use express_it::frame::LazyPlan;
 use std::fmt::Debug;
 use std::time::Duration;
-use petgraph::operator::complement;
-use vitality::ability::{AbilityBuilder, AbilityExecute, TargetData, TryActivateAbility};
+use vitality::ability::{AbilityBuilder, ExecuteAbility, TargetData, TryActivateAbility};
 use vitality::actors::ActorBuilder;
 use vitality::assets::{AbilityDef, EffectDef};
 use vitality::attributes::ReflectAccessAttribute;
@@ -17,7 +16,7 @@ use vitality::effect::{Effect, EffectStackingPolicy};
 use vitality::graph::DependencyGraph;
 use vitality::inspector::ActorInspectorPlugin;
 use vitality::inspector::debug_overlay::DebugOverlayMarker;
-use vitality::modifier::{ModOp, Who};
+use vitality::modifier::{ModOp, EffectSubject};
 use vitality::prelude::*;
 use vitality::{AttributesPlugin, attribute, init_attribute, tag};
 
@@ -117,8 +116,8 @@ fn setup_effects(mut commands: Commands, mut ctx: EffectContext) {
     let ap_buff = ctx.add_effect(
         Effect::permanent()
             .name("AttackPower Buff".into())
-            .modify::<AttackPower>(Health::src(), ModOp::Add, Who::Target)
-            .modify::<Intelligence>(Health::src(), ModOp::Add, Who::Target)
+            .modify::<AttackPower>(Health::src(), ModOp::Add, EffectSubject::Target)
+            .modify::<Intelligence>(Health::src(), ModOp::Add, EffectSubject::Target)
             .build(),
     );
 
@@ -126,8 +125,8 @@ fn setup_effects(mut commands: Commands, mut ctx: EffectContext) {
     let mp_buff = ctx.add_effect(
         Effect::permanent()
             .name("MagicPower Buff".into())
-            .modify::<MagicPower>(Mana::src(), ModOp::Add, Who::Target)
-            .modify::<MagicPower>(5u32, ModOp::Add, Who::Target)
+            .modify::<MagicPower>(Mana::src(), ModOp::Add, EffectSubject::Target)
+            .modify::<MagicPower>(5u32, ModOp::Add, EffectSubject::Target)
             //.activate_while(IsAttributeWithinBounds::<Health>::new(..=500, Who::Source))
             /*.with_stacking_policy(EffectStackingPolicy::Add {
                 count: 1,
@@ -140,7 +139,7 @@ fn setup_effects(mut commands: Commands, mut ctx: EffectContext) {
     let hp_buff = ctx.add_effect(
         Effect::permanent()
             .name("MaxHealth Increase".into())
-            .modify::<MaxHealth>(50u32, ModOp::Add, Who::Target)
+            .modify::<MaxHealth>(50u32, ModOp::Add, EffectSubject::Target)
             //.modify::<ManaPool>(Health::source_expr(), ModOp::Add, Who::Target)
             .with_stacking_policy(EffectStackingPolicy::RefreshDuration)
             .build(),
@@ -150,8 +149,8 @@ fn setup_effects(mut commands: Commands, mut ctx: EffectContext) {
     let regen = ctx.add_effect(
         Effect::permanent_ticking(1.0)
             .name("Regen".into())
-            .modify::<Health>(5, ModOp::Add, Who::Target)
-            .modify::<Mana>(ManaRegen::src(), ModOp::Add, Who::Target)
+            .modify::<Health>(5, ModOp::Add, EffectSubject::Target)
+            .modify::<Mana>(ManaRegen::src(), ModOp::Add, EffectSubject::Target)
             .build(),
     );
 
@@ -183,7 +182,7 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
             .with_cost::<Mana>(12)
             .with_tag::<Fire>()
             .add_execution(
-                |trigger: On<AbilityExecute>,
+                |trigger: On<ExecuteAbility>,
                  source: Query<(&Health, &MaxHealth)>,
                  _ctx: EffectContext| {
                     if let Ok((health, _)) = source.get(trigger.source) {
@@ -203,10 +202,10 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
         AbilityBuilder::new()
             .with_name("Frostball".into())
             .with_cooldown(1.0)
-            .with_cost::<Mana>(1)
+            .with_cost::<Mana>(10)
             .with_tag::<Frost>()
             .add_execution(
-                |trigger: On<AbilityExecute>,
+                |trigger: On<ExecuteAbility>,
                  source: Query<(&Health, &MaxHealth)>,
                  _ctx: EffectContext| {
                     if let Ok((health, _)) = source.get(trigger.source) {
@@ -219,7 +218,7 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
                     }
                 },
             )
-            .on_execute(LazyPlan::new().step(MaxHealth::add::<AbilityExprSchema>(Who::Source, 5)))
+            .on_execute(LazyPlan::new().step(MaxHealth::add::<AbilityExprSchema>(EffectSubject::Source, 5)))
             .build(),
     );
     commands.insert_resource(AbilityDatabase {
@@ -228,7 +227,7 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
     });
 }
 
-fn setup_actor(mut ctx: EffectContext, efx: Res<EffectsDatabase>, abilities: Res<AbilityDatabase>, mut commands: Commands) {
+fn setup_actor(mut ctx: EffectContext, efx: Res<EffectsDatabase>, abilities: Res<AbilityDatabase>) {
     let actor_template = ActorBuilder::new()
         .name("=== Player ===".into())
         .with::<Strength>(12)
@@ -238,7 +237,7 @@ fn setup_actor(mut ctx: EffectContext, efx: Res<EffectsDatabase>, abilities: Res
         .with::<Health>(85.0)
         .with::<MaxHealth>(100.0)
         .with::<HealthRegen>(2.0)
-        .clamp::<Health>(0, MaxHealth::src() + Strength::src())
+        .clamp::<Health>(0, MaxHealth::src())
         // Mana
         .with::<Mana>(30u32)
         .with::<ManaPool>(60.0)
@@ -254,27 +253,6 @@ fn setup_actor(mut ctx: EffectContext, efx: Res<EffectsDatabase>, abilities: Res
         .build();
 
     let player_entity = ctx.add_spawn_actor(actor_template).id();
-
-    //commands.entity(player_entity).insert();
-    /*let test_entity = ctx
-    .add_spawn_actor(
-        ActorBuilder::new()
-            .name("==Test==")
-            .with::<Strength>(10.0)
-            .insert(DebugOverlayMarker)
-            .build(),
-    )
-    .id();*/
-
-    /*let test_effect = EffectBuilder::permanent()
-    .modify::<Strength>(Strength::src(), ModOp::Add, Who::Target)
-    .build();*/
-    //ctx.apply_dynamic_effect_to_target(test_entity, player_entity, test_effect);
-
-    /*let test_effect = EffectBuilder::permanent()
-    .modify::<Intelligence>(Strength::src(), ModOp::Add, Who::Target)
-    .build();*/
-    //ctx.apply_dynamic_effect_to_target(player_entity, test_entity, test_effect);
 
     ctx.apply_effect_to_self(player_entity, &efx.ap_buff);
     ctx.apply_effect_to_self(player_entity, &efx.hp_buff);

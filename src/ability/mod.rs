@@ -89,14 +89,14 @@ pub enum TargetData {
 }
 
 #[derive(EntityEvent)]
-pub struct AbilityBegin {
+pub struct BeginAbility {
     pub source: Entity,
     #[event_target]
     pub ability: Entity,
 }
 
 #[derive(EntityEvent)]
-pub struct AbilityExecute {
+pub struct ExecuteAbility {
     #[event_target]
     pub ability: Entity,
     pub target: Entity,
@@ -104,7 +104,7 @@ pub struct AbilityExecute {
 }
 
 #[derive(EntityEvent)]
-pub struct AbilityEnd {
+pub struct EndAbility {
     #[event_target]
     pub ability: Entity,
     pub source: Entity,

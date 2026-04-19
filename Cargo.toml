@@ -1,6 +1,6 @@
 [package]
 name = "vitality"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 
 # Enable a small amount of optimization in debug mode
@@ -23,7 +23,6 @@ bevy_egui = "0.39"
 bevy-inspector-egui = "0.36"
 petgraph = "0.8"
 serde = "1.0"
-serde_json = "1.0"
 num-traits = "0.2"
 smol_str = "0.2.2"
 express-it = { path = "../express-it" }

@@ -1,7 +1,8 @@
 use crate::assets::AbilityDef;
 use crate::attributes::Attribute;
+use crate::context::{AbilityExprContext, AbilityExprSchema, EffectExprContext, EffectExprSchema};
 use crate::inspector::pretty_type_name;
-use crate::modifier::Who;
+use crate::modifier::EffectSubject;
 use bevy::asset::AssetId;
 use bevy::prelude::{Component, TypePath};
 use bevy::reflect::Reflect;
@@ -9,22 +10,20 @@ use express_it::context::{Path, ReadContext};
 use express_it::expr::{Expr, ExprNode, ExpressionError};
 use express_it::logic::{BoolExpr, BoolExprNode};
 use serde::Serialize;
-use std::any::TypeId;
 use std::collections::HashSet;
 use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::ops::{Bound, RangeBounds};
 use std::sync::Arc;
-use crate::context::{AbilityExprContext, AbilityExprSchema, EffectExprContext, EffectExprSchema};
 
 #[derive(TypePath)]
 pub struct IsAttributeWithinBounds<T: Attribute> {
-    who: Who,
+    who: EffectSubject,
     bounds: (Bound<T::Property>, Bound<T::Property>),
 }
 
 impl<T: Attribute> IsAttributeWithinBounds<T> {
-    pub fn new(range: impl RangeBounds<T::Property>, who: Who) -> Self {
+    pub fn new(range: impl RangeBounds<T::Property>, who: EffectSubject) -> Self {
         Self {
             who,
             bounds: (range.start_bound().cloned(), range.end_bound().cloned()),
@@ -32,11 +31,11 @@ impl<T: Attribute> IsAttributeWithinBounds<T> {
     }
 
     pub fn target(range: impl RangeBounds<T::Property> + Send + Sync + 'static) -> Self {
-        IsAttributeWithinBounds::<T>::new(range, Who::Target)
+        IsAttributeWithinBounds::<T>::new(range, EffectSubject::Target)
     }
 
     pub fn source(range: impl RangeBounds<T::Property> + Send + Sync + 'static) -> Self {
-        IsAttributeWithinBounds::<T>::new(range, Who::Source)
+        IsAttributeWithinBounds::<T>::new(range, EffectSubject::Source)
     }
 }
 
@@ -54,19 +53,22 @@ impl<T: Attribute> std::fmt::Debug for IsAttributeWithinBounds<T> {
 
 impl<T: Attribute> ExprNode<bool, EffectExprSchema> for IsAttributeWithinBounds<T> {
     fn eval(&self, ctx: &EffectExprContext) -> Result<bool, ExpressionError> {
-        let path = Path::from_id(self.who, T::ID);
-        let any = ctx.get_any(&path)?;
+        let type_name = pretty_type_name::<T>();
+        let full_path = Path::new(format!("{}.{}.base_value", self.who, type_name));
+
+        let any = ctx.get_any(&full_path)?;
         let value = any.downcast_ref::<T::Property>().unwrap();
 
         Ok(self.bounds.contains(&value))
     }
 
-    fn eval_dyn(&self, ctx: &dyn ReadContext) -> Result<bool, ExpressionError> {
+    fn eval_dyn(&self, _ctx: &dyn ReadContext) -> Result<bool, ExpressionError> {
         todo!()
     }
 
     fn get_dependencies(&self, _deps: &mut HashSet<Path>) {
-        todo!()
+        let type_name = pretty_type_name::<T>();
+        _deps.insert(Path::new(type_name));
     }
 }
 
@@ -112,13 +114,11 @@ impl ExprNode<bool, EffectExprSchema> for ChanceCondition {
         Ok(rand::random::<f32>() < self.0)
     }
 
-    fn eval_dyn(&self, ctx: &dyn ReadContext) -> Result<bool, ExpressionError> {
+    fn eval_dyn(&self, _ctx: &dyn ReadContext) -> Result<bool, ExpressionError> {
         todo!()
     }
 
-    fn get_dependencies(&self, _deps: &mut HashSet<Path>) {
-        todo!()
-    }
+    fn get_dependencies(&self, _deps: &mut HashSet<Path>) {}
 }
 
 impl std::fmt::Debug for ChanceCondition {
@@ -129,12 +129,12 @@ impl std::fmt::Debug for ChanceCondition {
 
 #[derive(Serialize)]
 pub struct HasComponent<C: Component> {
-    who: Who,
+    who: EffectSubject,
     phantom_data: PhantomData<C>,
 }
 
 impl<C: Component> HasComponent<C> {
-    pub fn new(target: Who) -> Self {
+    pub fn new(target: EffectSubject) -> Self {
         Self {
             who: target,
             phantom_data: PhantomData,
@@ -142,47 +142,53 @@ impl<C: Component> HasComponent<C> {
     }
 
     pub fn source() -> Self {
-        Self::new(Who::Source)
+        Self::new(EffectSubject::Source)
     }
 
     pub fn target() -> Self {
-        Self::new(Who::Target)
+        Self::new(EffectSubject::Target)
     }
 
     pub fn effect() -> Self {
-        Self::new(Who::Owner)
+        Self::new(EffectSubject::Effect)
     }
 }
 
 impl<C: Component + Reflect> ExprNode<bool, EffectExprSchema> for HasComponent<C> {
     fn eval(&self, ctx: &EffectExprContext) -> Result<bool, ExpressionError> {
-
-        //let any = ctx.get_any_component(Who::Owner.into(), TypeId::of::<C>());
-        //Ok(any.is_ok())
-        todo!();
+        let path = Path::new(format!("source.{}", pretty_type_name::<C>()));
+        let any = ctx.get_any(&path);
+        Ok(any.is_ok())
     }
 
     fn eval_dyn(&self, ctx: &dyn ReadContext) -> Result<bool, ExpressionError> {
-        todo!()
+        let path = Path::new(format!("source.{}", pretty_type_name::<C>()));
+        let any = ctx.get_any(&path);
+        Ok(any.is_ok())
     }
 
     fn get_dependencies(&self, _deps: &mut HashSet<Path>) {
-        todo!()
+        let type_name = pretty_type_name::<C>();
+        _deps.insert(Path::new(type_name));
     }
 }
+
 impl<C: Component + Reflect> ExprNode<bool, AbilityExprSchema> for HasComponent<C> {
     fn eval(&self, ctx: &AbilityExprContext) -> Result<bool, ExpressionError> {
-        //let any = ctx.get_any_component(Who::Owner.into(), TypeId::of::<C>());
-        //Ok(any.is_ok())
-        todo!();
+        let path = Path::new(format!("ability.{}", pretty_type_name::<C>()));
+        let any = ctx.get_any(&path);
+        Ok(any.is_ok())
     }
 
     fn eval_dyn(&self, ctx: &dyn ReadContext) -> Result<bool, ExpressionError> {
-        todo!()
+        let path = Path::new(format!("ability.{}", pretty_type_name::<C>()));
+        let any = ctx.get_any(&path);
+        Ok(any.is_ok())
     }
 
     fn get_dependencies(&self, _deps: &mut HashSet<Path>) {
-        todo!()
+        let type_name = pretty_type_name::<C>();
+        _deps.insert(Path::new(type_name));
     }
 }
 
@@ -203,22 +209,20 @@ impl AbilityCondition {
 }
 
 impl ExprNode<bool, AbilityExprSchema> for AbilityCondition {
-    fn eval(&self, _context: &AbilityExprContext) -> Result<bool, ExpressionError> {
-        /*Ok(context
-        .get_any()
-        .get::<Ability>()
-        .map(|ability| ability.0.id() == self.asset)
-        .unwrap_or(false))*/
-        unimplemented!()
-    }
+    fn eval(&self, _ctx: &AbilityExprContext) -> Result<bool, ExpressionError> {
+        /*let path = Path::from_id(self.who, T::ID);
+        let any = ctx.get_any(&path)?;
+        let value = any.downcast_ref::<T::Property>().unwrap();
 
-    fn eval_dyn(&self, ctx: &dyn ReadContext) -> Result<bool, ExpressionError> {
+        Ok(self.bounds.contains(&value))*/
         todo!()
     }
 
-    fn get_dependencies(&self, _deps: &mut HashSet<Path>) {
+    fn eval_dyn(&self, _ctx: &dyn ReadContext) -> Result<bool, ExpressionError> {
         todo!()
     }
+
+    fn get_dependencies(&self, _deps: &mut HashSet<Path>) {}
 }
 
 impl std::fmt::Debug for AbilityCondition {

@@ -2,16 +2,16 @@ use crate::actors::SpawnActorCommand;
 use crate::assets::{ActorDef, EffectDef};
 use crate::effect::global_effect::{GlobalActor, GlobalEffects};
 use crate::effect::{ApplyEffectEvent, EffectTargeting};
-use crate::modifier::Who;
+use crate::modifier::{AbilitySubject, EffectSubject};
+use crate::registry::Registry;
+use crate::registry::actor_registry::ActorToken;
 use crate::{AppAttributeBindings, AttributesMut, AttributesRef};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy::reflect::TypeRegistryArc;
-use express_it::context::{Accessor, Path, ReadContext, ScopeId, WriteContext};
+use express_it::context::{Path, ReadContext, WriteContext};
 use express_it::expr::{ExprSchema, ExpressionError};
-use std::any::{Any, TypeId};
-use crate::registry::actor_registry::ActorToken;
-use crate::registry::{Registry};
+use std::any::Any;
 
 #[derive(SystemParam)]
 pub struct EffectContext<'w, 's> {
@@ -77,9 +77,7 @@ impl<'s, 'w> EffectContext<'w, 's> {
         let handle = self.registry.actor(&token);
 
         let mut entity_commands = self.commands.spawn_empty();
-        entity_commands.queue(SpawnActorCommand {
-            handle,
-        });
+        entity_commands.queue(SpawnActorCommand { handle });
         entity_commands
     }
 
@@ -123,7 +121,7 @@ impl<'s, 'w> EffectContext<'w, 's> {
     }
 }
 
-pub struct BevyContextMut<'w, 's> {
+pub struct EffectExprContextMut<'w, 's> {
     pub source_actor: &'w mut AttributesMut<'w, 's>,
     pub target_actor: Option<&'w mut AttributesMut<'w, 's>>,
     pub owner: &'w mut AttributesMut<'w, 's>,
@@ -132,79 +130,65 @@ pub struct BevyContextMut<'w, 's> {
     pub type_bindings: AppAttributeBindings,
 }
 
-impl<'w, 's> BevyContextMut<'w, 's> {
-    pub fn entity(&self, who: Who) -> Entity {
+impl<'w, 's> EffectExprContextMut<'w, 's> {
+    pub fn entity(&self, who: EffectSubject) -> Entity {
         match who {
-            Who::Target => match &self.target_actor {
+            EffectSubject::Target => match &self.target_actor {
                 None => self.source_actor.id(),
                 Some(actor) => actor.id(),
             },
-            Who::Source => self.source_actor.id(),
-            Who::Owner => self.owner.id(),
+            EffectSubject::Source => self.source_actor.id(),
+            EffectSubject::Effect => self.owner.id(),
         }
     }
 
-    pub fn attribute_mut(&mut self, who: Who) -> &mut AttributesMut<'w, 's> {
+    pub fn attribute_mut(&mut self, who: EffectSubject) -> &mut AttributesMut<'w, 's> {
         match who {
-            Who::Target => {
+            EffectSubject::Target => {
                 if let Some(target) = self.target_actor.as_deref_mut() {
                     target
                 } else {
                     self.source_actor
                 }
             }
-            Who::Source => self.source_actor,
-            Who::Owner => self.owner,
+            EffectSubject::Source => self.source_actor,
+            EffectSubject::Effect => self.owner,
         }
     }
 }
 
-impl WriteContext for BevyContextMut<'_, '_> {
+impl WriteContext for EffectExprContextMut<'_, '_> {
     fn write(
         &mut self,
-        access: &dyn Accessor,
+        path: &Path,
         value: Box<dyn Any + Send + Sync>,
     ) -> Result<(), ExpressionError> {
-        let who: Who = access
-            .scope()
-            .0
-            .try_into()
-            .map_err(|_| ExpressionError::InvalidPath)?;
+        let who = EffectSubject::try_from(path)
+            .map_err(|_| ExpressionError::InvalidPath(path.0.clone()))?;
+
+        let (_, component, _) = split_path(&*path.0).expect("Wrong path in reflect path");
 
         let any_to_reflect = {
             let bindings = self.type_bindings.internal.read().unwrap();
-            *bindings.convert.get(&access.path()).unwrap()
+            *bindings.convert.get(component).unwrap()
         };
 
-        let type_id = *self
-            .type_bindings
-            .internal
-            .read()
-            .unwrap()
-            .map
-            .get(&access.path())
-            .expect("InvalidPath");
+        let reflect_component = {
+            let registry_bindings = self.type_registry.read();
+            let Some(type_registration) = registry_bindings.get_with_short_type_path(component) else {
+                return Err(ExpressionError::FailedReflect(
+                    "Failed to get type registration".into(),
+                ));
+            };
 
-        let arc_type_registry = self.type_registry.clone();
-        let registry = arc_type_registry.read();
-        let type_registration = registry
-            .get(type_id)
-            .expect("Failed to get type registration");
-        let reflect_component = type_registration
-            .data::<ReflectComponent>()
-            .expect("No reflect access attribute found");
+            type_registration
+                .data::<ReflectComponent>()
+                .expect("No reflect access attribute found")
+                .clone()
+        };
 
         let actor = self.attribute_mut(who);
         let mut dyn_reflect = reflect_component.reflect_mut(actor).ok_or_else(|| {
-            let short_name = type_registration
-                .type_info()
-                .type_path_table()
-                .short_path()
-                .to_string();
-            debug!(
-                "Requested type not present on actor: {}/{}",
-                short_name, who
-            );
             ExpressionError::FailedReflect("The entity has no component the requested type.".into())
         })?;
 
@@ -223,225 +207,147 @@ impl WriteContext for BevyContextMut<'_, '_> {
 
 pub struct ActorExprSchema;
 impl ExprSchema for ActorExprSchema {
-    type Context<'w, 's> = ActorExprContext<'w, 's> where 's: 'w;
+    type Context<'w, 's>
+        = ActorExprContext<'w, 's>
+    where
+        's: 'w;
 }
 
 pub struct ActorExprContext<'w, 's> {
     pub actor_context: &'w AttributesRef<'w, 's>,
 
     pub type_registry: TypeRegistryArc,
-    pub type_bindings: AppAttributeBindings,
 }
 
 impl ReadContext for ActorExprContext<'_, '_> {
-    fn get_any(&self, access: &dyn Accessor) -> Result<&dyn Any, ExpressionError> {
-        let actor = self.actor_context;
-
-        let type_id = *self
-            .type_bindings
-            .internal
-            .read()
-            .unwrap()
-            .map
-            .get(&access.path())
-            .ok_or(ExpressionError::InvalidPath)?;
-
-        let registry = self.type_registry.read();
-        let Some(type_registration) = registry.get(type_id) else {
-            return Err(ExpressionError::FailedReflect(
-                "Failed to get type registration".into(),
-            ));
-        };
-        let Some(reflect_component) = type_registration.data::<ReflectComponent>() else {
-            return Err(ExpressionError::FailedReflect(
-                "No reflect access attribute found".into(),
-            ));
-        };
-        let Some(dyn_reflect) = reflect_component.reflect(actor) else {
-            let short_name = type_registration
-                .type_info()
-                .type_path_table()
-                .short_path()
-                .to_string();
-            debug!("Requested type not present on actor: {}", short_name);
-            return Err(ExpressionError::FailedReflect(
-                "The entity has no component the requested type.".into(),
-            ));
-        };
-
-        let read_base = {
-            let bindings = self.type_bindings.internal.read().unwrap();
-            bindings.base_ids.contains(&access.path())
-        };
-
-        let field = if read_base {
-            "base_value"
-        } else {
-            "current_value"
-        };
-
-        let dyn_partial_reflect = dyn_reflect.reflect_path(field).map_err(|err| {
-            ExpressionError::FailedReflect(format!("Invalid reflect path: {err}").into())
-        })?;
-
-        let dyn_path_reflect = dyn_partial_reflect.try_as_reflect().ok_or_else(|| {
-            ExpressionError::FailedReflect(
-                "Reflect value does not support further reflection".into(),
-            )
-        })?;
-
-        Ok(dyn_path_reflect)
-    }
-
-    fn get_any_component(&self, path: &Path) -> std::result::Result<&dyn Any, ExpressionError> {
-        todo!()
+    fn get_any(&self, path: &Path) -> Result<&dyn Any, ExpressionError> {
+        reflect_path(path, self.actor_context, &self.type_registry)
     }
 }
 
 pub struct EffectExprSchema;
 impl ExprSchema for EffectExprSchema {
-    type Context<'w, 's> = EffectExprContext<'w, 's>  where 's: 'w;
+    type Context<'w, 's>
+        = EffectExprContext<'w, 's>
+    where
+        's: 'w;
 }
 
 pub struct EffectExprContext<'w, 's> {
     pub source_actor: &'w AttributesRef<'w, 's>,
     pub target_actor: &'w AttributesRef<'w, 's>,
-    pub owner: &'w AttributesRef<'w, 's>,
+    pub effect_holder: &'w AttributesRef<'w, 's>,
 
     pub type_registry: TypeRegistryArc,
-    pub type_bindings: AppAttributeBindings,
 }
 
 impl EffectExprContext<'_, '_> {
-    pub fn entity(&self, who: Who) -> Entity {
+    pub fn attribute_ref(&self, who: EffectSubject) -> &AttributesRef<'_, '_> {
         match who {
-            Who::Target => self.target_actor.id(),
-            Who::Source => self.source_actor.id(),
-            Who::Owner => self.owner.id(),
-        }
-    }
-
-    pub fn attribute_ref(&self, who: Who) -> &AttributesRef<'_, '_> {
-        match who {
-            Who::Target => self.target_actor,
-            Who::Source => self.source_actor,
-            Who::Owner => self.owner,
+            EffectSubject::Target => self.target_actor,
+            EffectSubject::Source => self.source_actor,
+            EffectSubject::Effect => self.effect_holder,
         }
     }
 }
 
 impl ReadContext for EffectExprContext<'_, '_> {
-    fn get_any(&self, access: &dyn Accessor) -> Result<&dyn Any, ExpressionError> {
-        let who: Who = access
-            .scope()
-            .0
-            .try_into()
-            .map_err(|_| ExpressionError::InvalidPath)?;
+    fn get_any(&self, path: &Path) -> Result<&dyn Any, ExpressionError> {
+        let who = EffectSubject::try_from(path)
+            .map_err(|_| ExpressionError::InvalidPath(path.0.clone()))?;
         let actor = self.attribute_ref(who);
 
-        let type_id = *self
-            .type_bindings
-            .internal
-            .read()
-            .unwrap()
-            .map
-            .get(&access.path())
-            .ok_or(ExpressionError::InvalidPath)?;
-
-        let registry = self.type_registry.read();
-        let Some(type_registration) = registry.get(type_id) else {
-            return Err(ExpressionError::FailedReflect(
-                "Failed to get type registration".into(),
-            ));
-        };
-        let Some(reflect_component) = type_registration.data::<ReflectComponent>() else {
-            return Err(ExpressionError::FailedReflect(
-                "No reflect access attribute found".into(),
-            ));
-        };
-        let Some(dyn_reflect) = reflect_component.reflect(actor) else {
-            let short_name = type_registration
-                .type_info()
-                .type_path_table()
-                .short_path()
-                .to_string();
-            debug!("Requested type not present on actor: {}", short_name);
-            return Err(ExpressionError::FailedReflect(
-                "The entity has no component the requested type.".into(),
-            ));
-        };
-
-        let read_base = {
-            let bindings = self.type_bindings.internal.read().unwrap();
-            bindings.base_ids.contains(&access.path())
-        };
-
-        let field = if read_base {
-            "base_value"
-        } else {
-            "current_value"
-        };
-
-        let dyn_partial_reflect = dyn_reflect.reflect_path(field).map_err(|err| {
-            ExpressionError::FailedReflect(format!("Invalid reflect path: {err}").into())
-        })?;
-
-        let dyn_path_reflect = dyn_partial_reflect.try_as_reflect().ok_or_else(|| {
-            ExpressionError::FailedReflect(
-                "Reflect value does not support further reflection".into(),
-            )
-        })?;
-
-        Ok(dyn_path_reflect)
-    }
-
-    fn get_any_component(
-        &self,
-        path: &Path,
-    ) -> std::result::Result<&dyn Any, ExpressionError> {
-        unimplemented!();
-        let who: Who = path.scope
-            .0
-            .try_into()
-            .map_err(|_| ExpressionError::InvalidPath)?;
-        let actor = self.attribute_ref(who);
-
-        let registry = self.type_registry.read();
-        let Some(type_registration) = registry.get(path.type_id()) else {
-            return Err(ExpressionError::FailedReflect(
-                "Failed to get type registration".into(),
-            ));
-        };
-        let Some(reflect_component) = type_registration.data::<ReflectComponent>() else {
-            return Err(ExpressionError::FailedReflect(
-                "No reflect access attribute found".into(),
-            ));
-        };
-        let Some(dyn_reflect) = reflect_component.reflect(actor) else {
-            return Err(ExpressionError::FailedReflect(
-                "The entity has no component the requested type.".into(),
-            ));
-        };
-
-        Ok(dyn_reflect.as_any()) // Component (Attribute), not a primitive
+        reflect_path(path, actor, &self.type_registry)
     }
 }
 
 pub struct AbilityExprSchema;
 impl ExprSchema for AbilityExprSchema {
-    type Context<'w, 's> = AbilityExprContext where 's: 'w;
+    type Context<'w, 's>
+        = AbilityExprContext<'w, 's>
+    where
+        's: 'w;
 }
 
-pub struct AbilityExprContext {
+pub struct AbilityExprContext<'w, 's> {
+    pub caster_ref: &'w AttributesRef<'w, 's>,
+    pub ability_ref: &'w AttributesRef<'w, 's>,
+    pub target_ref: &'w AttributesRef<'w, 's>,
 
+    pub type_registry: TypeRegistryArc,
 }
 
-impl ReadContext for AbilityExprContext {
-    fn get_any(&self, access: &dyn Accessor) -> std::result::Result<&dyn Any, ExpressionError> {
-        todo!()
+impl AbilityExprContext<'_, '_> {
+    pub fn attribute_ref(&self, who: AbilitySubject) -> &AttributesRef<'_, '_> {
+        match who {
+            AbilitySubject::Ability => self.ability_ref,
+            AbilitySubject::Caster => self.caster_ref,
+            AbilitySubject::Target => self.target_ref,
+        }
     }
+}
 
-    fn get_any_component(&self, path: &Path) -> std::result::Result<&dyn Any, ExpressionError> {
-        todo!()
+impl ReadContext for AbilityExprContext<'_, '_> {
+    fn get_any(&self, path: &Path) -> std::result::Result<&dyn Any, ExpressionError> {
+        let who = AbilitySubject::try_from(path)
+            .map_err(|_| ExpressionError::InvalidPath(path.0.clone()))?;
+
+        let actor = self.attribute_ref(who);
+
+        reflect_path(path, actor, &self.type_registry)
     }
+}
+
+pub fn split_path(path: &str) -> Result<(&str, &str, Option<&str>), &'static str> {
+    let (subject, rest) = path.split_once('.').ok_or("missing . separator")?;
+    let Some((component, value)) = rest.split_once('.') else {
+        return Ok((subject, rest, None));
+    };
+    Ok((subject, component, Some(value)))
+}
+
+fn reflect_path<'a>(
+    path: &Path,
+    actor: &'a AttributesRef,
+    type_registry: &'a TypeRegistryArc,
+) -> Result<&'a dyn Any, ExpressionError> {
+    let (_, component, value) = split_path(&*path.0).expect("Wrong path in reflect path");
+
+    let registry_bindings = type_registry.read();
+    let Some(type_registration) = registry_bindings.get_with_short_type_path(component) else {
+        return Err(ExpressionError::FailedReflect(
+            "Failed to get type registration".into(),
+        ));
+    };
+    let Some(reflect_component) = type_registration.data::<ReflectComponent>() else {
+        return Err(ExpressionError::FailedReflect(
+            "No reflect access attribute found".into(),
+        ));
+    };
+
+    let Some(dyn_reflect) = reflect_component.reflect(actor) else {
+        let short_name = type_registration
+            .type_info()
+            .type_path_table()
+            .short_path()
+            .to_string();
+        trace!("Requested type not present on actor: {}", short_name);
+        return Err(ExpressionError::FailedReflect(
+            "The entity has no component the requested type.".into(),
+        ));
+    };
+
+    let Some(value) = value else {
+        return Ok(dyn_reflect.as_any());
+    };
+
+    let dyn_partial_reflect = dyn_reflect.reflect_path(value).map_err(|err| {
+        ExpressionError::FailedReflect(format!("Invalid reflect path: {err}").into())
+    })?;
+
+    let dyn_path_reflect = dyn_partial_reflect.try_as_reflect().ok_or_else(|| {
+        ExpressionError::FailedReflect("Reflect value does not support further reflection".into())
+    })?;
+
+    Ok(dyn_path_reflect.as_any())
 }

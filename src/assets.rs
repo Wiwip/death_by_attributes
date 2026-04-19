@@ -1,4 +1,4 @@
-use crate::attributes::AttributeId;
+
 use crate::effect::{EffectApplicationPolicy, EffectStackingPolicy};
 use crate::modifier::ModifierFn;
 use crate::modifier::modifier::Modifier;
@@ -8,6 +8,7 @@ use express_it::frame::LazyPlan;
 use express_it::logic::BoolExpr;
 use std::any::Any;
 use std::collections::{HashMap, VecDeque};
+use smol_str::SmolStr;
 use crate::context::{AbilityExprSchema, EffectExprSchema};
 
 #[derive(Asset, TypePath)]
@@ -20,8 +21,8 @@ pub struct ActorDef {
 
     // The value below is hidden behind 'Any' but actually:
     // Box<(Expr<T::Property>, Expr<T::Property>)>
-    pub clamp_exprs: HashMap<AttributeId, Box<dyn Any + Send + Sync>>,
-    pub clamp_reverse_lookup: HashMap<AttributeId, Vec<AttributeId>>,
+    pub clamp_exprs: HashMap<SmolStr, Box<dyn Any + Send + Sync>>,
+    pub clamp_reverse_lookup: HashMap<SmolStr, Vec<SmolStr>>,
 }
 
 #[derive(Asset, TypePath)]

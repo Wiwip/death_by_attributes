@@ -8,7 +8,6 @@ use bevy::ecs::component::Mutable;
 use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
 use bevy::reflect::{GetTypeRegistration, Typed};
-use express_it::context::ScopeId;
 use express_it::expr::{Expr, ExprNode, ExprSchema, SelectExprNodeImpl};
 use express_it::frame::Assignment;
 use num_traits::NumCast;
@@ -24,6 +23,7 @@ use std::hash::Hasher;
 use std::hash::{DefaultHasher, Hash};
 use std::iter::Sum;
 use std::marker::PhantomData;
+use smol_str::SmolStr;
 
 pub trait Value
 where
@@ -51,8 +51,6 @@ where
 {
 }
 
-pub type AttributeId = u64;
-
 pub trait Attribute
 where
     Self: Component<Mutability = Mutable> + Copy + Debug + Display,
@@ -61,8 +59,6 @@ where
     type Property: Value;
     type ExprType<S: ExprSchema>: ExprNode<Self::Property, S>;
 
-    const ID: AttributeId;
-    const BASE_ID: AttributeId;
 
     fn new<T: Num + AsPrimitive<Self::Property> + Copy>(value: T) -> Self;
     fn base_value(&self) -> Self::Property;
@@ -80,7 +76,7 @@ where
     fn parent<S: ExprSchema>() -> Expr<Self::Property, S>
     where
         Self::Property: SelectExprNodeImpl<S>;
-    fn scoped<S: ExprSchema>(scope: impl Into<ScopeId>) -> Expr<Self::Property, S>
+    fn scoped<S: ExprSchema>(subject: impl Into<SmolStr>) -> Expr<Self::Property, S>
     where
         Self::Property: SelectExprNodeImpl<S>;
     fn lit<S: ExprSchema>(value: Self::Property) -> Expr<Self::Property, S>
@@ -88,19 +84,19 @@ where
         Self::Property: SelectExprNodeImpl<S>;
     // Expression helpers
     fn set<S: ExprSchema>(
-        scope: impl Into<ScopeId>,
+        subject: impl Into<SmolStr>,
         expr: impl Into<Expr<Self::Property, S>>,
     ) -> Assignment<Self::Property, S>
     where
         Self::Property: SelectExprNodeImpl<S>;
     fn add<S: ExprSchema>(
-        scope: impl Into<ScopeId> + Copy,
+        subject: impl Into<SmolStr> + Copy,
         expr: impl Into<Expr<Self::Property, S>>,
     ) -> Assignment<Self::Property, S>
     where
         Self::Property: SelectExprNodeImpl<S>;
     fn sub<S: ExprSchema>(
-        scope: impl Into<ScopeId> + Copy,
+        subject: impl Into<SmolStr> + Copy,
         expr: impl Into<Expr<Self::Property, S>>,
     ) -> Assignment<Self::Property, S>
     where
@@ -123,10 +119,6 @@ macro_rules! attribute_impl {
         impl $crate::attributes::Attribute for $StructName {
             type Property = $ValueType;
             type ExprType<S: ExprSchema> = $crate::express_it::expr::SelectExprNode<$ValueType, S>;
-
-            const ID: u64 = $crate::express_it::context::fnv1a64(stringify!($StructName));
-            const BASE_ID: u64 =
-                $crate::express_it::context::fnv1a64(concat!(stringify!($StructName), "::base"));
 
             fn new<T>(value: T) -> Self
             where
@@ -154,33 +146,33 @@ macro_rules! attribute_impl {
             }
             fn src<S: ExprSchema>() -> $crate::express_it::expr::Expr<Self::Property, S> {
                 $crate::express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
-                    $crate::express_it::context::Path::from_id(
-                        $crate::modifier::Who::Source,
-                        Self::ID,
+                    $crate::express_it::context::Path::from_type_name::<Self>(
+                        $crate::modifier::EffectSubject::Source,
+                        "current_value",
                     ),
                 )))
             }
             fn dst<S: ExprSchema>() -> $crate::express_it::expr::Expr<Self::Property, S> {
                 $crate::express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
-                    $crate::express_it::context::Path::from_id(
-                        $crate::modifier::Who::Target,
-                        Self::ID,
+                    $crate::express_it::context::Path::from_type_name::<Self>(
+                        $crate::modifier::EffectSubject::Target,
+                         "current_value",
                     ),
                 )))
             }
             fn parent<S: ExprSchema>() -> $crate::express_it::expr::Expr<Self::Property, S> {
                 $crate::express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
-                    $crate::express_it::context::Path::from_id(
-                        $crate::modifier::Who::Owner,
-                        Self::ID,
+                    $crate::express_it::context::Path::from_type_name::<Self>(
+                        $crate::modifier::EffectSubject::Effect,
+                         "current_value",
                     ),
                 )))
             }
             fn scoped<S: ExprSchema>(
-                scope: impl Into<$crate::express_it::context::ScopeId>,
+                subject: impl Into<smol_str::SmolStr>,
             ) -> $crate::express_it::expr::Expr<Self::Property, S> {
                 $crate::express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
-                    $crate::express_it::context::Path::from_id(scope.into(), Self::ID),
+                    $crate::express_it::context::Path::from_type_name::<Self>(subject, "base_value"),
                 )))
             }
             fn lit<S: ExprSchema>(
@@ -191,43 +183,43 @@ macro_rules! attribute_impl {
                 ))
             }
             fn set<S: ExprSchema>(
-                scope: impl Into<$crate::express_it::context::ScopeId>,
+                subject: impl Into<smol_str::SmolStr>,
                 expr: impl Into<$crate::express_it::expr::Expr<Self::Property, S>>,
             ) -> $crate::express_it::frame::Assignment<Self::Property, S> {
                 $crate::express_it::frame::Assignment {
-                    path: $crate::express_it::context::Path::from_id(scope, Self::BASE_ID),
+                    path: $crate::express_it::context::Path::from_type_name::<Self>(subject, "base_value"),
                     expr: expr.into(),
                 }
             }
             fn add<S: ExprSchema>(
-                scope: impl Into<$crate::express_it::context::ScopeId> + std::marker::Copy,
+                subject: impl Into<smol_str::SmolStr> + std::marker::Copy,
                 expr: impl Into<$crate::express_it::expr::Expr<Self::Property, S>>,
             ) -> $crate::express_it::frame::Assignment<Self::Property, S> {
                 let get_expr = $crate::express_it::expr::Expr::new(std::sync::Arc::new(
-                    Self::ExprType::Attribute($crate::express_it::context::Path::from_id(
-                        scope.into(),
-                        Self::BASE_ID,
+                    Self::ExprType::Attribute($crate::express_it::context::Path::from_type_name::<Self>(
+                        subject,
+                         "base_value",
                     )),
                 ));
 
                 $crate::express_it::frame::Assignment {
-                    path: $crate::express_it::context::Path::from_id(scope.into(), Self::BASE_ID),
+                    path: $crate::express_it::context::Path::from_type_name::<Self>(subject, "base_value"),
                     expr: get_expr + expr.into(),
                 }
             }
             fn sub<S: ExprSchema>(
-                scope: impl Into<$crate::express_it::context::ScopeId> + std::marker::Copy,
+                subject: impl Into<smol_str::SmolStr> + std::marker::Copy,
                 expr: impl Into<$crate::express_it::expr::Expr<Self::Property, S>>,
             ) -> $crate::express_it::frame::Assignment<Self::Property, S> {
                 let get_expr = $crate::express_it::expr::Expr::new(std::sync::Arc::new(
-                    Self::ExprType::Attribute($crate::express_it::context::Path::from_id(
-                        scope.into(),
-                        Self::BASE_ID,
+                     Self::ExprType::Attribute($crate::express_it::context::Path::from_type_name::<Self>(
+                        subject,
+                        "base_value",
                     )),
                 ));
 
                 $crate::express_it::frame::Assignment {
-                    path: $crate::express_it::context::Path::from_id(scope.into(), Self::BASE_ID),
+                    path: $crate::express_it::context::Path::from_type_name::<Self>(subject, "base_value"),
                     expr: get_expr - expr.into(),
                 }
             }

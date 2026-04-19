@@ -3,7 +3,7 @@ use crate::attributes::Attribute;
 use crate::condition::IsAttributeWithinBounds;
 use crate::effect::EffectStackingPolicy;
 use crate::effect::application::EffectApplicationPolicy;
-use crate::modifier::{AttributeModifier, ModOp, Who};
+use crate::modifier::{AttributeModifier, ModOp, EffectSubject};
 use crate::mutator::EntityActions;
 use bevy::ecs::system::IntoObserverSystem;
 use bevy::prelude::{Bundle, Entity, EntityCommands, EntityEvent, Name};
@@ -11,7 +11,7 @@ use express_it::expr::Expr;
 use express_it::logic::{BoolExpr, BoolExprNode};
 use std::ops::RangeBounds;
 use std::sync::Arc;
-use crate::context::{ActorExprSchema, EffectExprSchema};
+use crate::context::{ EffectExprSchema};
 
 pub struct EffectBuilder {
     def: EffectDef,
@@ -68,23 +68,23 @@ impl EffectBuilder {
     ///
     /// // A simple effect that increases the source's health by 100.
     /// let effect = EffectBuilder::new(EffectApplicationPolicy::Instant)
-    ///     .modify::<Health>(100u32, ModOp::Add, Who::Source)
+    ///     .modify::<Health>(100u32, ModOp::Add, EffectSubject::Source)
     ///     .build();
     ///
     /// let damage = EffectBuilder::instant()
-    ///     .modify::<Health>(Damage::value(), ModOp::Sub, Who::Target)
+    ///     .modify::<Health>(Damage::value(), ModOp::Sub, EffectSubject::Target)
     ///     .build();
     ///
     /// // Regen 2 health every 1.0 seconds for 12.0 seconds.
     /// let regen = EffectBuilder::every_second_for_duration(1.0, 12.0)
-    ///     .modify::<Health>(2u32, ModOp::Add, Who::Source)
+    ///     .modify::<Health>(2u32, ModOp::Add, EffectSubject::Source)
     ///     .build();
     /// ```
     pub fn modify<T: Attribute>(
         mut self,
         expr: impl Into<Expr<T::Property, EffectExprSchema>>,
         op: ModOp,
-        who: Who,
+        who: EffectSubject,
     ) -> Self {
         let expr = expr.into();
         self.def.modifiers.push(Box::new(AttributeModifier::<T> {
@@ -108,7 +108,7 @@ impl EffectBuilder {
     ///
     /// // A damage over time effect that has a 10% chance of applying every tick.
     /// EffectBuilder::every_second_for_duration(1.0, 12.0)
-    ///     .modify::<Health>(Damage::value(), ModOp::Add, Who::Target)
+    ///     .modify::<Health>(Damage::value(), ModOp::Add, EffectSubject::Target)
     ///     .attach_if(ChanceCondition(0.10))
     ///     .build()
     /// ```
@@ -150,7 +150,7 @@ impl EffectBuilder {
         mut self,
         range: impl RangeBounds<T::Property> + Send + Sync + 'static,
     ) -> Self {
-        let predicate = IsAttributeWithinBounds::<T>::new(range, Who::Source);
+        let predicate = IsAttributeWithinBounds::<T>::new(range, EffectSubject::Source);
         let node = BoolExprNode::Boxed(Box::new(predicate));
         self.def.activate_conditions.push(Expr::new(Arc::new(node)));
         self
@@ -160,7 +160,7 @@ impl EffectBuilder {
         mut self,
         range: impl RangeBounds<T::Property> + Send + Sync + 'static,
     ) -> Self {
-        let predicate = IsAttributeWithinBounds::<T>::new(range, Who::Target);
+        let predicate = IsAttributeWithinBounds::<T>::new(range, EffectSubject::Target);
         let node = BoolExprNode::Boxed(Box::new(predicate));
 
         self.def.activate_conditions.push(Expr::new(Arc::new(node)));

@@ -48,7 +48,7 @@ mod test {
     use crate::condition::IsAttributeWithinBounds;
     use crate::context::EffectContext;
     use crate::effect::{Effect, EffectInactive};
-    use crate::modifier::{ModOp, Who};
+    use crate::modifier::{ModOp, EffectSubject};
     use crate::prelude::*;
     use crate::registry::ability_registry::AbilityToken;
     use crate::registry::effect_registry::EffectToken;
@@ -78,7 +78,7 @@ mod test {
             TEST_EFFECT,
             Effect::permanent()
                 .name("Increase Effect".into())
-                .modify::<TestAttribute>(200.0, ModOp::Add, Who::Target)
+                .modify::<TestAttribute>(200.0, ModOp::Add, EffectSubject::Target)
                 .build(),
         );
 
