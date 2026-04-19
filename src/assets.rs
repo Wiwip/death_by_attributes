@@ -8,7 +8,7 @@ use express_it::frame::LazyPlan;
 use express_it::logic::BoolExpr;
 use std::any::Any;
 use std::collections::{HashMap, VecDeque};
-use crate::context::{AbilityExprSchema, ActorExprSchema, EffectExprSchema};
+use crate::context::{AbilityExprSchema, EffectExprSchema};
 
 #[derive(Asset, TypePath)]
 pub struct ActorDef {
@@ -48,7 +48,7 @@ pub struct AbilityDef {
 
     pub execution_conditions: Vec<BoolExpr<AbilityExprSchema>>,
 
-    pub cost_condition: Vec<BoolExpr<EffectExprSchema>>,
+    pub cost_condition: Vec<BoolExpr<AbilityExprSchema>>,
     pub cost_modifiers: LazyPlan,
 
     pub on_execute: Vec<LazyPlan>,

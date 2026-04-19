@@ -16,7 +16,7 @@ pub struct AbilityBuilder {
     name: String,
     mutators: Vec<EntityActions>,
     triggers: Vec<EntityActions>,
-    cost_condition: Vec<BoolExpr<EffectExprSchema>>,
+    cost_condition: Vec<BoolExpr<AbilityExprSchema>>,
     cost_modifiers: LazyPlan,
     on_execute: Vec<LazyPlan>,
 }
@@ -45,9 +45,9 @@ impl AbilityBuilder {
         self
     }
 
-    pub fn with_cost<T: Attribute>(mut self, cost: impl Into<Expr<T::Property, EffectExprSchema>>) -> Self
+    pub fn with_cost<T: Attribute>(mut self, cost: impl Into<Expr<T::Property, AbilityExprSchema>>) -> Self
     where
-        Expr<T::Property, EffectExprSchema>: CompareExpr<EffectExprSchema>,
+        Expr<T::Property, AbilityExprSchema>: CompareExpr<AbilityExprSchema>,
     {
         let cost_expr = cost.into();
         let cost_assignment = T::sub(Who::Source, cost_expr.clone());

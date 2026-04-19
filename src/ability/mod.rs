@@ -51,7 +51,7 @@ pub struct Ability(pub(crate) Handle<AbilityDef>);
 pub struct TryActivateAbility {
     #[event_target]
     ability: Entity,
-    condition: BoolExpr<EffectExprSchema>,
+    condition: BoolExpr<AbilityExprSchema>,
     target_data: TargetData,
 }
 

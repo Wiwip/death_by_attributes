@@ -98,16 +98,16 @@ fn can_activate_ability(
     source_entity_ref: &AttributesRef,
     target_entity_ref: &AttributesRef,
     ability_def: &AbilityDef,
-    conditions: &BoolExpr<EffectExprSchema>,
+    conditions: &BoolExpr<AbilityExprSchema>,
     type_registry: &TypeRegistryArc,
     type_bindings: AppAttributeBindings,
 ) -> Result<bool, BevyError> {
-    let context = EffectExprContext {
-        target_actor: target_entity_ref,
+    let context = AbilityExprContext {
+        /*target_actor: target_entity_ref,
         source_actor: source_entity_ref,
         owner: ability_entity_ref,
         type_registry: type_registry.clone(),
-        type_bindings,
+        type_bindings,*/
     };
 
     let meet_conditions = conditions.eval(&context).unwrap_or(false);
