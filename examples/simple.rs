@@ -219,7 +219,7 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
                     }
                 },
             )
-            .on_execute(LazyPlan::new().step(MaxHealth::add(Who::Source, 5)))
+            .on_execute(LazyPlan::new().step(MaxHealth::add::<AbilityExprSchema>(Who::Source, 5)))
             .build(),
     );
     commands.insert_resource(AbilityDatabase {

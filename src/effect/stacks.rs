@@ -1,3 +1,4 @@
+use express_it::expr::ExprSchema;
 use crate::assets::EffectDef;
 use crate::attribute;
 use crate::context::EffectExprSchema;

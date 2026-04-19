@@ -61,8 +61,9 @@ pub mod prelude {
     };
     pub use crate::effect::{EffectApplicationPolicy, EffectBuilder};
     pub use crate::modifier::{AccessModifier, AttributeModifier, ModOp, Who};
-
     pub use crate::context::{AbilityExprSchema, ActorExprSchema, EffectExprSchema};
+
+    pub use express_it::expr::ExprSchema;
 
     // Necessary for attribute macro
     pub use bevy::prelude::ReflectComponent;

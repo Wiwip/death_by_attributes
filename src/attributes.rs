@@ -1,4 +1,4 @@
-use crate::context::EffectExprSchema;
+use crate::context::{AbilityExprSchema, ActorExprSchema, EffectExprSchema};
 use crate::effect::AttributeDependents;
 use crate::inspector::pretty_type_name;
 use crate::math::{AbsDiff, SaturatingAttributes};
@@ -9,7 +9,7 @@ use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
 use bevy::reflect::{GetTypeRegistration, Typed};
 use express_it::context::ScopeId;
-use express_it::expr::{Expr, ExprNode, SelectExprNodeImpl};
+use express_it::expr::{Expr, ExprNode, ExprSchema, SelectExprNodeImpl};
 use express_it::frame::Assignment;
 use num_traits::NumCast;
 pub use num_traits::{
@@ -33,6 +33,8 @@ where
     Self: SaturatingAttributes<Output = Self> + Sum + Bounded + AbsDiff,
     Self: FromPrimitive + AsPrimitive<f64> + Reflect,
     Self: SelectExprNodeImpl<EffectExprSchema, Property = Self>,
+    Self: SelectExprNodeImpl<ActorExprSchema, Property = Self>,
+    Self: SelectExprNodeImpl<AbilityExprSchema, Property = Self>,
 {
 }
 
@@ -44,6 +46,8 @@ where
     Self: SaturatingAttributes<Output = Self> + Sum + Bounded + AbsDiff,
     Self: FromPrimitive + AsPrimitive<f64> + Reflect,
     Self: SelectExprNodeImpl<EffectExprSchema, Property = Self>,
+    Self: SelectExprNodeImpl<ActorExprSchema, Property = Self>,
+    Self: SelectExprNodeImpl<AbilityExprSchema, Property = Self>,
 {
 }
 
@@ -55,7 +59,8 @@ where
     Self: Reflect + TypePath + GetTypeRegistration,
 {
     type Property: Value;
-    type ExprType: ExprNode<Self::Property, EffectExprSchema>;
+    type ExprType<S: ExprSchema>: ExprNode<Self::Property, S>;
+
     const ID: AttributeId;
     const BASE_ID: AttributeId;
 
@@ -66,24 +71,40 @@ where
     fn borrow_current_value(&self) -> &Self::Property;
     fn set_current_value(&mut self, value: Self::Property);
     // Helper to wrap attribute access in an Expression
-    fn src() -> Expr<Self::Property, EffectExprSchema>;
-    fn dst() -> Expr<Self::Property, EffectExprSchema>;
-    fn parent() -> Expr<Self::Property, EffectExprSchema>;
-    fn scoped(scope: impl Into<ScopeId>) -> Expr<Self::Property, EffectExprSchema>;
-    fn lit(value: Self::Property) -> Expr<Self::Property, EffectExprSchema>;
+    fn src<S: ExprSchema>() -> Expr<Self::Property, S>
+    where
+        Self::Property: SelectExprNodeImpl<S>;
+    fn dst<S: ExprSchema>() -> Expr<Self::Property, S>
+    where
+        Self::Property: SelectExprNodeImpl<S>;
+    fn parent<S: ExprSchema>() -> Expr<Self::Property, S>
+    where
+        Self::Property: SelectExprNodeImpl<S>;
+    fn scoped<S: ExprSchema>(scope: impl Into<ScopeId>) -> Expr<Self::Property, S>
+    where
+        Self::Property: SelectExprNodeImpl<S>;
+    fn lit<S: ExprSchema>(value: Self::Property) -> Expr<Self::Property, S>
+    where
+        Self::Property: SelectExprNodeImpl<S>;
     // Expression helpers
-    fn set(
+    fn set<S: ExprSchema>(
         scope: impl Into<ScopeId>,
-        expr: impl Into<Expr<Self::Property, EffectExprSchema>>,
-    ) -> Assignment<Self::Property, EffectExprSchema>;
-    fn add(
+        expr: impl Into<Expr<Self::Property, S>>,
+    ) -> Assignment<Self::Property, S>
+    where
+        Self::Property: SelectExprNodeImpl<S>;
+    fn add<S: ExprSchema>(
         scope: impl Into<ScopeId> + Copy,
-        expr: impl Into<Expr<Self::Property, EffectExprSchema>>,
-    ) -> Assignment<Self::Property, EffectExprSchema>;
-    fn sub(
+        expr: impl Into<Expr<Self::Property, S>>,
+    ) -> Assignment<Self::Property, S>
+    where
+        Self::Property: SelectExprNodeImpl<S>;
+    fn sub<S: ExprSchema>(
         scope: impl Into<ScopeId> + Copy,
-        expr: impl Into<Expr<Self::Property, EffectExprSchema>>,
-    ) -> Assignment<Self::Property, EffectExprSchema>;
+        expr: impl Into<Expr<Self::Property, S>>,
+    ) -> Assignment<Self::Property, S>
+    where
+        Self::Property: SelectExprNodeImpl<S>;
 }
 
 // Move expression-related functions to this subtrait.
@@ -92,13 +113,7 @@ pub trait ExprAttribute: Attribute {}
 #[macro_export]
 macro_rules! attribute_impl {
     ( $StructName:ident, $ValueType:ty ) => {
-        #[derive(
-            bevy::prelude::Component,
-            Clone,
-            Copy,
-            bevy::prelude::Reflect,
-            Debug,
-        )]
+        #[derive(bevy::prelude::Component, Clone, Copy, bevy::prelude::Reflect, Debug)]
         #[reflect(Component, AccessAttribute)]
         pub struct $StructName {
             base_value: $ValueType,
@@ -107,7 +122,7 @@ macro_rules! attribute_impl {
 
         impl $crate::attributes::Attribute for $StructName {
             type Property = $ValueType;
-            type ExprType = $crate::express_it::expr::SelectExprNode<$ValueType, EffectExprSchema>;
+            type ExprType<S: ExprSchema> = $crate::express_it::expr::SelectExprNode<$ValueType, S>;
 
             const ID: u64 = $crate::express_it::context::fnv1a64(stringify!($StructName));
             const BASE_ID: u64 =
@@ -137,7 +152,7 @@ macro_rules! attribute_impl {
             fn set_current_value(&mut self, value: $ValueType) {
                 self.current_value = value;
             }
-            fn src() -> $crate::express_it::expr::Expr<Self::Property, EffectExprSchema> {
+            fn src<S: ExprSchema>() -> $crate::express_it::expr::Expr<Self::Property, S> {
                 $crate::express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
                     $crate::express_it::context::Path::from_id(
                         $crate::modifier::Who::Source,
@@ -145,7 +160,7 @@ macro_rules! attribute_impl {
                     ),
                 )))
             }
-            fn dst() -> $crate::express_it::expr::Expr<Self::Property, EffectExprSchema> {
+            fn dst<S: ExprSchema>() -> $crate::express_it::expr::Expr<Self::Property, S> {
                 $crate::express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
                     $crate::express_it::context::Path::from_id(
                         $crate::modifier::Who::Target,
@@ -153,7 +168,7 @@ macro_rules! attribute_impl {
                     ),
                 )))
             }
-            fn parent() -> $crate::express_it::expr::Expr<Self::Property, EffectExprSchema> {
+            fn parent<S: ExprSchema>() -> $crate::express_it::expr::Expr<Self::Property, S> {
                 $crate::express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
                     $crate::express_it::context::Path::from_id(
                         $crate::modifier::Who::Owner,
@@ -161,31 +176,33 @@ macro_rules! attribute_impl {
                     ),
                 )))
             }
-            fn scoped(
+            fn scoped<S: ExprSchema>(
                 scope: impl Into<$crate::express_it::context::ScopeId>,
-            ) -> $crate::express_it::expr::Expr<Self::Property, EffectExprSchema> {
+            ) -> $crate::express_it::expr::Expr<Self::Property, S> {
                 $crate::express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
                     $crate::express_it::context::Path::from_id(scope.into(), Self::ID),
                 )))
             }
-            fn lit(value: $ValueType) -> $crate::express_it::expr::Expr<Self::Property, EffectExprSchema> {
-                $crate::express_it::expr::Expr::<Self::Property, EffectExprSchema>::new(std::sync::Arc::new(
+            fn lit<S: ExprSchema>(
+                value: $ValueType,
+            ) -> $crate::express_it::expr::Expr<Self::Property, S> {
+                $crate::express_it::expr::Expr::<Self::Property, S>::new(std::sync::Arc::new(
                     Self::ExprType::Lit(value),
                 ))
             }
-            fn set(
+            fn set<S: ExprSchema>(
                 scope: impl Into<$crate::express_it::context::ScopeId>,
-                expr: impl Into<$crate::express_it::expr::Expr<Self::Property, EffectExprSchema>>,
-            ) -> $crate::express_it::frame::Assignment<Self::Property, EffectExprSchema> {
+                expr: impl Into<$crate::express_it::expr::Expr<Self::Property, S>>,
+            ) -> $crate::express_it::frame::Assignment<Self::Property, S> {
                 $crate::express_it::frame::Assignment {
                     path: $crate::express_it::context::Path::from_id(scope, Self::BASE_ID),
                     expr: expr.into(),
                 }
             }
-            fn add(
+            fn add<S: ExprSchema>(
                 scope: impl Into<$crate::express_it::context::ScopeId> + std::marker::Copy,
-                expr: impl Into<$crate::express_it::expr::Expr<Self::Property, EffectExprSchema>>,
-            ) -> $crate::express_it::frame::Assignment<Self::Property, EffectExprSchema> {
+                expr: impl Into<$crate::express_it::expr::Expr<Self::Property, S>>,
+            ) -> $crate::express_it::frame::Assignment<Self::Property, S> {
                 let get_expr = $crate::express_it::expr::Expr::new(std::sync::Arc::new(
                     Self::ExprType::Attribute($crate::express_it::context::Path::from_id(
                         scope.into(),
@@ -198,10 +215,10 @@ macro_rules! attribute_impl {
                     expr: get_expr + expr.into(),
                 }
             }
-            fn sub(
+            fn sub<S: ExprSchema>(
                 scope: impl Into<$crate::express_it::context::ScopeId> + std::marker::Copy,
-                expr: impl Into<$crate::express_it::expr::Expr<Self::Property, EffectExprSchema>>,
-            ) -> $crate::express_it::frame::Assignment<Self::Property, EffectExprSchema> {
+                expr: impl Into<$crate::express_it::expr::Expr<Self::Property, S>>,
+            ) -> $crate::express_it::frame::Assignment<Self::Property, S> {
                 let get_expr = $crate::express_it::expr::Expr::new(std::sync::Arc::new(
                     Self::ExprType::Attribute($crate::express_it::context::Path::from_id(
                         scope.into(),
