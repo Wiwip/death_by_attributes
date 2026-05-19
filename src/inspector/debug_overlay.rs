@@ -27,11 +27,11 @@ pub fn setup_debug_overlay(mut commands: Commands, asset_server_opt: Option<Res<
         .with_children(|builder| {
             builder.spawn((
                 Text::new("Debug Overlay"),
-                TextFont {
+                /*TextFont {
                     font: asset_server.load("fonts/JetBrainsMono-Regular.ttf"),
                     font_size: 12.0,
                     ..default()
-                },
+                },*/
                 DebugOverlayMarker,
             ));
         });

@@ -25,6 +25,8 @@ pub struct SpawnActorCommand {
 }
 
 impl EntityCommand for SpawnActorCommand {
+    type Out = ();
+
     fn apply(self, mut entity: EntityWorldMut) -> () {
         debug!("Spawning actor {} {:?}", entity.id(), self.handle);
         let actor_entity = entity.id();

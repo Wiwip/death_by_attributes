@@ -12,8 +12,9 @@ use crate::{AppAttributeBindings, AttributesMut};
 use bevy::asset::{Assets, Handle};
 use bevy::log::debug;
 use bevy::prelude::*;
-use bevy_inspector_egui::__macro_exports::bevy_reflect::TypeRegistryArc;
 use std::cmp::PartialEq;
+use bevy::ecs::resource::IsResource;
+use bevy::reflect::TypeRegistryArc;
 
 /// Describes how the effect is applied to entities
 #[derive(Debug, Clone, Reflect, PartialEq)]
@@ -130,7 +131,7 @@ pub struct ApplyEffectEvent {
 impl ApplyEffectEvent {
     fn apply_instant_effect(
         &self,
-        actors: &mut Query<(Option<&AppliedEffects>, AttributesMut), Without<Effect>>,
+        actors: &mut Query<(Option<&AppliedEffects>, AttributesMut), (Without<Effect>, Without<IsResource>)>,
         commands: &mut Commands,
         effect: &EffectDef,
         type_registry: TypeRegistryArc,
@@ -138,9 +139,11 @@ impl ApplyEffectEvent {
         debug!("Applying instant effect to {}", self.targeting.target());
 
         let Ok((_, source_actor_ref)) = actors.get(self.targeting.source()) else {
+            warn!("Failed to get source actor: {}", self.targeting.source());
             return Ok(());
         };
         let Ok((_, target_actor_ref)) = actors.get(self.targeting.target()) else {
+            warn!("Failed to get target actor: {}", self.targeting.target());
             return Ok(());
         };
 
@@ -167,7 +170,7 @@ impl ApplyEffectEvent {
 
     fn apply_modifiers<'a, I>(
         &self,
-        _actors: &'a mut Query<(Option<&AppliedEffects>, AttributesMut), Without<Effect>>,
+        _actors: &'a mut Query<(Option<&AppliedEffects>, AttributesMut), (Without<Effect>, Without<IsResource>)>,
         modifiers: &mut I,
         commands: &mut Commands,
     ) where
@@ -187,7 +190,7 @@ impl ApplyEffectEvent {
         &self,
         commands: &mut Commands,
         effect: &EffectDef,
-        actors: &mut Query<(Option<&AppliedEffects>, AttributesMut), Without<Effect>>,
+        actors: &mut Query<(Option<&AppliedEffects>, AttributesMut), (Without<Effect>, Without<IsResource>)>,
         effects: &mut Query<&Effect>,
         add_stack_event: &mut MessageWriter<NotifyAddStackEvent>,
         type_registry: TypeRegistryArc,
@@ -303,7 +306,7 @@ impl ApplyEffectEvent {
 
 pub(crate) fn apply_effect_event_observer(
     trigger: On<ApplyEffectEvent>,
-    mut actors: Query<(Option<&AppliedEffects>, AttributesMut), Without<Effect>>,
+    mut actors: Query<(Option<&AppliedEffects>, AttributesMut), (Without<Effect>, Without<IsResource>)>,
     mut effects: Query<&Effect>,
     effect_assets: Res<Assets<EffectDef>>,
     mut writer: MessageWriter<NotifyAddStackEvent>,
@@ -344,7 +347,7 @@ mod test {
     use super::*;
     use crate::actors::ActorBuilder;
     use crate::condition::IsAttributeWithinBounds;
-    use crate::context::EffectContext;
+    use crate::context::Vitality;
     use crate::effect::builder::EffectBuilder;
     use crate::modifier::{ModOp, EffectSubject};
     use crate::prelude::*;
@@ -357,7 +360,7 @@ mod test {
     attribute!(TestB, f64);
     attribute!(TestInt, u32);
 
-    fn prepare_actor(mut ctx: EffectContext, registry: Registry) {
+    fn prepare_actor(mut ctx: Vitality, registry: Registry) {
         let actor_template = ctx.add_actor(
             ActorBuilder::new()
                 .name("TestActor".into())
@@ -410,7 +413,7 @@ mod test {
 
         let modifier_value = 10;
         app.world_mut()
-            .run_system_once(move |mut ctx: EffectContext| {
+            .run_system_once(move |mut ctx: Vitality| {
                 let effect = EffectBuilder::instant()
                     .modify::<TestInt>(modifier_value, ModOp::Add, EffectSubject::Target)
                     .build();

@@ -2,8 +2,6 @@ use bevy::ecs::schedule::{LogLevel, ScheduleBuildSettings};
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::window::PresentMode;
-use bevy_egui::EguiPlugin;
-use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use express_it::frame::LazyPlan;
 use std::fmt::Debug;
 use std::time::Duration;
@@ -11,7 +9,7 @@ use vitality::ability::{AbilityBuilder, ExecuteAbility, TargetData, TryActivateA
 use vitality::actors::ActorBuilder;
 use vitality::assets::{AbilityDef, EffectDef};
 use vitality::attributes::ReflectAccessAttribute;
-use vitality::context::EffectContext;
+use vitality::context::Vitality;
 use vitality::effect::{Effect, EffectStackingPolicy};
 use vitality::graph::DependencyGraph;
 use vitality::inspector::ActorInspectorPlugin;
@@ -46,7 +44,7 @@ fn main() {
             level: bevy::log::Level::DEBUG,
             ..default()
         }))
-        .insert_resource(UiDebugOptions {
+        .insert_resource(GlobalUiDebugOptions {
             //enabled: true,
             ..default()
         })
@@ -65,9 +63,7 @@ fn main() {
             //init_attribute::<Armour>,
             init_attribute::<MagicPower>,
         ))
-        .add_plugins(EguiPlugin::default())
-        //.add_plugins(DefaultInspectorConfigPlugin)
-        .add_plugins(WorldInspectorPlugin::default())
+        //.add_plugins((EguiPlugin::default(), WorldInspectorPlugin::default()))
         .add_plugins(ActorInspectorPlugin)
         .add_systems(
             Startup,
@@ -111,7 +107,7 @@ struct EffectsDatabase {
     hp_regen: Handle<EffectDef>,
 }
 
-fn setup_effects(mut commands: Commands, mut ctx: EffectContext) {
+fn setup_effects(mut commands: Commands, mut ctx: Vitality) {
     // Attack Power effect
     let ap_buff = ctx.add_effect(
         Effect::permanent()
@@ -184,7 +180,7 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
             .add_execution(
                 |trigger: On<ExecuteAbility>,
                  source: Query<(&Health, &MaxHealth)>,
-                 _ctx: EffectContext| {
+                 _ctx: Vitality| {
                     if let Ok((health, _)) = source.get(trigger.source) {
                         println!(
                             "Fireball! {}: {}: H: {}",
@@ -207,7 +203,7 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
             .add_execution(
                 |trigger: On<ExecuteAbility>,
                  source: Query<(&Health, &MaxHealth)>,
-                 _ctx: EffectContext| {
+                 _ctx: Vitality| {
                     if let Ok((health, _)) = source.get(trigger.source) {
                         println!(
                             "Frostball! {}: {}: H: {}",
@@ -227,7 +223,7 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
     });
 }
 
-fn setup_actor(mut ctx: EffectContext, efx: Res<EffectsDatabase>, abilities: Res<AbilityDatabase>) {
+fn setup_actor(mut ctx: Vitality, efx: Res<EffectsDatabase>, abilities: Res<AbilityDatabase>) {
     let actor_template = ActorBuilder::new()
         .name("=== Player ===".into())
         .with::<Strength>(12)

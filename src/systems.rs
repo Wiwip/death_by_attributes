@@ -15,6 +15,7 @@ use bevy::reflect::TypeRegistryArc;
 use petgraph::visit::IntoNeighbors;
 use std::any::type_name;
 use std::marker::PhantomData;
+use bevy::ecs::resource::IsResource;
 
 #[derive(EntityEvent)]
 #[entity_event(propagate=&'static EffectTarget, auto_propagate)]
@@ -43,7 +44,7 @@ pub fn mark_node_dirty_observer<T: Attribute>(
 
 /// Navigates the tree descendants to update the tree attribute values
 /// Effects that have a periodic timer application must be ignored in the current value calculations
-pub fn update_effect_system<T: Attribute>(
+pub fn update_current_value_system<T: Attribute>(
     graph: DependencyGraph,
     nodes: Query<&NodeType>,
     actors: Query<Entity, With<Actor>>,
@@ -232,7 +233,7 @@ pub fn update_attribute<T: Attribute>(
 }
 
 pub fn apply_periodic_effect<T: Attribute>(
-    actors: Query<AttributesRef>,
+    actors: Query<AttributesRef, Without<IsResource>>,
     effects: Query<(
         AttributesRef,
         &Effect,
@@ -240,7 +241,7 @@ pub fn apply_periodic_effect<T: Attribute>(
         &OwnedModifiers,
         &EffectTarget,
         &EffectSource,
-    )>,
+    ), Without<IsResource>>,
     modifiers: Query<&AttributeModifier<T>>,
     mut event_writer: MessageWriter<ApplyAttributeModifierMessage<T>>,
     effect_assets: Res<Assets<EffectDef>>,

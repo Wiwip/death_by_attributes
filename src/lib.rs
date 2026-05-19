@@ -7,6 +7,7 @@ use std::error::Error;
 use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::sync::{Arc, RwLock};
+use bevy::ecs::resource::IsResource;
 
 pub mod ability;
 pub mod actors;
@@ -47,7 +48,7 @@ use crate::prelude::*;
 use crate::registry::RegistryPlugin;
 use crate::schedule::EffectsSet;
 use crate::systems::{
-    apply_periodic_effect, mark_node_dirty_observer, update_attribute, update_effect_system,
+    apply_periodic_effect, mark_node_dirty_observer, update_attribute, update_current_value_system,
 };
 use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
 use bevy::platform::collections::hash_map::Entry;
@@ -202,7 +203,7 @@ pub fn init_attribute<T: Attribute>(app: &mut App) {
 
     app.add_systems(
         Update,
-        (update_effect_system::<T>, apply_clamps::<T>)
+        (update_current_value_system::<T>, apply_clamps::<T>)
             .chain()
             .in_set(EffectsSet::UpdateCurrentValues),
     );

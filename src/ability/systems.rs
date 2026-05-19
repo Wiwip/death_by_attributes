@@ -4,9 +4,10 @@ use crate::context::{EffectExprContext, EffectExprContextMut, AbilityExprSchema,
 use crate::{AppAttributeBindings, AttributesMut, AttributesRef};
 use bevy::asset::Assets;
 use bevy::prelude::*;
-use bevy_inspector_egui::__macro_exports::bevy_reflect::TypeRegistryArc;
 use express_it::logic::BoolExpr;
 use std::time::Duration;
+use bevy::ecs::resource::IsResource;
+use bevy::reflect::TypeRegistryArc;
 
 pub fn tick_ability_cooldown(mut query: Query<&mut AbilityCooldown>, time: Res<Time>) {
     query.par_iter_mut().for_each(|mut cooldown| {
@@ -22,7 +23,7 @@ pub fn tick_ability_cooldown(mut query: Query<&mut AbilityCooldown>, time: Res<T
 /// - Cost
 pub fn try_activate_ability_observer(
     trigger: On<TryActivateAbility>,
-    actors: Query<(AttributesRef, &GrantedAbilities), Without<AbilityCooldown>>,
+    actors: Query<(AttributesRef, &GrantedAbilities), (Without<AbilityCooldown>, Without<IsResource>)>,
     abilities: Query<(AttributesRef, &Ability, Option<&AbilityCooldown>)>,
     ability_assets: Res<Assets<AbilityDef>>,
     mut commands: Commands,
@@ -173,7 +174,7 @@ pub struct ActivateAbility {
 /// Bypass [TryActivateAbility]'s checks. Usually triggered after a successful [TryActivateAbility].
 pub(crate) fn activate_ability(
     trigger: On<ActivateAbility>,
-    mut actors: Query<AttributesMut<'static, 'static>>,
+    mut actors: Query<AttributesMut<'static, 'static>, Without<IsResource>>,
     abilities: Query<&Ability>,
     ability_assets: Res<Assets<AbilityDef>>,
     mut commands: Commands,

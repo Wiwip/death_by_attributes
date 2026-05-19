@@ -1,6 +1,6 @@
 use crate::actors::{Actor, ActorBuilder};
 use crate::assets::EffectDef;
-use crate::context::EffectContext;
+use crate::context::Vitality;
 use bevy::prelude::*;
 
 /// A plugin that manages global effects within the game.
@@ -25,7 +25,7 @@ pub struct GlobalActor;
 #[derive(Component, Clone, Copy)]
 pub struct GlobalEffect;
 
-pub fn spawn_global_actor(mut commands: Commands, mut ctx: EffectContext) {
+pub fn spawn_global_actor(mut commands: Commands, mut ctx: Vitality) {
     let global_actor = commands.spawn(GlobalActor).id();
 
     let actor = ActorBuilder::new().name("Global Effect Actor").build();
@@ -35,7 +35,7 @@ pub fn spawn_global_actor(mut commands: Commands, mut ctx: EffectContext) {
 }
 
 /// When an actor is spawned, ensures that the global effects apply to the actor.
-fn observe_spawned_actor(trigger: On<Add, Actor>, mut ctx: EffectContext) {
+fn observe_spawned_actor(trigger: On<Add, Actor>, mut ctx: Vitality) {
     ctx.spawn_global_effects(trigger.entity);
 }
 
@@ -46,7 +46,7 @@ mod test {
     use crate::actors::{Actor, ActorBuilder};
     use crate::assets::AbilityDef;
     use crate::condition::IsAttributeWithinBounds;
-    use crate::context::EffectContext;
+    use crate::context::Vitality;
     use crate::effect::{Effect, EffectInactive};
     use crate::modifier::{ModOp, EffectSubject};
     use crate::prelude::*;
@@ -61,7 +61,7 @@ mod test {
     #[derive(Component, Copy, Clone, Debug, PartialEq)]
     struct ConditionTag;
 
-    fn prepare_actor(mut ctx: EffectContext, registry: Registry) {
+    fn prepare_actor(mut ctx: Vitality, registry: Registry) {
         let actor_template = ctx.add_actor(
             ActorBuilder::new()
                 .name("TestActor".into())
@@ -131,7 +131,7 @@ mod test {
         assert!(opt_inactive.is_some());
 
         app.world_mut()
-            .run_system_once(move |mut ctx: EffectContext, registry: Registry| {
+            .run_system_once(move |mut ctx: Vitality, registry: Registry| {
                 ctx.apply_effect_to_self(actor_id, &registry.effect(&TEST_EFFECT));
             })
             .unwrap();

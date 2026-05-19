@@ -19,8 +19,8 @@ debug = true
 [dependencies]
 rand = "0.10"
 ptree = "0.5"
-bevy_egui = "0.39"
-bevy-inspector-egui = "0.36"
+#bevy_egui = "0.39"
+#bevy-inspector-egui = "0.36"
 petgraph = "0.8"
 serde = "1.0"
 num-traits = "0.2"
@@ -28,7 +28,7 @@ smol_str = "0.2.2"
 express-it = { path = "../express-it" }
 
 [dependencies.bevy]
-version = "0.18"
+version = "0.19.0-rc.1"
 default-features = false
 features = [
     "bevy_log",
@@ -36,10 +36,9 @@ features = [
 
 [dev-dependencies]
 criterion = { version = "0.8", features = ["html_reports"] }
-bevy_dev_tools = "0.18"
 
 [dev-dependencies.bevy]
-version = "0.18"
+version = "0.19.0-rc.1"
 default-features = true
 features = [
     "bevy_core_pipeline",
@@ -49,8 +48,8 @@ features = [
     "default_font",
     "dynamic_linking",
     "bevy_ui_debug",
-    "experimental_bevy_feathers",
-    "experimental_bevy_ui_widgets",
+    "bevy_feathers",
+    "bevy_ui_widgets",
 ]
 
 [[bench]]

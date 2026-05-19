@@ -1,7 +1,7 @@
 use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
 use vitality::actors::ActorBuilder;
-use vitality::context::EffectContext;
+use vitality::context::Vitality;
 use vitality::effect::{Effect, EffectApplicationPolicy, EffectBuilder};
 use vitality::modifier::{ModOp, EffectSubject};
 use vitality::prelude::*;
@@ -9,7 +9,7 @@ use vitality::{AttributesPlugin, attribute, init_attribute};
 
 attribute!(TestA, u32);
 
-fn prepare_actor(mut ctx: EffectContext) {
+fn prepare_actor(mut ctx: Vitality) {
     let actor_template = ctx.add_actor(
         ActorBuilder::new()
             .name("TestActor".into())
@@ -41,7 +41,7 @@ fn test_update_current_values() {
 
     // Create a dynamic effect and apply it directly to the entity
     app.world_mut()
-        .run_system_once(move |mut ctx: EffectContext| {
+        .run_system_once(move |mut ctx: Vitality| {
             let effect_def = EffectBuilder::new(EffectApplicationPolicy::Permanent)
                 .modify::<TestA>(42u32, ModOp::Add, EffectSubject::Target)
                 .build();

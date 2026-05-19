@@ -10,6 +10,8 @@ pub struct GrantAbilityCommand {
 }
 
 impl EntityCommand for GrantAbilityCommand {
+    type Out = ();
+
     fn apply(self, mut actor: EntityWorldMut) -> () {
         let ability_def = {
             // Create a temporary scope to borrow the world

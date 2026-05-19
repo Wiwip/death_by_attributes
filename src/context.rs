@@ -14,7 +14,7 @@ use express_it::expr::{ExprSchema, ExpressionError};
 use std::any::Any;
 
 #[derive(SystemParam)]
-pub struct EffectContext<'w, 's> {
+pub struct Vitality<'w, 's> {
     commands: Commands<'w, 's>,
     global_actor: Query<'w, 's, Entity, With<GlobalActor>>,
     global_effects: ResMut<'w, GlobalEffects>,
@@ -23,7 +23,7 @@ pub struct EffectContext<'w, 's> {
     actors: ResMut<'w, Assets<ActorDef>>,
 }
 
-impl<'s, 'w> EffectContext<'w, 's> {
+impl<'s, 'w> Vitality<'w, 's> {
     pub fn add_effect(&mut self, effect: EffectDef) -> Handle<EffectDef> {
         self.effects.add(effect)
     }

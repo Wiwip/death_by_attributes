@@ -1,3 +1,4 @@
+use bevy::ecs::resource::IsResource;
 use crate::context::EffectExprContext;
 use crate::inspector::pretty_type_name;
 use crate::math::AbsDiff;
@@ -18,7 +19,7 @@ pub struct ApplyAttributeModifierMessage<T: Attribute> {
 
 pub fn apply_modifier_events<T: Attribute>(
     mut event_reader: MessageReader<ApplyAttributeModifierMessage<T>>,
-    mut attributes: Query<AttributesMut>,
+    mut attributes: Query<AttributesMut, Without<IsResource>>,
     mut commands: Commands,
     type_registry: Res<AppTypeRegistry>,
 ) {
@@ -41,7 +42,7 @@ pub fn apply_modifier_events<T: Attribute>(
 
 pub fn apply_modifier<T: Attribute>(
     trigger: &ApplyAttributeModifierMessage<T>,
-    attributes: &mut Query<AttributesMut>,
+    attributes: &mut Query<AttributesMut, Without<IsResource>>,
     type_registry: TypeRegistryArc,
 ) -> Result<bool, BevyError> {
     let query = [trigger.source_entity, trigger.target_entity];
