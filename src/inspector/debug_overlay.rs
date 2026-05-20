@@ -5,36 +5,35 @@ use crate::modifier::{ModifierMarker, OwnedModifiers, ReflectAccessModifier};
 use crate::prelude::*;
 use bevy::ecs::component::{ComponentId, Components};
 use bevy::prelude::*;
+use bevy::text::FontSourceTemplate;
 use ptree::{TreeBuilder, write_tree};
 use std::any::TypeId;
 
-#[derive(Component, Copy, Clone)]
+#[derive(Component, Default, Copy, Clone)]
 pub struct DebugOverlayMarker;
 
-pub fn setup_debug_overlay(mut commands: Commands, asset_server_opt: Option<Res<AssetServer>>) {
-    let Some(asset_server) = asset_server_opt else {
-        return;
-    };
+pub fn setup_debug_overlay(mut commands: Commands) {
+    commands.spawn_scene(create_overlay());
+}
 
-    commands
-        .spawn(Node {
+fn create_overlay() -> impl Scene {
+    bsn! {
+        #DebugOverlay
+        Node {
             flex_direction: FlexDirection::Column,
             justify_content: JustifyContent::FlexStart,
             align_items: AlignItems::FlexStart,
             margin: UiRect::axes(Val::Px(5.), Val::Px(5.)),
-            ..default()
-        })
-        .with_children(|builder| {
-            builder.spawn((
-                Text::new("Debug Overlay"),
-                /*TextFont {
-                    font: asset_server.load("fonts/JetBrainsMono-Regular.ttf"),
-                    font_size: 12.0,
-                    ..default()
-                },*/
-                DebugOverlayMarker,
-            ));
-        });
+        }
+        Children [
+            Text("Debug Overlay")
+            TextFont {
+                font: FontSourceTemplate::Handle("fonts/JetBrainsMono-Regular.ttf"),
+                font_size: px(12.0),
+            }
+            DebugOverlayMarker,
+        ]
+    }
 }
 
 pub fn explore_actors_system(
